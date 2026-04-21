@@ -104,6 +104,10 @@ export class AirdropTree {
 
   /** Serialize the HashMap into a single cell (suitable for on-chain hashing). */
   toCell(): Cell {
+    if (this.dict.size === 0) {
+      // Empty dict — return an empty cell to produce a stable zero-ish root.
+      return beginCell().endCell();
+    }
     return beginCell().storeDictDirect(this.dict).endCell();
   }
 
@@ -114,6 +118,11 @@ export class AirdropTree {
 
   rootBuffer(): Buffer {
     return this.toCell().hash();
+  }
+
+  /** Number of leaves in the tree (0 when empty). */
+  isEmpty(): boolean {
+    return this.dict.size === 0;
   }
 
   /**

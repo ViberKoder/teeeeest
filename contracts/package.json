@@ -3,6 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "FunC smart contracts + TS wrappers + sandbox tests for Rolling Mintless Jetton",
+  "main": "wrappers/index.ts",
+  "types": "wrappers/index.ts",
+  "files": [
+    "contracts/",
+    "wrappers/",
+    "build/"
+  ],
   "scripts": {
     "build": "ts-node scripts/exportBocs.ts",
     "test": "jest --runInBand",
