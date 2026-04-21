@@ -1,0 +1,57 @@
+;; =================================================================
+;; Rolling Mintless Jetton — opcodes and error codes
+;;
+;; All opcodes below except TEP-74 standard ones are derived from
+;; crc32 of their canonical names (see wrappers/OpCodes.ts for parity).
+;; =================================================================
+
+;; ---- TEP-74 standard jetton opcodes ----
+int op::transfer()                  asm "0xf8a7ea5 PUSHINT";
+int op::transfer_notification()     asm "0x7362d09c PUSHINT";
+int op::internal_transfer()         asm "0x178d4519 PUSHINT";
+int op::excesses()                  asm "0xd53276db PUSHINT";
+int op::burn()                      asm "0x595f07bc PUSHINT";
+int op::burn_notification()         asm "0x7bdd97de PUSHINT";
+
+int op::provide_wallet_address()    asm "0x2c76b973 PUSHINT";
+int op::take_wallet_address()       asm "0xd1735400 PUSHINT";
+
+;; ---- Jetton master admin ops (standard ish) ----
+int op::mint()                      asm "21 PUSHINT";
+int op::change_admin()              asm "3 PUSHINT";
+int op::change_content()            asm "4 PUSHINT";
+
+;; ---- Rolling Mintless custom ops ----
+int op::update_merkle_root()        asm "0x9b0b2bea PUSHINT";
+int op::update_signer()             asm "0x5a3e7b36 PUSHINT";
+int op::pause()                     asm "0x3c14d9e1 PUSHINT";
+int op::unpause()                   asm "0x9f3b8a5d PUSHINT";
+
+;; Custom-payload opcode inside jetton `transfer.custom_payload` cell that
+;; triggers a rolling claim on the recipient jetton-wallet.
+int op::rolling_claim()             asm "0xc9e56df3 PUSHINT";
+
+;; ---- Error codes ----
+int error::unauthorized()           asm "73 PUSHINT";
+int error::paused()                 asm "74 PUSHINT";
+int error::unknown_op()             asm "0xffff PUSHINT";
+
+int error::wrong_workchain()        asm "333 PUSHINT";
+int error::not_owner()              asm "705 PUSHINT";
+int error::not_enough_ton()         asm "706 PUSHINT";
+int error::not_enough_jetton()      asm "707 PUSHINT";
+int error::not_valid_wallet()       asm "708 PUSHINT";
+int error::wrong_op()               asm "709 PUSHINT";
+int error::not_enough_gas()         asm "710 PUSHINT";
+
+int error::voucher_bad_sig()        asm "800 PUSHINT";
+int error::voucher_stale_epoch()    asm "801 PUSHINT";
+int error::proof_bad_root()         asm "802 PUSHINT";
+int error::proof_leaf_parse()       asm "803 PUSHINT";
+int error::proof_not_started()      asm "804 PUSHINT";
+int error::proof_expired()          asm "805 PUSHINT";
+int error::proof_stale_amount()     asm "806 PUSHINT";
+int error::epoch_not_increasing()   asm "807 PUSHINT";
+
+int const::min_tons_for_storage()   asm "10000000 PUSHINT"; ;; 0.01 TON
+int const::gas_consumption()        asm "15000000 PUSHINT"; ;; 0.015 TON

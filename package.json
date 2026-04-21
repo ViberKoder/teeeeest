@@ -1,7 +1,19 @@
 {
-  "name": "TEST",
-  "symbol": "TEST",
-  "description": "TEST",
-  "image": "https://ton.org/_next/image?url=%2Fimages%2Ffeature-cards%2Fiphone-telegram-app.png&w=3840&q=75",
-  "decimals": "9"
+  "name": "rolling-mintless-jetton",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Rolling Mintless Jetton - growing-balance on-chain token system for TON games, bots and mini-apps",
+  "license": "MIT",
+  "workspaces": [
+    "contracts",
+    "backend",
+    "sdk",
+    "examples/telegram-bot",
+    "examples/tma"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  }
 }
