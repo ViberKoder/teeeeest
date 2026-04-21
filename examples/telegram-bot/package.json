@@ -1,0 +1,22 @@
+{
+  "name": "@rmj/example-telegram-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telegram bot with inline TAP button that awards Rolling Mintless Jetton in public channels",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@rmj/sdk": "*",
+    "@ton/core": "^0.62.0",
+    "dotenv": "^16.4.5",
+    "grammy": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

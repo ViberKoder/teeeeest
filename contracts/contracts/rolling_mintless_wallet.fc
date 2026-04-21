@@ -1,0 +1,322 @@
+;; =================================================================
+;; Rolling Mintless Jetton — Wallet contract
+;;
+;; A TEP-74 jetton-wallet that additionally supports a rolling cumulative
+;; Mintless claim inside the standard `transfer` op, via a new custom-payload
+;; layout:
+;;
+;;   rolling_claim_payload$_
+;;     op:#c9e56df3
+;;     voucher:(Maybe ^Voucher)
+;;     proof:^Cell       ;; merkle proof exotic cell committing to Airdrop HashMap 267
+;;
+;;   Voucher$_
+;;     new_epoch:uint32
+;;     new_root:uint256
+;;     signature:^bits512   ;; ed25519 over cell(hash(new_epoch, new_root))
+;;
+;; On receipt of a transfer with a rolling-claim custom payload:
+;;   1. If voucher is present and voucher.epoch > cached_epoch, verify the
+;;      signature against signer_pubkey and update cached_merkle_root/epoch.
+;;   2. Verify proof commits to cached_merkle_root.
+;;   3. Inside the proof's proven cell, lookup this wallet owner's 267-bit
+;;      key and extract `{cumulative_amount, start_from, expired_at}`.
+;;   4. Check timing, check cumulative_amount > already_claimed, credit the
+;;      delta to balance, set already_claimed := cumulative_amount.
+;;   5. Continue the standard TEP-74 transfer flow with the user's `amount`.
+;;
+;; Everything happens inside a single external-triggered transaction, so
+;; the user pays only a normal transfer's gas.
+;; =================================================================
+
+#include "imports/stdlib.fc";
+#include "imports/merkle.fc";
+#include "imports/constants.fc";
+#include "imports/jetton-utils.fc";
+
+;; Storage:
+;;   balance : Coins
+;;   owner_address : MsgAddressInt
+;;   jetton_master_address : MsgAddressInt
+;;   jetton_wallet_code : ^Cell
+;;   already_claimed : Coins
+;;   cached_merkle_root : uint256
+;;   cached_epoch : uint32
+;;   signer_pubkey : uint256
+
+(int, slice, slice, cell, int, int, int, int) load_data() inline {
+  slice ds = get_data().begin_parse();
+  int balance = ds~load_coins();
+  slice owner = ds~load_msg_addr();
+  slice master = ds~load_msg_addr();
+  cell wallet_code = ds~load_ref();
+  slice rs = ds~load_ref().begin_parse();
+  int already_claimed = rs~load_coins();
+  int root = rs~load_uint(256);
+  int epoch = rs~load_uint(32);
+  int signer = rs~load_uint(256);
+  return (balance, owner, master, wallet_code, already_claimed, root, epoch, signer);
+}
+
+() save_data(
+  int balance,
+  slice owner,
+  slice master,
+  cell wallet_code,
+  int already_claimed,
+  int root,
+  int epoch,
+  int signer
+) impure inline {
+  set_data(pack_jetton_wallet_data(
+    balance, owner, master, wallet_code,
+    already_claimed, root, epoch, signer
+  ));
+}
+
+;; ------------- Rolling claim handler -------------
+;;
+;; Given the parsed inner slice of the rolling-claim custom payload,
+;; mutates storage and returns the newly-materialized delta (amount of
+;; jettons that should be added to `balance`). Called at most once per
+;; transfer.
+int handle_rolling_claim(
+  slice payload_cs,
+  slice owner_address,
+  int already_claimed,
+  int cached_root,
+  int cached_epoch,
+  int signer_pubkey
+) impure {
+  ;; layout: voucher:(Maybe ^Voucher), proof:^Cell
+  int has_voucher = payload_cs~load_uint(1);
+  int new_root = cached_root;
+  int new_epoch = cached_epoch;
+
+  if (has_voucher) {
+    cell voucher = payload_cs~load_ref();
+    slice vs = voucher.begin_parse();
+    int v_epoch = vs~load_uint(32);
+    int v_root = vs~load_uint(256);
+    cell sig_cell = vs~load_ref();
+    slice sig_slice = sig_cell.begin_parse();
+    slice signature = sig_slice~load_bits(512);
+
+    throw_unless(error::voucher_stale_epoch(), v_epoch > cached_epoch);
+    int msg_hash = cell_hash(
+      begin_cell()
+        .store_uint(v_epoch, 32)
+        .store_uint(v_root, 256)
+        .end_cell()
+    );
+    throw_unless(error::voucher_bad_sig(), check_signature(msg_hash, signature, signer_pubkey));
+
+    new_root = v_root;
+    new_epoch = v_epoch;
+  }
+
+  cell proof = payload_cs~load_ref();
+  cell airdrop_dict = check_merkle_proof(proof, new_root);
+
+  (int cumulative_amount, int start_from, int expired_at) =
+    get_airdrop_entry(airdrop_dict, owner_address);
+
+  int now_ts = now();
+  throw_unless(error::proof_not_started(), now_ts >= start_from);
+  throw_unless(error::proof_expired(), now_ts <= expired_at);
+  throw_unless(error::proof_stale_amount(), cumulative_amount > already_claimed);
+
+  int delta = cumulative_amount - already_claimed;
+
+  ;; Persist the updated rolling state; caller combines with balance update.
+  ;; We store here to keep the handler self-contained, and pass back delta.
+  (int balance, slice _owner, slice master, cell wallet_code, _, _, _, int _signer) = load_data();
+  save_data(
+    balance + delta,
+    owner_address,
+    master,
+    wallet_code,
+    cumulative_amount,
+    new_root,
+    new_epoch,
+    signer_pubkey
+  );
+
+  return delta;
+}
+
+;; ------------- Main entry -------------
+
+() send_tokens(
+  slice in_msg_body,
+  slice sender_address,
+  int msg_value,
+  int fwd_fee
+) impure {
+  int query_id = in_msg_body~load_uint(64);
+  int jetton_amount = in_msg_body~load_coins();
+  slice to_owner_address = in_msg_body~load_msg_addr();
+  slice response_address = in_msg_body~load_msg_addr();
+  cell custom_payload = in_msg_body~load_maybe_ref();
+  int forward_ton_amount = in_msg_body~load_coins();
+  cell forward_payload = in_msg_body~load_maybe_ref();
+
+  (int balance, slice owner, slice master, cell wallet_code,
+   int already_claimed, int cached_root, int cached_epoch, int signer) = load_data();
+
+  throw_unless(error::not_owner(), equal_slices(sender_address, owner));
+
+  ;; If a rolling-claim payload is present, process it BEFORE the balance check.
+  if (~ custom_payload.null?()) {
+    slice cp = custom_payload.begin_parse();
+    if (cp.slice_bits() >= 32) {
+      int cp_op = cp~load_uint(32);
+      if (cp_op == op::rolling_claim()) {
+        int delta = handle_rolling_claim(
+          cp,
+          owner,
+          already_claimed,
+          cached_root,
+          cached_epoch,
+          signer
+        );
+        ;; reload updated state
+        (balance, _, _, _, already_claimed, cached_root, cached_epoch, _) = load_data();
+      }
+    }
+  }
+
+  throw_unless(error::not_enough_jetton(), balance >= jetton_amount);
+  balance -= jetton_amount;
+  save_data(balance, owner, master, wallet_code, already_claimed, cached_root, cached_epoch, signer);
+
+  cell state_init = calculate_jetton_wallet_state_init(to_owner_address, master, wallet_code, signer);
+  slice to_wallet_address = calculate_jetton_wallet_address(state_init);
+
+  cell body = begin_cell()
+    .store_uint(op::internal_transfer(), 32)
+    .store_uint(query_id, 64)
+    .store_coins(jetton_amount)
+    .store_slice(owner)
+    .store_slice(response_address)
+    .store_coins(forward_ton_amount)
+    .store_maybe_ref(forward_payload)
+    .end_cell();
+
+  cell msg = build_message_with_init(to_wallet_address, 0, body, state_init);
+  send_raw_message(msg, 64);
+}
+
+() receive_tokens(
+  slice in_msg_body,
+  slice sender_address,
+  int my_ton_balance,
+  int fwd_fee,
+  int msg_value
+) impure {
+  int query_id = in_msg_body~load_uint(64);
+  int jetton_amount = in_msg_body~load_coins();
+  in_msg_body~load_msg_addr(); ;; from
+  slice response_address = in_msg_body~load_msg_addr();
+  int forward_ton_amount = in_msg_body~load_coins();
+
+  (int balance, slice owner, slice master, cell wallet_code,
+   int already_claimed, int cached_root, int cached_epoch, int signer) = load_data();
+
+  balance += jetton_amount;
+  save_data(balance, owner, master, wallet_code, already_claimed, cached_root, cached_epoch, signer);
+
+  if (forward_ton_amount > 0) {
+    cell payload = in_msg_body~load_maybe_ref();
+    cell body = begin_cell()
+      .store_uint(op::transfer_notification(), 32)
+      .store_uint(query_id, 64)
+      .store_coins(jetton_amount)
+      .store_slice(sender_address)
+      .store_maybe_ref(payload)
+      .end_cell();
+    cell msg = build_message_no_init(owner, forward_ton_amount, body);
+    send_raw_message(msg, 1);
+  }
+
+  if (response_address.preload_uint(2) != 0) {
+    raw_reserve(const::min_tons_for_storage(), 2);
+    cell body = begin_cell()
+      .store_uint(op::excesses(), 32)
+      .store_uint(query_id, 64)
+      .end_cell();
+    cell msg = build_message_no_init(response_address, 0, body);
+    send_raw_message(msg, 2 + 128);
+  }
+}
+
+() burn_tokens(slice in_msg_body, slice sender_address, int msg_value) impure {
+  int query_id = in_msg_body~load_uint(64);
+  int jetton_amount = in_msg_body~load_coins();
+  slice response_address = in_msg_body~load_msg_addr();
+
+  (int balance, slice owner, slice master, cell wallet_code,
+   int already_claimed, int cached_root, int cached_epoch, int signer) = load_data();
+  throw_unless(error::not_owner(), equal_slices(sender_address, owner));
+  throw_unless(error::not_enough_jetton(), balance >= jetton_amount);
+  balance -= jetton_amount;
+  save_data(balance, owner, master, wallet_code, already_claimed, cached_root, cached_epoch, signer);
+
+  cell body = begin_cell()
+    .store_uint(op::burn_notification(), 32)
+    .store_uint(query_id, 64)
+    .store_coins(jetton_amount)
+    .store_slice(owner)
+    .store_slice(response_address)
+    .end_cell();
+  cell msg = build_message_no_init(master, 0, body);
+  send_raw_message(msg, 64);
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+  if (in_msg_body.slice_empty?()) {
+    return ();
+  }
+  (int flags, slice sender_address, int fwd_fee) = parse_internal_header_slice(in_msg_full.begin_parse());
+  if (flags & 1) {
+    return ();
+  }
+
+  int op = in_msg_body~load_uint(32);
+
+  if (op == op::transfer()) {
+    send_tokens(in_msg_body, sender_address, msg_value, fwd_fee);
+    return ();
+  }
+  if (op == op::internal_transfer()) {
+    receive_tokens(in_msg_body, sender_address, my_balance, fwd_fee, msg_value);
+    return ();
+  }
+  if (op == op::burn()) {
+    burn_tokens(in_msg_body, sender_address, msg_value);
+    return ();
+  }
+  throw(error::unknown_op());
+}
+
+;; ------------- Get methods -------------
+
+(int, slice, slice, cell) get_wallet_data() method_id {
+  (int balance, slice owner, slice master, cell wallet_code, _, _, _, _) = load_data();
+  return (balance, owner, master, wallet_code);
+}
+
+int get_already_claimed() method_id {
+  (_, _, _, _, int already_claimed, _, _, _) = load_data();
+  return already_claimed;
+}
+
+(int, int) get_cached_root() method_id {
+  (_, _, _, _, _, int root, int epoch, _) = load_data();
+  return (root, epoch);
+}
+
+int get_signer_pubkey() method_id {
+  (_, _, _, _, _, _, _, int signer) = load_data();
+  return signer;
+}

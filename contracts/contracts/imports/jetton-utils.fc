@@ -1,0 +1,120 @@
+;; Rolling Mintless Jetton wallet helpers:
+;; - serialize wallet storage (extended TEP-74 layout)
+;; - calculate wallet address from (owner, master, code, signer)
+
+;; Wallet storage splits into a base cell (TEP-74 canonical fields) and a
+;; referenced "rolling" cell (cumulative-claim state + signer). This keeps
+;; the address-determining structure small enough to fit a single cell.
+cell pack_jetton_wallet_data(
+  int balance,
+  slice owner_address,
+  slice jetton_master_address,
+  cell jetton_wallet_code,
+  int already_claimed,
+  int cached_merkle_root,
+  int cached_epoch,
+  int signer_pubkey
+) inline {
+  cell rolling = begin_cell()
+    .store_coins(already_claimed)
+    .store_uint(cached_merkle_root, 256)
+    .store_uint(cached_epoch, 32)
+    .store_uint(signer_pubkey, 256)
+    .end_cell();
+  return begin_cell()
+    .store_coins(balance)
+    .store_slice(owner_address)
+    .store_slice(jetton_master_address)
+    .store_ref(jetton_wallet_code)
+    .store_ref(rolling)
+    .end_cell();
+}
+
+cell calculate_jetton_wallet_state_init(
+  slice owner_address,
+  slice jetton_master_address,
+  cell jetton_wallet_code,
+  int signer_pubkey
+) inline {
+  cell data = pack_jetton_wallet_data(
+    0,
+    owner_address,
+    jetton_master_address,
+    jetton_wallet_code,
+    0,
+    0,
+    0,
+    signer_pubkey
+  );
+  return pack_state_init(jetton_wallet_code, data);
+}
+
+slice calculate_jetton_wallet_address(cell state_init) inline {
+  return begin_cell()
+    .store_uint(4, 3)
+    .store_int(workchain(), 8)
+    .store_uint(cell_hash(state_init), 256)
+    .end_cell()
+    .begin_parse();
+}
+
+slice calculate_user_jetton_wallet_address(
+  slice owner_address,
+  slice jetton_master_address,
+  cell jetton_wallet_code,
+  int signer_pubkey
+) inline {
+  return calculate_jetton_wallet_address(
+    calculate_jetton_wallet_state_init(owner_address, jetton_master_address, jetton_wallet_code, signer_pubkey)
+  );
+}
+
+;; Parse internal message header slice, returning (flags, src, fwd_fee).
+;; Layout: int_msg_info$0 + ihr_disabled(1) + bounce(1) + bounced(1) + src + dst
+;;         + value(Grams) + extra_currencies(Maybe) + ihr_fee(Grams) + fwd_fee(Grams)
+;;         + created_lt(uint64) + created_at(uint32)
+(int, slice, int) parse_internal_header_slice(slice cs) inline {
+  int flags = cs~load_uint(4);
+  slice src = cs~load_msg_addr();
+  cs~load_msg_addr();
+  cs~load_coins();
+  cs~load_uint(1);
+  cs~load_coins();
+  int fwd_fee = cs~load_coins();
+  return (flags, src, fwd_fee);
+}
+
+;; Build outgoing internal-message cell with given destination, value, body and optional state-init.
+cell build_message_with_init(slice to_addr, int ton_amount, cell body, cell state_init) inline {
+  builder b = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(to_addr)
+    .store_coins(ton_amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32)
+    .store_uint(1, 1)
+    .store_uint(1, 1)
+    .store_ref(state_init)
+    .store_uint(1, 1)
+    .store_ref(body);
+  return b.end_cell();
+}
+
+cell build_message_no_init(slice to_addr, int ton_amount, cell body) inline {
+  return begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(to_addr)
+    .store_coins(ton_amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1)
+    .store_uint(1, 1)
+    .store_ref(body)
+    .end_cell();
+}
+
+cell build_empty_message(slice to_addr, int ton_amount) inline {
+  return begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(to_addr)
+    .store_coins(ton_amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .end_cell();
+}

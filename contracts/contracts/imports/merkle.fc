@@ -1,0 +1,59 @@
+;; =================================================================
+;; Merkle-proof exotic-cell introspection and Airdrop HashMap helpers.
+;;
+;; Canonical pattern borrowed from ton-community/mintless-jetton and
+;; ton-community/compressed-nft-contract (MIT).
+;; =================================================================
+
+int workchain() inline { return 0; }
+
+int equal_slices(slice a, slice b) asm "SDEQ";
+int check_signature(int hash, slice signature, int public_key) asm "CHKSIGNU";
+
+;; Parse an exotic cell into a slice, returning `is_exotic` as a flag.
+(slice, int) begin_parse_exotic(cell c) asm "XCTOS";
+
+;; Dictionary GET by slice key (unlike DICTUGET which takes a uint key).
+;; TEP-177 keys the Airdrop HashMap by the full MsgAddress slice (267 bits
+;; for addr_std without anycast).
+(slice, int) dict_get?(cell dict, int key_len, slice index) asm(index dict key_len) "DICTGET" "NULLSWAPIFNOT";
+
+int udict_get?_int(cell dict, int key_len, int key) asm(key dict key_len) "DICTUGET" "NULLSWAPIFNOT";
+
+cell pack_state_init(cell code, cell data) inline {
+  return begin_cell()
+    .store_uint(0, 2)
+    .store_maybe_ref(code)
+    .store_maybe_ref(data)
+    .store_uint(0, 1)
+    .end_cell();
+}
+
+;; TEP-177 Airdrop HashMap key: MsgAddress slice serialized as its canonical
+;; binary form. For an addr_std without anycast this is exactly 267 bits.
+const int AIRDROP_KEY_BITS = 2 + 1 + 8 + 256;
+const int AIRDROP_TIMESTAMP_SIZE = 48;
+
+const int cell_type::merkle_proof = 3;
+
+;; Verify a Merkle-proof exotic cell commits to the expected dict root hash
+;; and return the virtualized inner cell (the Airdrop HashMap dict root).
+cell check_merkle_proof(cell proof, int expected_root) impure {
+  (slice s, int is_exotic) = proof.begin_parse_exotic();
+  throw_unless(102, is_exotic);
+  int ty = s~load_uint(8);
+  throw_unless(103, ty == cell_type::merkle_proof);
+  int stored_hash = s~load_uint(256);
+  throw_unless(802, stored_hash == expected_root);
+  return s~load_ref();
+}
+
+;; Look up an AirdropItem for the given owner and return its fields.
+(int, int, int) get_airdrop_entry(cell airdrop_dict, slice owner_msgaddr) impure {
+  (slice data, int found) = airdrop_dict.dict_get?(AIRDROP_KEY_BITS, owner_msgaddr);
+  throw_unless(803, found);
+  int cumulative_amount = data~load_coins();
+  int start_from = data~load_uint(AIRDROP_TIMESTAMP_SIZE);
+  int expired_at = data~load_uint(AIRDROP_TIMESTAMP_SIZE);
+  return (cumulative_amount, start_from, expired_at);
+}
