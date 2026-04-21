@@ -9,7 +9,8 @@
     "backend",
     "sdk",
     "examples/telegram-bot",
-    "examples/tma"
+    "examples/tma",
+    "examples/minter"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",

@@ -37,7 +37,8 @@ day for root updates. Nothing else.
 ├── sdk/                      # Headless TS SDK for game servers, bots, TMAs
 ├── examples/
 │   ├── telegram-bot/         # Public-channel bot with inline TAP button
-│   └── tma/                  # Telegram Mini App tap-to-earn
+│   ├── tma/                  # Telegram Mini App tap-to-earn
+│   └── minter/               # Simple web minter for Rolling Mintless Jetton
 └── docs/                     # ARCHITECTURE / INTEGRATION / OPERATIONS / CONTRACTS
 ```
 
@@ -60,6 +61,10 @@ npm run -w backend dev
 # 4. Try the Telegram bot example
 cp examples/telegram-bot/.env.example examples/telegram-bot/.env
 npm run -w examples/telegram-bot dev
+
+# 5. Run the web minter
+cp examples/minter/.env.example examples/minter/.env
+npm run -w examples/minter dev
 ```
 
 See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for full integration guides
