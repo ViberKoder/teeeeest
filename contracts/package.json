@@ -13,7 +13,10 @@
   "scripts": {
     "build": "ts-node scripts/exportBocs.ts",
     "test": "jest --runInBand",
-    "start": "blueprint run"
+    "start": "blueprint run",
+    "deploy": "ts-node scripts/deploy.ts",
+    "deploy:testnet": "TON_NETWORK=testnet ts-node scripts/deploy.ts",
+    "deploy:mainnet": "TON_NETWORK=mainnet ts-node scripts/deploy.ts"
   },
   "dependencies": {
     "@ton/blueprint": "^0.27.0",

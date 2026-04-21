@@ -177,6 +177,68 @@ async function main() {
 main().catch(console.error);
 ```
 
+## One-command deploy (CLI)
+
+The repository now includes a ready script:
+
+`contracts/scripts/deploy.ts`
+
+It can:
+
+1. Deploy `RollingMintlessMaster` with provided signer pubkey + metadata.
+2. Optionally execute an initial mint to any address.
+3. Print resulting master address and config summary.
+
+### 1) Prepare env
+
+```bash
+cd contracts
+cp .env.deploy.example .env.deploy
+# edit .env.deploy
+```
+
+Required values:
+
+- `ADMIN_MNEMONIC` — 24-word admin wallet mnemonic.
+- `SIGNER_SEED_HEX` — 32-byte hex seed for voucher signer pubkey.
+- `METADATA_URL` — off-chain TEP-64 metadata URL.
+
+Optional:
+
+- `NETWORK` (`testnet` | `mainnet`)
+- `RPC_ENDPOINT`, `RPC_API_KEY`
+- `INITIAL_MINT_TO`, `INITIAL_MINT_AMOUNT_NANO`
+
+### 2) Deploy
+
+```bash
+npm run deploy:testnet
+# or
+npm run deploy:mainnet
+```
+
+### 3) Expected output
+
+You should see:
+
+- admin wallet address
+- derived signer pubkey
+- deployed master address
+- tx hash / seqno
+- optional initial mint confirmation
+
+### 4) Integrate with backend
+
+Put the printed master address into `backend/.env`:
+
+```env
+JETTON_MASTER_ADDRESS=<your_master_address>
+SIGNER_SEED_HEX=<same seed used at deploy>
+ADMIN_MNEMONIC=<admin mnemonic>
+```
+
+This ensures root updates and vouchers are signed by the expected keys.
+
 ## Testing
 
 Sandbox end-to-end tests covering the full happy path and all error
