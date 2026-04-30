@@ -75,7 +75,9 @@ VITE_TONCONNECT_MANIFEST_URL=https://...
 
 Подключите репозиторий к Vercel; **корень проекта — корень монорепозитория** (где лежит `vercel.json`). Сборка соберёт только `examples/minter/dist`.
 
-Задайте переменные окружения в Vercel по необходимости (например `VITE_TONCONNECT_MANIFEST_URL`, `VITE_NETWORK`).
+Install-команда в `vercel.json` — `npm install` (не `npm ci`), чтобы сборка не падала, если локально забыли обновить `package-lock.json`. Для воспроизводимых сборок всё равно лучше после изменений в `package.json` выполнить у себя `npm install` и закоммитить обновлённый lockfile.
+
+Задайте переменные окружения в Vercel (например `VITE_TONCONNECT_MANIFEST_URL`, `VITE_NETWORK`).
 
 ## Если без `/jetton-metadata.json` на бэкенде
 

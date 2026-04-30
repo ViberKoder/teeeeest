@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm ci",
+  "installCommand": "npm install --no-audit --no-fund",
   "buildCommand": "npm run build -w @rmj/example-minter",
   "outputDirectory": "examples/minter/dist",
   "framework": null,

@@ -13,7 +13,7 @@ COPY backend/package.json backend/
 COPY contracts/package.json contracts/
 COPY sdk/package.json sdk/
 
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 COPY backend backend
 COPY contracts contracts
