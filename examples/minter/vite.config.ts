@@ -5,4 +5,12 @@ export default defineConfig({
   plugins: [react()],
   server: { port: 5180 },
   envPrefix: 'VITE_',
+  resolve: {
+    alias: {
+      buffer: 'buffer',
+    },
+  },
+  define: {
+    global: 'globalThis',
+  },
 });
