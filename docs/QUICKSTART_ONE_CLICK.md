@@ -77,7 +77,7 @@ VITE_TONCONNECT_MANIFEST_URL=https://...
 
 Install-команда в `vercel.json` — `npm install` (не `npm ci`), чтобы сборка не падала, если локально забыли обновить `package-lock.json`. Для воспроизводимых сборок всё равно лучше после изменений в `package.json` выполнить у себя `npm install` и закоммитить обновлённый lockfile.
 
-Задайте переменные окружения в Vercel (например `VITE_TONCONNECT_MANIFEST_URL`, `VITE_NETWORK`).
+Переменные в Vercel: **`VITE_NETWORK`** (testnet/mainnet). **`VITE_TONCONNECT_MANIFEST_URL` не обязателен** — при сборке в `dist` кладётся `tonconnect-manifest.json` с `url` из `VERCEL_URL` (даёт Vercel). Если открываете приложение по **своему домену**, добавьте **`VITE_APP_ORIGIN=https://ваш-домен.com`** и пересоберите, иначе Ton Connect сверяет origin с полем `url` в manifest.
 
 ## Если без `/jetton-metadata.json` на бэкенде
 

@@ -11,7 +11,9 @@ npm install
 npm run dev
 ```
 
-Откройте URL из терминала (обычно порт **5175**). Полный сценарий с Docker и Render: [`../../docs/QUICKSTART_ONE_CLICK.md`](../../docs/QUICKSTART_ONE_CLICK.md).
+Откройте URL из терминала (порт в `vite.config.ts`, по умолчанию **5180**). Полный сценарий: [`../../docs/QUICKSTART_ONE_CLICK.md`](../../docs/QUICKSTART_ONE_CLICK.md).
+
+**Ton Connect:** при сборке в `dist` попадает `tonconnect-manifest.json`; в dev он отдаётся с `/tonconnect-manifest.json`. По умолчанию UI грузит manifest с **того же origin**, что и страница (`VITE_TONCONNECT_MANIFEST_URL` не обязателен). На Vercel со **своим доменом** задайте `VITE_APP_ORIGIN=https://ваш-домен.com`.
 
 ## Важно
 
