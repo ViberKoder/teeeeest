@@ -1,19 +1,8 @@
-# RMJ Minter (simple web UI)
+# RMJ Minter — мастер «за пару кликов»
 
-Простой сайт-минтер для деплоя `RollingMintlessMaster` через TON Connect.
+Веб-мастер деплоя `RollingMintlessMaster` через TON Connect: генерация signer, выбор URL метаданных (часто `{backend}/jetton-metadata.json`), деплой и готовый блок `.env` для бэкенда, бота и TMA.
 
-## Что делает
-
-- Подключает кошелек (Tonkeeper / MyTonWallet / TON Space).
-- Собирает параметры:
-  - name, symbol, description, image URL
-  - signer pubkey (hex 32 bytes)
-  - initial merkle root (обычно `0`)
-- Генерирует `StateInit` мастер-контракта локально в браузере.
-- Показывает предсказанный адрес master до деплоя.
-- Отправляет **одну** транзакцию на этот адрес с `stateInit` (deploy).
-
-## Быстрый старт
+## Локально
 
 ```bash
 cd examples/minter
@@ -22,14 +11,9 @@ npm install
 npm run dev
 ```
 
-Откроется `http://localhost:5175`.
+Откройте URL из терминала (обычно порт **5175**). Полный сценарий с Docker и Render: [`../../docs/QUICKSTART_ONE_CLICK.md`](../../docs/QUICKSTART_ONE_CLICK.md).
 
 ## Важно
 
-- Это минимальный демо-минтер. Он строит metadata как простой on-chain cell
-  (нулевой префикс + json string). Для production лучше сделать полноценный
-  TEP-64 metadata cell/URI.
-- После деплоя root-обновления и админ-операции выполняются через backend
-  (`rootUpdater`) или отдельный admin скрипт.
-- Перед mainnet: audit + multisig admin + HSM/KMS signer.
-
+- BOC master/wallet в `src/constants.ts` должны соответствовать `VITE_NETWORK` (`npm run -w contracts build` перед обновлением констант).
+- Мнемонику админ-кошелька мастер не хранит — её вносите только на сервер бэкенда (`ADMIN_MNEMONIC`).

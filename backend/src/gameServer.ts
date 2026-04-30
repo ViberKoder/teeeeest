@@ -1,5 +1,5 @@
 import { Address } from '@ton/core';
-import { DB } from './db';
+import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
 
@@ -32,65 +32,47 @@ export type GameActionResult =
   | { ok: false; reason: 'rate-limited-per-second' | 'daily-cap-reached' | 'user-banned' };
 
 export class GameServer {
-  constructor(readonly db: DB) {}
+  constructor(readonly store: AppStore) {}
 
-  private countEventsSince(address: string, since: number): number {
-    const row = this.db
-      .prepare(
-        'SELECT COUNT(*) as c FROM tap_events WHERE address = ? AND created_at >= ?',
-      )
-      .get(address, since) as { c: number };
-    return row.c;
+  private async countEventsSince(address: string, since: number): Promise<number> {
+    return this.store.countTapEventsSince(address, since);
   }
 
-  recordAction(action: GameAction): GameActionResult {
+  async recordAction(action: GameAction): Promise<GameActionResult> {
     const address = action.address.toString({ urlSafe: true, bounceable: false });
     const reward = action.rewardNano ?? config.TAP_VALUE_NANO;
     const now = action.at ?? Math.floor(Date.now() / 1000);
 
-    this.db
-      .prepare(
-        `INSERT INTO users(address, cumulative_amount, first_seen_at, last_tapped_at)
-         VALUES (?, '0', ?, ?)
-         ON CONFLICT(address) DO NOTHING`,
-      )
-      .run(address, now, now);
+    await this.store.insertUserIfNotExists(address, now, now);
 
-    const user = this.db
-      .prepare(
-        'SELECT cumulative_amount, is_banned FROM users WHERE address = ?',
-      )
-      .get(address) as { cumulative_amount: string; is_banned: number };
+    const user = await this.store.getUserRow(address);
+    if (!user) {
+      return { ok: false, reason: 'rate-limited-per-second' };
+    }
 
     if (user.is_banned) {
       return { ok: false, reason: 'user-banned' };
     }
 
-    const perSecond = this.countEventsSince(address, now - 1);
+    const perSecond = await this.countEventsSince(address, now - 1);
     if (perSecond >= config.MAX_TAPS_PER_SECOND) {
       return { ok: false, reason: 'rate-limited-per-second' };
     }
 
-    const perDay = this.countEventsSince(address, now - 86_400);
+    const perDay = await this.countEventsSince(address, now - 86_400);
     if (perDay >= config.MAX_TAPS_PER_DAY) {
       return { ok: false, reason: 'daily-cap-reached' };
     }
 
     const newCumulative = BigInt(user.cumulative_amount) + reward;
 
-    const txn = this.db.transaction(() => {
-      this.db
-        .prepare(
-          'UPDATE users SET cumulative_amount = ?, last_tapped_at = ? WHERE address = ?',
-        )
-        .run(newCumulative.toString(), now, address);
-      this.db
-        .prepare(
-          'INSERT INTO tap_events(address, delta, source, created_at) VALUES (?, ?, ?, ?)',
-        )
-        .run(address, reward.toString(), action.source, now);
+    await this.store.applyRewardAndTap({
+      address,
+      newCumulative: newCumulative.toString(),
+      reward: reward.toString(),
+      source: action.source,
+      now,
     });
-    txn();
 
     logger.debug(
       { address, reward: reward.toString(), cumulative: newCumulative.toString(), source: action.source },
@@ -103,36 +85,30 @@ export class GameServer {
   /**
    * Fetch a user's current off-chain cumulative amount.
    */
-  getCumulative(address: Address): bigint {
-    const row = this.db
-      .prepare('SELECT cumulative_amount FROM users WHERE address = ?')
-      .get(address.toString({ urlSafe: true, bounceable: false })) as
-      | { cumulative_amount: string }
-      | undefined;
-    return row ? BigInt(row.cumulative_amount) : 0n;
+  async getCumulative(address: Address): Promise<bigint> {
+    const raw = await this.store.getCumulativeAmount(
+      address.toString({ urlSafe: true, bounceable: false }),
+    );
+    return raw ? BigInt(raw) : 0n;
   }
 
   /**
    * Ban / unban a user. Banned users are excluded from subsequent Merkle
    * trees, so they won't be able to claim any further cumulative amount.
    */
-  setBan(address: Address, banned: boolean): void {
-    this.db
-      .prepare('UPDATE users SET is_banned = ? WHERE address = ?')
-      .run(banned ? 1 : 0, address.toString({ urlSafe: true, bounceable: false }));
+  async setBan(address: Address, banned: boolean): Promise<void> {
+    await this.store.setBan(
+      address.toString({ urlSafe: true, bounceable: false }),
+      banned,
+    );
   }
 
   /**
    * List users that have had activity since the given unix timestamp. Used
    * by the tree builder to construct deltas for a new epoch.
    */
-  listActiveSince(since: number): Array<{ address: Address; cumulative: bigint }> {
-    const rows = this.db
-      .prepare(
-        `SELECT address, cumulative_amount FROM users
-         WHERE is_banned = 0 AND last_tapped_at >= ?`,
-      )
-      .all(since) as Array<{ address: string; cumulative_amount: string }>;
+  async listActiveSince(since: number): Promise<Array<{ address: Address; cumulative: bigint }>> {
+    const rows = await this.store.listActiveSince(since);
 
     const out: Array<{ address: Address; cumulative: bigint }> = [];
     for (const row of rows) {

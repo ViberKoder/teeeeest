@@ -1,6 +1,6 @@
 import { Address } from '@ton/core';
 import { AirdropTree } from '@rmj/contracts';
-import { DB, getKv, setKv } from './db';
+import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
 
@@ -21,11 +21,9 @@ export class AirdropState {
     this.epoch = epoch;
   }
 
-  static hydrate(db: DB): AirdropState {
+  static async hydrate(store: AppStore): Promise<AirdropState> {
     const tree = new AirdropTree();
-    const rows = db
-      .prepare('SELECT address, cumulative_amount FROM users WHERE is_banned = 0')
-      .all() as { address: string; cumulative_amount: string }[];
+    const rows = await store.listUsersForHydration();
 
     const expired = Math.floor(Date.now() / 1000) + config.PROOF_VALIDITY_WINDOW_DAYS * 86_400;
 
@@ -44,7 +42,7 @@ export class AirdropState {
       }
     }
 
-    const epochStr = getKv(db, 'current_epoch');
+    const epochStr = await store.getKv('current_epoch');
     const epoch = epochStr ? Number(epochStr) : 0;
 
     logger.info({ users: tree.size, epoch }, 'airdrop state hydrated');
@@ -78,9 +76,9 @@ export class AirdropState {
     }
   }
 
-  advanceEpoch(db: DB): number {
+  async advanceEpoch(store: AppStore): Promise<number> {
     this.epoch += 1;
-    setKv(db, 'current_epoch', String(this.epoch));
+    await store.setKv('current_epoch', String(this.epoch));
     return this.epoch;
   }
 }

@@ -61,7 +61,7 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps): void
       reply.code(400);
       return { error: 'invalid-address' };
     }
-    deps.gameServer.setBan(addr, parsed.data.banned);
+    await deps.gameServer.setBan(addr, parsed.data.banned);
     logger.info({ addr: addr.toString(), banned: parsed.data.banned }, 'admin ban toggled');
     return { ok: true };
   });
@@ -93,7 +93,7 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps): void
       reply.code(400);
       return { error: 'invalid-address' };
     }
-    const result = deps.gameServer.recordAction({
+    const result = await deps.gameServer.recordAction({
       address: addr,
       source: parsed.data.source,
       rewardNano: BigInt(parsed.data.amount_nano),

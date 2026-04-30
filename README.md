@@ -54,9 +54,9 @@ npm install --workspaces
 npm run -w contracts build
 npm run -w contracts test
 
-# 3. Run backend (dev mode, in-memory SQLite, testnet)
+# 3. Run backend (dev mode; SQLite без DATABASE_URL, см. backend/README.md)
 cp backend/.env.example backend/.env
-npm run -w backend dev
+npm run backend:dev
 
 # 4. Try the Telegram bot example
 cp examples/telegram-bot/.env.example examples/telegram-bot/.env
@@ -69,6 +69,10 @@ npm run -w examples/minter dev
 
 See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for full integration guides
 for tap-to-earn games, public-channel bots, and TMAs.
+
+Fast path (wizard + Docker + bot/TMA env): [`docs/QUICKSTART_ONE_CLICK.md`](docs/QUICKSTART_ONE_CLICK.md).
+
+Только бэкенд (локально / Docker / Railway): [`backend/README.md`](backend/README.md).
 
 ---
 

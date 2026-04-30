@@ -24,6 +24,18 @@ const schema = z.object({
   TAP_VALUE_NANO: z.coerce.bigint().default(1_000_000_000n),
 
   DB_PATH: z.string().default('./rmj.db'),
+
+  /** When set (e.g. Railway Postgres `DATABASE_URL`), PostgreSQL is used instead of SQLite. */
+  DATABASE_URL: z.string().default(''),
+  /** TLS for Postgres: require / prefer / disable (Railway usually needs require or prefer). */
+  DATABASE_SSL: z.enum(['require', 'disable', 'prefer']).default('prefer'),
+
+  /** Public HTTPS origin of this backend (no trailing slash), e.g. https://rmj-xxxx.onrender.com */
+  PUBLIC_APP_URL: z.string().default(''),
+  PUBLIC_JETTON_NAME: z.string().default(''),
+  PUBLIC_JETTON_SYMBOL: z.string().default(''),
+  PUBLIC_JETTON_DESCRIPTION: z.string().default(''),
+  PUBLIC_JETTON_IMAGE_URL: z.string().default(''),
 });
 
 const parsed = schema.safeParse(process.env);

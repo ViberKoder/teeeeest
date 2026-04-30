@@ -15,6 +15,10 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "backend:dev": "npm run dev -w @rmj/backend",
+    "backend:build": "npm run build -w @rmj/backend",
+    "backend:start": "npm run start -w @rmj/backend",
+    "backend:start:tsx": "npm run start:tsx -w @rmj/backend"
   }
 }

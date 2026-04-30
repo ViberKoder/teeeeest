@@ -51,7 +51,7 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
       meta: parsed.data.meta,
     };
 
-    const result = deps.gameServer.recordAction(action);
+    const result = await deps.gameServer.recordAction(action);
     if (!result.ok) {
       reply.code(429);
       return { error: result.reason };
@@ -86,7 +86,7 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
         results.push({ ok: false, reason: 'invalid-address' });
         continue;
       }
-      const r = deps.gameServer.recordAction({
+      const r = await deps.gameServer.recordAction({
         address: addr,
         source: a.source,
         rewardNano: a.reward ? BigInt(a.reward) : undefined,

@@ -1,0 +1,41 @@
+# Render blueprint — deploy RMJ backend from this repo.
+# https://render.com/docs/blueprint-spec
+#
+# After first deploy: copy the service URL into PUBLIC_APP_URL, set secrets
+# (SIGNER_SEED_HEX, ADMIN_JWT_SECRET, ADMIN_MNEMONIC, JETTON_MASTER_ADDRESS),
+# then redeploy. See docs/QUICKSTART_ONE_CLICK.md.
+
+services:
+  - type: web
+    name: rmj-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 3000
+      - key: TON_NETWORK
+        value: testnet
+      - key: ADMIN_JWT_SECRET
+        generateValue: true
+      - key: SIGNER_SEED_HEX
+        sync: false
+      - key: ADMIN_MNEMONIC
+        sync: false
+      - key: JETTON_MASTER_ADDRESS
+        sync: false
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: PUBLIC_JETTON_NAME
+        sync: false
+      - key: PUBLIC_JETTON_SYMBOL
+        sync: false
+      - key: PUBLIC_JETTON_DESCRIPTION
+        sync: false
+      - key: PUBLIC_JETTON_IMAGE_URL
+        sync: false

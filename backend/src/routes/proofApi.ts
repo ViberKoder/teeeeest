@@ -87,7 +87,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
       reply.code(400);
       return { error: 'invalid-address' };
     }
-    const cumulative = deps.gameServer.getCumulative(addr);
+    const cumulative = await deps.gameServer.getCumulative(addr);
     const leaf = deps.state.tree.get(addr);
     return {
       address: addr.toString({ urlSafe: true, bounceable: false }),

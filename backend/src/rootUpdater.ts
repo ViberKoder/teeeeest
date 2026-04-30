@@ -2,7 +2,7 @@ import { TonClient, WalletContractV4 } from '@ton/ton';
 import { Address, internal, toNano, beginCell, SendMode } from '@ton/core';
 import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
-import { DB } from './db';
+import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
 
@@ -24,7 +24,7 @@ export class RootUpdater {
   private ready = false;
   private running = false;
 
-  constructor(readonly db: DB) {}
+  constructor(readonly store: AppStore) {}
 
   async init(): Promise<void> {
     if (!config.JETTON_MASTER_ADDRESS) {
@@ -108,15 +108,11 @@ export class RootUpdater {
       ],
     });
 
-    this.db
-      .prepare(
-        'UPDATE epochs SET committed_tx = ?, committed_at = ? WHERE epoch = ?',
-      )
-      .run(
-        `seqno:${seqno}`,
-        Math.floor(Date.now() / 1000),
-        epoch,
-      );
+    await this.store.updateEpochCommitted(
+      epoch,
+      `seqno:${seqno}`,
+      Math.floor(Date.now() / 1000),
+    );
 
     logger.info({ epoch, rootHex, seqno }, 'root update broadcast');
   }

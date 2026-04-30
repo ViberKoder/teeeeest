@@ -4,7 +4,7 @@ import rateLimit from '@fastify/rate-limit';
 
 import { config } from './config';
 import { logger } from './logger';
-import { createDb } from './db';
+import { createAppStore } from './store/createStore';
 import { AirdropState } from './state';
 import { GameServer } from './gameServer';
 import { voucherSigner } from './signer';
@@ -13,14 +13,15 @@ import { TreeBuilder } from './treeBuilder';
 import { registerProofApi } from './routes/proofApi';
 import { registerGameApi } from './routes/gameApi';
 import { registerAdminApi } from './routes/adminApi';
+import { registerPublicJettonMetadata } from './routes/publicJettonMetadata';
 
 async function main() {
-  const db = createDb();
-  const state = AirdropState.hydrate(db);
-  const gameServer = new GameServer(db);
-  const rootUpdater = new RootUpdater(db);
+  const store = await createAppStore();
+  const state = await AirdropState.hydrate(store);
+  const gameServer = new GameServer(store);
+  const rootUpdater = new RootUpdater(store);
   await rootUpdater.init();
-  const treeBuilder = new TreeBuilder(db, state, gameServer, voucherSigner, rootUpdater);
+  const treeBuilder = new TreeBuilder(store, state, gameServer, voucherSigner, rootUpdater);
 
   const app = Fastify({
     logger: logger as any,
@@ -28,7 +29,7 @@ async function main() {
   });
 
   await app.register(cors, {
-    origin: config.CORS_ORIGINS === '*' ? true : config.CORS_ORIGINS.split(',').map(s => s.trim()),
+    origin: config.CORS_ORIGINS === '*' ? true : config.CORS_ORIGINS.split(',').map((s) => s.trim()),
   });
 
   await app.register(rateLimit, {
@@ -36,13 +37,17 @@ async function main() {
     timeWindow: '1 minute',
   });
 
+  const dbKind = config.DATABASE_URL.trim() ? 'postgres' : 'sqlite';
+
   app.get('/health', async () => ({
     status: 'ok',
     epoch: state.epoch,
     tree_size: state.tree.size,
     signer_pubkey: voucherSigner.publicKeyHex,
+    db: dbKind,
   }));
 
+  registerPublicJettonMetadata(app);
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
   registerAdminApi(app, { gameServer, treeBuilder });
@@ -58,15 +63,15 @@ async function main() {
       logger.error({ err: e }, 'error closing app');
     }
     try {
-      db.close();
+      await store.close();
     } catch (e) {
       logger.error({ err: e }, 'error closing db');
     }
     process.exit(code);
   };
 
-  process.on('SIGTERM', () => shutdown(0));
-  process.on('SIGINT', () => shutdown(0));
+  process.on('SIGTERM', () => void shutdown(0));
+  process.on('SIGINT', () => void shutdown(0));
   process.on('unhandledRejection', (reason) => {
     logger.error({ err: reason }, 'unhandled rejection');
   });

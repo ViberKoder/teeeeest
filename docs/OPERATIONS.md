@@ -111,13 +111,13 @@ from a fresh address.
 
 ## Scaling beyond SQLite
 
-For more than ~10M events/day or ~1M users:
+Production на Railway / Render: задайте переменную **`DATABASE_URL`** — сервис поднимется на **PostgreSQL** (пул соединений `pg`, см. `backend/src/store/postgresStore.ts`). Локально без `DATABASE_URL` по-прежнему используется SQLite (`DB_PATH`).
 
-1. Swap `db.ts` for a Postgres implementation.
-2. Run the tree builder as a separate service (keeps the SQLite-style
-   single-writer constraint predictable).
-3. Put the proof API behind a CDN cache keyed on address + epoch.
-4. Shard by user_id modulo N and run N independent root updaters.
+Для очень высокой нагрузки поверх Postgres:
+
+1. Вынести tree builder в отдельный процесс (один писатель эпох предсказуемее).
+2. Поставить Proof API за CDN с ключом `address + epoch`.
+3. При необходимости шардировать по `user_id mod N` и запускать N root updaters.
 
 ## Disaster recovery
 
@@ -127,6 +127,7 @@ For more than ~10M events/day or ~1M users:
   the users' off-chain cumulative is gone. Their **on-chain already_claimed**
   stays intact, so you can start a new tree from scratch and users who
   never materialized keep their rights.
+- **Postgres (Railway)** — восстановление из снапшотов/backup провайдера; для приложения данные в тех же таблицах `users`, `epochs`, `tap_events`, `kv`, что и в SQLite-схеме.
 - **Master contract accidentally paused by admin key** — unpause with
   the same admin (multisig recommended).
 - **Wrong root committed on-chain** — you cannot roll back a committed

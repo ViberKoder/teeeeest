@@ -1,6 +1,6 @@
 import { AirdropState } from './state';
 import { GameServer } from './gameServer';
-import { DB, getKv, setKv } from './db';
+import type { AppStore } from './store/appStore';
 import { VoucherSigner } from './signer';
 import { RootUpdater } from './rootUpdater';
 import { config } from './config';
@@ -26,7 +26,7 @@ export class TreeBuilder {
   private running = false;
 
   constructor(
-    readonly db: DB,
+    readonly store: AppStore,
     readonly state: AirdropState,
     readonly gameServer: GameServer,
     readonly signer: VoucherSigner,
@@ -55,8 +55,9 @@ export class TreeBuilder {
     }
     this.running = true;
     try {
-      const lastEpochTime = Number(getKv(this.db, 'last_epoch_at') ?? 0);
-      const active = this.gameServer.listActiveSince(lastEpochTime);
+      const lastEpochKv = await this.store.getKv('last_epoch_at');
+      const lastEpochTime = Number(lastEpochKv ?? 0);
+      const active = await this.gameServer.listActiveSince(lastEpochTime);
 
       if (active.length === 0 && !force) {
         logger.debug('no activity since last epoch; skipping');
@@ -71,24 +72,26 @@ export class TreeBuilder {
       const root = this.state.rootBigint();
       const rootHex = this.state.rootHex();
 
-      if (!force && rootHex === getKv(this.db, 'last_committed_root')) {
+      const lastCommitted = await this.store.getKv('last_committed_root');
+      if (!force && rootHex === lastCommitted) {
         logger.debug('root unchanged; skipping commit');
         return { advanced: false, epoch: this.state.epoch, root: rootHex };
       }
 
-      const newEpoch = this.state.advanceEpoch(this.db);
+      const newEpoch = await this.state.advanceEpoch(this.store);
       const voucher = this.signer.signRootHex(newEpoch, root);
 
       const now = Math.floor(Date.now() / 1000);
-      this.db
-        .prepare(
-          `INSERT INTO epochs(epoch, merkle_root, signed_by, signature, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(newEpoch, voucher.root, this.signer.publicKeyHex, voucher.signature, now);
+      await this.store.insertEpoch({
+        epoch: newEpoch,
+        merkleRoot: voucher.root,
+        signedBy: this.signer.publicKeyHex,
+        signature: voucher.signature,
+        createdAt: now,
+      });
 
-      setKv(this.db, 'last_epoch_at', String(now));
-      setKv(this.db, 'last_committed_root', rootHex);
+      await this.store.setKv('last_epoch_at', String(now));
+      await this.store.setKv('last_committed_root', rootHex);
 
       logger.info(
         {
