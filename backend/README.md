@@ -32,6 +32,13 @@ npm run backend:dev
 
 Проверка: `curl http://localhost:3000/health`
 
+Подробный снимок для отладки (цепочка jetton / Merkle / почему в кошельке 0):  
+`curl http://localhost:3000/api/v1/diagnostics`
+
+Логи: по умолчанию уровень `info` (`LOG_LEVEL`). В проде (`NODE_ENV=production`) строки — JSON; чтобы читать человеком в панели хостинга, задайте `LOG_PRETTY=true`. Успешные тапы и тики Merkle пишутся на уровне `info`.
+
+Почему в Tonkeeper «нет токенов»: у RMJ mintless баланс на цепи появляется **после первого перевода/swap jetton**, когда кошелёк подтягивает custom payload (TEP-177). До этого начисления только off-chain; смотрите `GET /api/v1/balance/<адрес>` (`cumulative_offchain` vs `cumulative_in_tree`).
+
 Без предварительного `tsc` можно запустить через TS (как в Docker): `npm run backend:start:tsx` из корня.
 
 Удобный алиас в корневом `package.json`: `npm run backend:dev`.

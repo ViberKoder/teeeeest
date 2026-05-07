@@ -26,6 +26,11 @@ export class RootUpdater {
 
   constructor(readonly store: AppStore) {}
 
+  /** True when admin mnemonic + jetton master are set and TonClient is wired — root txs will be broadcast. */
+  isReady(): boolean {
+    return this.ready;
+  }
+
   async init(): Promise<void> {
     if (!config.JETTON_MASTER_ADDRESS) {
       logger.warn('JETTON_MASTER_ADDRESS not set — root updates will be queued but not sent');
@@ -62,7 +67,13 @@ export class RootUpdater {
 
   async queue(epoch: number, rootHex: string): Promise<void> {
     if (!this.ready) {
-      logger.debug({ epoch }, 'root updater not ready, committed_tx will remain null');
+      logger.warn(
+        {
+          epoch,
+          hint: 'Set JETTON_MASTER_ADDRESS and ADMIN_MNEMONIC so epochs commit on-chain; until then proofs may disagree with chain.',
+        },
+        'root updater idle — Merkle epoch recorded in DB only',
+      );
       return;
     }
     if (this.running) {
