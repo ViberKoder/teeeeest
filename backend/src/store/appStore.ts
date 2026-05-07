@@ -33,6 +33,9 @@ export interface AppStore {
 
   listActiveSince(since: number): Promise<Array<{ address: string; cumulative_amount: string }>>;
 
+  /** Count non-banned users and max(last_tapped_at) for diagnostics / stuck-boundary detection */
+  getUserTapStats(): Promise<{ non_banned_users: number; max_last_tapped_at: number }>;
+
   insertEpoch(params: {
     epoch: number;
     merkleRoot: string;
