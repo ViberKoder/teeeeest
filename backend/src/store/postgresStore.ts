@@ -172,22 +172,34 @@ export class PostgresStore implements AppStore {
 
   async listActiveSince(since: number): Promise<Array<{ address: string; cumulative_amount: string }>> {
     const { rows } = await this.pool.query<{ address: string; cumulative_amount: string }>(
-      `SELECT address, cumulative_amount FROM users
-       WHERE is_banned = 0 AND last_tapped_at >= $1`,
+      `SELECT u.address, u.cumulative_amount
+       FROM users u
+       WHERE u.is_banned = 0
+         AND EXISTS (
+           SELECT 1 FROM tap_events t
+           WHERE t.address = u.address AND t.created_at >= $1
+         )`,
       [since],
     );
     return rows;
   }
 
-  async getUserTapStats(): Promise<{ non_banned_users: number; max_last_tapped_at: number }> {
-    const { rows } = await this.pool.query<{ c: string; m: string }>(
-      `SELECT COUNT(*)::text AS c, COALESCE(MAX(last_tapped_at), 0)::text AS m
-       FROM users WHERE is_banned = 0`,
+  async getUserTapStats(): Promise<{
+    non_banned_users: number;
+    max_last_tapped_at: number;
+    max_tap_event_at: number;
+  }> {
+    const { rows } = await this.pool.query<{ c: string; m: string; te: string }>(
+      `SELECT
+         (SELECT COUNT(*)::text FROM users WHERE is_banned = 0) AS c,
+         (SELECT COALESCE(MAX(last_tapped_at), 0)::text FROM users WHERE is_banned = 0) AS m,
+         (SELECT COALESCE(MAX(created_at), 0)::text FROM tap_events) AS te`,
     );
     const r = rows[0];
     return {
       non_banned_users: Number(r?.c ?? 0),
       max_last_tapped_at: Number(r?.m ?? 0),
+      max_tap_event_at: Number(r?.te ?? 0),
     };
   }
 

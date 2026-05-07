@@ -102,6 +102,7 @@ export class TreeBuilder {
             last_epoch_boundary_sec: lastEpochTime,
             db_non_banned_users: tapStats.non_banned_users,
             db_max_last_tapped_at_sec: tapStats.max_last_tapped_at,
+            db_max_tap_event_at_sec: tapStats.max_tap_event_at,
             outcome: 'skip_no_activity',
           },
           'tree tick: no new user activity since last epoch boundary',
