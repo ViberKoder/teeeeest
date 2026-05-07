@@ -14,6 +14,7 @@ import { registerProofApi } from './routes/proofApi';
 import { registerGameApi } from './routes/gameApi';
 import { registerAdminApi } from './routes/adminApi';
 import { registerPublicJettonMetadata } from './routes/publicJettonMetadata';
+import { registerDiagnostics } from './routes/diagnostics';
 
 async function main() {
   const store = await createAppStore();
@@ -45,8 +46,11 @@ async function main() {
     tree_size: state.tree.size,
     signer_pubkey: voucherSigner.publicKeyHex,
     db: dbKind,
+    jetton_master_configured: Boolean(config.JETTON_MASTER_ADDRESS?.trim()),
+    root_updates_enabled: rootUpdater.isReady(),
   }));
 
+  registerDiagnostics(app, { store, state, rootUpdater });
   registerPublicJettonMetadata(app);
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
@@ -77,7 +81,17 @@ async function main() {
   });
 
   await app.listen({ host: config.HOST, port: config.PORT });
-  logger.info({ host: config.HOST, port: config.PORT }, 'rmj backend listening');
+  logger.info(
+    {
+      host: config.HOST,
+      port: config.PORT,
+      ton_network: config.TON_NETWORK,
+      epoch_every_sec: config.EPOCH_DURATION_SECONDS,
+      jetton_master_configured: Boolean(config.JETTON_MASTER_ADDRESS?.trim()),
+      root_updates_enabled: rootUpdater.isReady(),
+    },
+    'RMJ backend listening — curl /health and /api/v1/diagnostics',
+  );
 }
 
 main().catch((e) => {

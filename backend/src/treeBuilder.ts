@@ -6,6 +6,8 @@ import { RootUpdater } from './rootUpdater';
 import { config } from './config';
 import { logger } from './logger';
 
+const KV_TREE_TICK_AT = 'tree_builder_last_tick_at';
+
 /**
  * Tree Builder advances the Airdrop HashMap to a new epoch on a schedule.
  *
@@ -55,12 +57,22 @@ export class TreeBuilder {
     }
     this.running = true;
     try {
+      const tickAt = Math.floor(Date.now() / 1000);
+      await this.store.setKv(KV_TREE_TICK_AT, String(tickAt));
+
       const lastEpochKv = await this.store.getKv('last_epoch_at');
       const lastEpochTime = Number(lastEpochKv ?? 0);
       const active = await this.gameServer.listActiveSince(lastEpochTime);
 
       if (active.length === 0 && !force) {
-        logger.debug('no activity since last epoch; skipping');
+        logger.info(
+          {
+            epoch: this.state.epoch,
+            tree_size: this.state.tree.size,
+            outcome: 'skip_no_activity',
+          },
+          'tree tick: no new user activity since last epoch boundary',
+        );
         return { advanced: false, epoch: this.state.epoch, root: this.state.rootHex() };
       }
 
@@ -74,7 +86,15 @@ export class TreeBuilder {
 
       const lastCommitted = await this.store.getKv('last_committed_root');
       if (!force && rootHex === lastCommitted) {
-        logger.debug('root unchanged; skipping commit');
+        logger.info(
+          {
+            epoch: this.state.epoch,
+            tree_size: this.state.tree.size,
+            active_users: active.length,
+            outcome: 'skip_root_unchanged',
+          },
+          'tree tick: Merkle root unchanged, epoch not advanced',
+        );
         return { advanced: false, epoch: this.state.epoch, root: rootHex };
       }
 
