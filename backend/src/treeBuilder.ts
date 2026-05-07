@@ -7,6 +7,7 @@ import { config } from './config';
 import { logger } from './logger';
 
 const KV_TREE_TICK_AT = 'tree_builder_last_tick_at';
+const SECONDS_IN_MILLISECONDS_THRESHOLD = 10_000_000_000; // ~year 2286 in seconds
 
 /**
  * Tree Builder advances the Airdrop HashMap to a new epoch on a schedule.
@@ -61,8 +62,34 @@ export class TreeBuilder {
       await this.store.setKv(KV_TREE_TICK_AT, String(tickAt));
 
       const lastEpochKv = await this.store.getKv('last_epoch_at');
-      const lastEpochTime = Number(lastEpochKv ?? 0);
-      const active = await this.gameServer.listActiveSince(lastEpochTime);
+      let lastEpochTime = Number(lastEpochKv ?? 0);
+      if (Number.isNaN(lastEpochTime) || lastEpochTime < 0) {
+        logger.warn({ last_epoch_at: lastEpochKv }, 'invalid last_epoch_at in kv, resetting to 0');
+        lastEpochTime = 0;
+      }
+      // Self-heal old/broken values accidentally stored in milliseconds.
+      if (lastEpochTime > SECONDS_IN_MILLISECONDS_THRESHOLD) {
+        const normalized = Math.floor(lastEpochTime / 1000);
+        logger.warn(
+          { old_last_epoch_at: lastEpochTime, normalized_last_epoch_at: normalized },
+          'last_epoch_at looks like milliseconds, normalizing to seconds',
+        );
+        lastEpochTime = normalized;
+        await this.store.setKv('last_epoch_at', String(lastEpochTime));
+      }
+
+      let active = await this.gameServer.listActiveSince(lastEpochTime);
+      if (!force && active.length === 0 && this.state.epoch === 0 && this.state.tree.size === 0) {
+        // Bootstrap fallback: if initial boundary is broken/missing, seed from all known users.
+        const bootstrap = await this.gameServer.listActiveSince(0);
+        if (bootstrap.length > 0) {
+          logger.warn(
+            { users: bootstrap.length },
+            'no incremental activity but users exist, bootstrapping first Merkle epoch from full user set',
+          );
+          active = bootstrap;
+        }
+      }
 
       if (active.length === 0 && !force) {
         logger.info(
