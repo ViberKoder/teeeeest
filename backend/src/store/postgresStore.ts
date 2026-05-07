@@ -179,6 +179,18 @@ export class PostgresStore implements AppStore {
     return rows;
   }
 
+  async getUserTapStats(): Promise<{ non_banned_users: number; max_last_tapped_at: number }> {
+    const { rows } = await this.pool.query<{ c: string; m: string }>(
+      `SELECT COUNT(*)::text AS c, COALESCE(MAX(last_tapped_at), 0)::text AS m
+       FROM users WHERE is_banned = 0`,
+    );
+    const r = rows[0];
+    return {
+      non_banned_users: Number(r?.c ?? 0),
+      max_last_tapped_at: Number(r?.m ?? 0),
+    };
+  }
+
   async insertEpoch(params: {
     epoch: number;
     merkleRoot: string;

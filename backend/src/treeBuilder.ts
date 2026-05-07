@@ -79,23 +79,29 @@ export class TreeBuilder {
       }
 
       let active = await this.gameServer.listActiveSince(lastEpochTime);
-      if (!force && active.length === 0 && this.state.epoch === 0 && this.state.tree.size === 0) {
-        // Bootstrap fallback: if initial boundary is broken/missing, seed from all known users.
+      // Bootstrap first epoch when incremental scan is empty but DB has users.
+      // Important: do NOT require tree.size===0 — on startup we hydrate the Merkle tree from `users`,
+      // so tree_size is often >0 while epoch is still 0 and last_epoch_at/boundary can be wrong.
+      if (!force && active.length === 0 && this.state.epoch === 0) {
         const bootstrap = await this.gameServer.listActiveSince(0);
         if (bootstrap.length > 0) {
           logger.warn(
-            { users: bootstrap.length },
-            'no incremental activity but users exist, bootstrapping first Merkle epoch from full user set',
+            { users: bootstrap.length, last_epoch_boundary_sec: lastEpochTime },
+            'epoch 0: incremental activity empty but DB has users — bootstrapping Merkle tick from full user set',
           );
           active = bootstrap;
         }
       }
 
       if (active.length === 0 && !force) {
+        const tapStats = await this.store.getUserTapStats();
         logger.info(
           {
             epoch: this.state.epoch,
             tree_size: this.state.tree.size,
+            last_epoch_boundary_sec: lastEpochTime,
+            db_non_banned_users: tapStats.non_banned_users,
+            db_max_last_tapped_at_sec: tapStats.max_last_tapped_at,
             outcome: 'skip_no_activity',
           },
           'tree tick: no new user activity since last epoch boundary',

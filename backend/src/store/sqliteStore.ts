@@ -145,6 +145,16 @@ export class SqliteStore implements AppStore {
       .all(since) as Array<{ address: string; cumulative_amount: string }>;
   }
 
+  async getUserTapStats(): Promise<{ non_banned_users: number; max_last_tapped_at: number }> {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS c, COALESCE(MAX(last_tapped_at), 0) AS m
+         FROM users WHERE is_banned = 0`,
+      )
+      .get() as { c: number; m: number };
+    return { non_banned_users: row.c, max_last_tapped_at: Number(row.m) };
+  }
+
   async insertEpoch(params: {
     epoch: number;
     merkleRoot: string;
