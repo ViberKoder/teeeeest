@@ -5,6 +5,8 @@ const schema = z.object({
   PORT: z.coerce.number().int().default(3000),
   HOST: z.string().default('0.0.0.0'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
+  /** Pretty-print logs (pino-pretty). Default: on when NODE_ENV≠production; override with LOG_PRETTY=true on hosted dashboards. */
+  LOG_PRETTY: z.preprocess((v) => v === true || v === 'true' || v === '1', z.boolean()).default(false),
   CORS_ORIGINS: z.string().default('*'),
 
   ADMIN_JWT_SECRET: z.string().min(16),

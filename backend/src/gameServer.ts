@@ -74,9 +74,14 @@ export class GameServer {
       now,
     });
 
-    logger.debug(
-      { address, reward: reward.toString(), cumulative: newCumulative.toString(), source: action.source },
-      'action recorded',
+    logger.info(
+      {
+        address,
+        reward_nano: reward.toString(),
+        cumulative_offchain_nano: newCumulative.toString(),
+        source: action.source,
+      },
+      'tap/action recorded — appears in Merkle tree after next epoch tick',
     );
 
     return { ok: true, cumulativeAmount: newCumulative, deltaApplied: reward };

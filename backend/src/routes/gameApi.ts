@@ -53,6 +53,10 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
 
     const result = await deps.gameServer.recordAction(action);
     if (!result.ok) {
+      logger.warn(
+        { address: parsed.data.address, reason: result.reason, source: parsed.data.source },
+        'POST /api/v1/action rejected',
+      );
       reply.code(429);
       return { error: result.reason };
     }

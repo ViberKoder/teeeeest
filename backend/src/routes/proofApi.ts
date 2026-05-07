@@ -52,6 +52,14 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     }
 
     if (!deps.state.tree.has(addr)) {
+      logger.debug(
+        {
+          address: addr.toString({ urlSafe: true, bounceable: false }),
+          epoch: deps.state.epoch,
+          tree_users: deps.state.tree.size,
+        },
+        'custom-payload: address not in tree yet (normal until next epoch; set LOG_LEVEL=debug to see these)',
+      );
       reply.code(404);
       return { error: 'address-not-in-tree' };
     }
