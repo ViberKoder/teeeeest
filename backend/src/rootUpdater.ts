@@ -91,7 +91,30 @@ export class RootUpdater {
     try {
       await this.sendOnce(epoch, rootHex);
     } catch (e) {
-      logger.error({ err: e, epoch, rootHex }, 'root update send failed');
+      const err = e as any;
+      const rpcError = err?.response?.data?.error as string | undefined;
+      const rpcCode = err?.response?.data?.code as number | undefined;
+      const hint =
+        rpcError?.includes('Failed to unpack account state')
+          ? 'Likely network/address mismatch: check TON_NETWORK, TON_RPC_ENDPOINT, JETTON_MASTER_ADDRESS, and ADMIN_WALLET_VERSION.'
+          : rpcCode === 429
+            ? 'Toncenter rate limit: set TON_RPC_API_KEY and consider retry/backoff.'
+            : undefined;
+      logger.error(
+        {
+          err,
+          epoch,
+          rootHex,
+          rpc_error: rpcError,
+          rpc_code: rpcCode,
+          hint,
+          ton_network: config.TON_NETWORK,
+          ton_endpoint: config.TON_RPC_ENDPOINT || 'toncenter-default',
+          admin_wallet_version: config.ADMIN_WALLET_VERSION,
+          jetton_master_address: config.JETTON_MASTER_ADDRESS,
+        },
+        'root update send failed',
+      );
     } finally {
       this.running = false;
     }
@@ -101,6 +124,21 @@ export class RootUpdater {
     if (!this.client || !this.wallet || !this.keypair) return;
 
     const master = Address.parse(config.JETTON_MASTER_ADDRESS);
+    const masterState = await this.client.getContractState(master);
+    if (masterState.state !== 'active') {
+      logger.error(
+        {
+          epoch,
+          master: master.toString({ urlSafe: true, bounceable: false }),
+          master_state: masterState.state,
+          ton_network: config.TON_NETWORK,
+          ton_endpoint: config.TON_RPC_ENDPOINT || 'toncenter-default',
+          hint: 'Master must be deployed and active in this network before update_merkle_root.',
+        },
+        'root update aborted: jetton master is not active',
+      );
+      return;
+    }
 
     const walletContract = this.client.open(this.wallet);
     const seqno = await walletContract.getSeqno();
