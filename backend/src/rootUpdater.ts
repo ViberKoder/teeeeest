@@ -66,7 +66,9 @@ export class RootUpdater {
     });
 
     try {
-      this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
+      const mnemonicWords = config.ADMIN_MNEMONIC.trim().split(/\s+/).filter(Boolean);
+      const mnemonicPassword = config.ADMIN_MNEMONIC_PASSWORD.trim() || undefined;
+      this.keypair = await mnemonicToPrivateKey(mnemonicWords, mnemonicPassword);
       if (config.ADMIN_WALLET_VERSION !== 'v5r1') {
         this.wallet = WalletContractV4.create({
           workchain: 0,
@@ -94,6 +96,7 @@ export class RootUpdater {
         admin: this.wallet.address.toString(),
         master: config.JETTON_MASTER_ADDRESS,
         admin_wallet_version: config.ADMIN_WALLET_VERSION,
+        admin_mnemonic_password_configured: Boolean(config.ADMIN_MNEMONIC_PASSWORD.trim()),
         admin_v5r1_subwallet:
           config.ADMIN_WALLET_VERSION === 'v5r1' &&
           this.wallet instanceof WalletContractV5R1 &&
@@ -243,7 +246,7 @@ export class RootUpdater {
 
     if (Buffer.compare(onChainPublicKey, publicKey) !== 0) {
       throw new Error(
-        `ADMIN_MNEMONIC does not control ADMIN_WALLET_ADDRESS on ${config.TON_NETWORK}: public keys differ — paste the exact 24-word recovery phrase for this Tonkeeper wallet into ADMIN_MNEMONIC`,
+        `ADMIN_MNEMONIC does not control ADMIN_WALLET_ADDRESS on ${config.TON_NETWORK}: public keys differ — paste the exact 24-word recovery phrase for this Tonkeeper wallet into ADMIN_MNEMONIC; if you use Tonkeeper’s optional mnemonic password, set ADMIN_MNEMONIC_PASSWORD to match`,
       );
     }
 

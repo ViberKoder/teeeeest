@@ -12,6 +12,8 @@ const schema = z.object({
   ADMIN_JWT_SECRET: z.string().min(16),
   SIGNER_SEED_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/),
   ADMIN_MNEMONIC: z.string().default(''),
+  /** Optional passphrase for ADMIN_MNEMONIC (Tonkeeper “mnemonic password”) — required if you enabled one when creating the wallet. */
+  ADMIN_MNEMONIC_PASSWORD: z.string().default(''),
   /** Admin wallet contract version used for on-chain root updates. */
   ADMIN_WALLET_VERSION: z.enum(['v4', 'v5r1']).default('v4'),
   /** Optional: expected admin wallet address (from Tonkeeper). Used to validate/autodetect v5r1 subwallet. */
