@@ -14,6 +14,25 @@ const schema = z.object({
   ADMIN_MNEMONIC: z.string().default(''),
   /** Optional passphrase for ADMIN_MNEMONIC (Tonkeeper “mnemonic password”) — required if you enabled one when creating the wallet. */
   ADMIN_MNEMONIC_PASSWORD: z.string().default(''),
+  /**
+   * Ed25519 secret as hex: 64 chars = 32-byte seed, 128 chars = 64-byte NaCl secret key.
+   * If set, used instead of ADMIN_MNEMONIC for on-chain root updates.
+   */
+  ADMIN_PRIVATE_KEY_HEX: z
+    .string()
+    .default('')
+    .refine(
+      (val) => {
+        const t = val.trim().replace(/^0x/i, '').replace(/\s+/g, '');
+        if (t.length === 0) return true;
+        if (!/^[0-9a-fA-F]+$/.test(t)) return false;
+        return t.length === 64 || t.length === 128;
+      },
+      {
+        message:
+          'ADMIN_PRIVATE_KEY_HEX must be empty, 64 hex chars (32-byte seed), or 128 hex chars (64-byte secret)',
+      },
+    ),
   /** Admin wallet contract version used for on-chain root updates. */
   ADMIN_WALLET_VERSION: z.enum(['v4', 'v5r1']).default('v4'),
   /** Optional: expected admin wallet address (from Tonkeeper). Used to validate/autodetect v5r1 subwallet. */
