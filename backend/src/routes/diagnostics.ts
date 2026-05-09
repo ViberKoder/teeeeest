@@ -37,6 +37,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       epoch: deps.state.epoch,
       merkle_tree_users: deps.state.tree.size,
       epoch_duration_seconds: config.EPOCH_DURATION_SECONDS,
+      balance_display: config.PUBLIC_BALANCE_DISPLAY,
       jetton_master_configured: jettonConfigured,
       admin_mnemonic_or_private_key_configured: adminConfigured,
       root_updates_will_send_onchain: rootUpdatesEnabled,

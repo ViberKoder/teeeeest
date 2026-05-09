@@ -4,7 +4,13 @@ import {
   useTonAddress,
   useTonConnectUI,
 } from '@tonconnect/ui-react';
-import { RMJClient, buildJettonTransferPayloadBase64, DEFAULT_ATTACHED_TON_NANO } from '@rmj/sdk';
+import {
+  type BalanceDisplayMode,
+  RMJClient,
+  buildJettonTransferPayloadBase64,
+  DEFAULT_ATTACHED_TON_NANO,
+  formatBalanceDisplay,
+} from '@rmj/sdk';
 
 const BACKEND = import.meta.env.VITE_RMJ_BACKEND_URL as string;
 const PROJECT_NAME = (import.meta.env.VITE_PROJECT_NAME as string) ?? 'TapCoin';
@@ -15,14 +21,7 @@ interface Balance {
   offchain: string;
   inTree: string;
   epoch: number;
-}
-
-function nanoToHuman(nano: string): string {
-  const bi = BigInt(nano);
-  const whole = bi / 1_000_000_000n;
-  const frac = bi % 1_000_000_000n;
-  if (frac === 0n) return whole.toString();
-  return `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '')}`;
+  displayMode: BalanceDisplayMode;
 }
 
 export function App() {
@@ -40,7 +39,12 @@ export function App() {
     }
     try {
       const b = await rmj.getBalance(address);
-      setBalance({ offchain: b.cumulativeOffchain, inTree: b.cumulativeInTree, epoch: b.epoch });
+      setBalance({
+        offchain: b.cumulativeOffchain,
+        inTree: b.cumulativeInTree,
+        epoch: b.epoch,
+        displayMode: b.balanceDisplay,
+      });
       setLocalExtra(0n);
     } catch (e) {
       console.error(e);
@@ -115,7 +119,9 @@ export function App() {
   }, [address, tonConnectUI]);
 
   const offchainBig = balance ? BigInt(balance.offchain) : 0n;
-  const displayedBalance = nanoToHuman((offchainBig + localExtra).toString());
+  const displayedBalance = balance
+    ? formatBalanceDisplay((offchainBig + localExtra).toString(), balance.displayMode)
+    : '0';
 
   return (
     <div style={styles.page}>
@@ -135,7 +141,8 @@ export function App() {
             <div style={styles.balanceValue}>{displayedBalance}</div>
             {balance && (
               <div style={styles.balanceSub}>
-                settled in epoch {balance.epoch}: {nanoToHuman(balance.inTree)}
+                settled in epoch {balance.epoch}:{' '}
+                {formatBalanceDisplay(balance.inTree, balance.displayMode)}
               </div>
             )}
           </div>

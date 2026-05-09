@@ -65,6 +65,12 @@ const schema = z.object({
   PUBLIC_JETTON_SYMBOL: z.string().default(''),
   PUBLIC_JETTON_DESCRIPTION: z.string().default(''),
   PUBLIC_JETTON_IMAGE_URL: z.string().default(''),
+  /**
+   * How clients should show cumulative amounts from the API (values are still stored on-chain as jetton nano).
+   * - jetton_nano: divide by 1e9 for human jettons (e.g. 3e9 → "3").
+   * - integer: show the raw integer string (503 nano → "503") — use when 1 reward unit = 1 displayed token.
+   */
+  PUBLIC_BALANCE_DISPLAY: z.enum(['jetton_nano', 'integer']).default('integer'),
 });
 
 const parsed = schema.safeParse(process.env);

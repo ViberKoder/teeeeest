@@ -8,6 +8,7 @@ import { AirdropState } from '../state';
 import { GameServer } from '../gameServer';
 import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
+import { config } from '../config';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -102,6 +103,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
       cumulative_offchain: cumulative.toString(),
       cumulative_in_tree: leaf?.cumulativeAmount.toString() ?? '0',
       epoch: deps.state.epoch,
+      balance_display: config.PUBLIC_BALANCE_DISPLAY,
     };
   });
 
@@ -113,6 +115,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     root: deps.state.rootHex(),
     tree_size: deps.state.tree.size,
     signer: deps.signer.publicKeyHex,
+    balance_display: config.PUBLIC_BALANCE_DISPLAY,
   }));
 
   logger.info('proof api routes registered');

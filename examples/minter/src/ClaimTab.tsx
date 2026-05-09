@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { RMJClient, buildJettonTransferPayloadBase64, DEFAULT_ATTACHED_TON_NANO } from '@rmj/sdk';
-
-function nanoToHuman(nano: string): string {
-  const bi = BigInt(nano);
-  const whole = bi / 1_000_000_000n;
-  const frac = bi % 1_000_000_000n;
-  if (frac === 0n) return whole.toString();
-  return `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '')}`;
-}
+import {
+  type BalanceDisplayMode,
+  RMJClient,
+  buildJettonTransferPayloadBase64,
+  DEFAULT_ATTACHED_TON_NANO,
+  formatBalanceDisplay,
+} from '@rmj/sdk';
 
 /**
  * Заклеймить mintless-баланс на цепь без Tonkeeper/TEP-177: TON Connect шлёт TEP-74 transfer
@@ -23,6 +21,7 @@ export function ClaimTab() {
   const [balanceOffchain, setBalanceOffchain] = useState<string | null>(null);
   const [balanceTree, setBalanceTree] = useState<string | null>(null);
   const [epoch, setEpoch] = useState<number | null>(null);
+  const [balanceDisplay, setBalanceDisplay] = useState<BalanceDisplayMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState('');
 
@@ -41,6 +40,7 @@ export function ClaimTab() {
       setBalanceOffchain(b.cumulativeOffchain);
       setBalanceTree(b.cumulativeInTree);
       setEpoch(b.epoch);
+      setBalanceDisplay(b.balanceDisplay);
       setHint('');
     } catch (e) {
       setHint(`Не удалось загрузить баланс: ${(e as Error).message}`);
@@ -148,10 +148,17 @@ export function ClaimTab() {
           }}
         >
           <div>
-            <b>Начислено (backend):</b> {nanoToHuman(balanceOffchain)} · epoch {epoch ?? '—'}
+            <b>Начислено (backend):</b>{' '}
+            {balanceDisplay
+              ? formatBalanceDisplay(balanceOffchain, balanceDisplay)
+              : balanceOffchain}{' '}
+            · epoch {epoch ?? '—'}
           </div>
           <div style={{ fontSize: 14, opacity: 0.85, marginTop: 4 }}>
-            В дереве: {nanoToHuman(balanceTree ?? '0')}
+            В дереве:{' '}
+            {balanceDisplay
+              ? formatBalanceDisplay(balanceTree ?? '0', balanceDisplay)
+              : balanceTree ?? '0'}
           </div>
         </div>
       )}

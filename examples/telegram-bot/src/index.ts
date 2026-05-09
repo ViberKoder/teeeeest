@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Bot, InlineKeyboard, Context, InputFile } from 'grammy';
-import { RMJClient } from '@rmj/sdk';
+import { RMJClient, formatBalanceDisplay, type BalanceDisplayMode } from '@rmj/sdk';
 import { Address } from '@ton/core';
 import { UserAddressMap } from './userMap';
 
@@ -22,6 +22,13 @@ function required(name: string): string {
 const rmj = new RMJClient({ baseUrl: RMJ_BACKEND_URL, adminSecret: RMJ_ADMIN_SECRET });
 const addresses = new UserAddressMap();
 const bot = new Bot(TELEGRAM_BOT_TOKEN);
+
+/** Last-known display mode from backend (fallback if action response omits it). */
+let cachedBalanceDisplay: BalanceDisplayMode = 'integer';
+
+void rmj.getStatus().then((s) => {
+  cachedBalanceDisplay = s.balanceDisplay;
+}).catch(() => {});
 
 // ---- /start and /help ----
 
@@ -61,8 +68,9 @@ bot.command('balance', async (ctx) => {
   if (!addr) return ctx.reply('First link your wallet: /link EQ…');
   try {
     const b = await rmj.getBalance(addr);
-    const humanOff = nanoToHuman(b.cumulativeOffchain);
-    const humanTree = nanoToHuman(b.cumulativeInTree);
+    cachedBalanceDisplay = b.balanceDisplay;
+    const humanOff = formatBalanceDisplay(b.cumulativeOffchain, b.balanceDisplay);
+    const humanTree = formatBalanceDisplay(b.cumulativeInTree, b.balanceDisplay);
     return ctx.reply(
       `Balance for \`${addr}\`:\n` +
         `  Off-chain live: *${humanOff} ${PROJECT_NAME}*\n` +
@@ -109,8 +117,10 @@ bot.callbackQuery('rmj-tap', async (ctx) => {
       },
     });
     if (r.ok) {
-      const delta = nanoToHuman(r.delta ?? '0');
-      const cumulative = nanoToHuman(r.cumulative ?? '0');
+      const mode = r.balanceDisplay ?? cachedBalanceDisplay;
+      cachedBalanceDisplay = mode;
+      const delta = formatBalanceDisplay(r.delta ?? '0', mode);
+      const cumulative = formatBalanceDisplay(r.cumulative ?? '0', mode);
       return ctx.answerCallbackQuery({
         text: `+${delta} ${PROJECT_NAME} (total: ${cumulative})`,
       });
@@ -125,14 +135,6 @@ bot.callbackQuery('rmj-tap', async (ctx) => {
     return ctx.answerCallbackQuery({ text: 'Something went wrong, try again' });
   }
 });
-
-function nanoToHuman(nano: string): string {
-  const bi = BigInt(nano);
-  const whole = bi / 1_000_000_000n;
-  const frac = bi % 1_000_000_000n;
-  if (frac === 0n) return whole.toString();
-  return `${whole}.${frac.toString().padStart(9, '0').replace(/0+$/, '')}`;
-}
 
 bot.catch((err) => {
   console.error('bot error', err);

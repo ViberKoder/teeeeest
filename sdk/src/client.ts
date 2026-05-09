@@ -27,6 +27,8 @@
  *     // as the `custom_payload` of the jetton transfer message.
  */
 
+import type { BalanceDisplayMode } from './formatBalance';
+
 export interface RMJClientOptions {
   /** Base URL of the backend (no trailing slash). */
   baseUrl: string;
@@ -60,6 +62,8 @@ export interface ActionResult {
   cumulative?: string;
   delta?: string;
   reason?: string;
+  /** Present when `ok` — matches backend `PUBLIC_BALANCE_DISPLAY`. */
+  balanceDisplay?: BalanceDisplayMode;
 }
 
 export interface BalanceInfo {
@@ -67,6 +71,7 @@ export interface BalanceInfo {
   cumulativeOffchain: string;
   cumulativeInTree: string;
   epoch: number;
+  balanceDisplay: BalanceDisplayMode;
 }
 
 export interface CustomPayloadInfo {
@@ -86,6 +91,7 @@ export interface BackendStatus {
   root: string;
   treeSize: number;
   signer: string;
+  balanceDisplay: BalanceDisplayMode;
 }
 
 /** Resolved jetton-wallet contract for the configured RMJ master (+ deploy payload when needed). */
@@ -184,11 +190,21 @@ export class RMJClient {
       meta: input.meta,
     });
     const r = await this.request<
-      | { ok: true; cumulative_offchain: string; delta_applied: string }
+      | {
+          ok: true;
+          cumulative_offchain: string;
+          delta_applied: string;
+          balance_display?: BalanceDisplayMode;
+        }
       | { error: string }
     >(`/api/v1/action`, { method: 'POST', body });
     if ('ok' in r && r.ok) {
-      return { ok: true, cumulative: r.cumulative_offchain, delta: r.delta_applied };
+      return {
+        ok: true,
+        cumulative: r.cumulative_offchain,
+        delta: r.delta_applied,
+        balanceDisplay: r.balance_display ?? 'integer',
+      };
     }
     return { ok: false, reason: 'error' in r ? r.error : 'unknown' };
   }
@@ -208,7 +224,12 @@ export class RMJClient {
     });
     return r.results.map((x) =>
       x.ok
-        ? { ok: true, cumulative: x.cumulative, delta: x.delta }
+        ? {
+            ok: true,
+            cumulative: x.cumulative,
+            delta: x.delta,
+            balanceDisplay: x.balance_display ?? 'integer',
+          }
         : { ok: false, reason: x.reason },
     );
   }
@@ -219,12 +240,14 @@ export class RMJClient {
       cumulative_offchain: string;
       cumulative_in_tree: string;
       epoch: number;
+      balance_display?: BalanceDisplayMode;
     }>(`/api/v1/balance/${encodeURIComponent(address)}`);
     return {
       address: r.address,
       cumulativeOffchain: r.cumulative_offchain,
       cumulativeInTree: r.cumulative_in_tree,
       epoch: r.epoch,
+      balanceDisplay: r.balance_display ?? 'integer',
     };
   }
 
@@ -258,12 +281,14 @@ export class RMJClient {
       root: string;
       tree_size: number;
       signer: string;
+      balance_display?: BalanceDisplayMode;
     }>(`/api/v1/status`);
     return {
       epoch: r.epoch,
       root: r.root,
       treeSize: r.tree_size,
       signer: r.signer,
+      balanceDisplay: r.balance_display ?? 'integer',
     };
   }
 
