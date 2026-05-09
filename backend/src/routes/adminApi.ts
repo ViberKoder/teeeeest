@@ -98,7 +98,14 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps): void
       source: parsed.data.source,
       rewardNano: BigInt(parsed.data.amount_nano),
     });
-    return result;
+    if (!result.ok) {
+      return { ok: false, reason: result.reason };
+    }
+    return {
+      ok: true,
+      cumulative_offchain: result.cumulativeAmount.toString(),
+      delta_applied: result.deltaApplied.toString(),
+    };
   });
 
   logger.info('admin api routes registered');
