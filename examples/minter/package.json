@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@rmj/sdk": "*",
     "buffer": "^6.0.3",
     "@ton/crypto": "^3.3.0",
     "@ton/core": "^0.62.0",

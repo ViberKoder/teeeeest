@@ -3,6 +3,7 @@ import { Address } from '@ton/core';
 import { z } from 'zod';
 import { GameServer, GameAction } from '../gameServer';
 import { logger } from '../logger';
+import { config } from '../config';
 
 export interface GameApiDeps {
   gameServer: GameServer;
@@ -65,6 +66,7 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
       ok: true,
       cumulative_offchain: result.cumulativeAmount.toString(),
       delta_applied: result.deltaApplied.toString(),
+      balance_display: config.PUBLIC_BALANCE_DISPLAY,
     };
   });
 
@@ -102,6 +104,7 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
               ok: true,
               cumulative: r.cumulativeAmount.toString(),
               delta: r.deltaApplied.toString(),
+              balance_display: config.PUBLIC_BALANCE_DISPLAY,
             }
           : { ok: false, reason: r.reason },
       );

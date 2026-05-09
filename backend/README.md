@@ -19,6 +19,7 @@
 | `JETTON_MASTER_ADDRESS`              | Адрес master после деплоя.                                                                                      |
 | `DATABASE_URL`                       | **Railway Postgres** — подключите БД к сервису; URL подставится автоматически. Без неё — SQLite файл `DB_PATH`. |
 | `PUBLIC_APP_URL` + `PUBLIC_JETTON_`* | По желанию: отдаёт `GET /jetton-metadata.json`.                                                                 |
+| `PUBLIC_BALANCE_DISPLAY`             | `integer` (по умолчанию) — в UI целые «токены» без `0.000…`; `jetton_nano` — делить на 10⁹ как у jetton на сети. |
 
 
 Сеть TON: `TON_NETWORK=testnet|mainnet`, при необходимости `TON_RPC_API_KEY`.

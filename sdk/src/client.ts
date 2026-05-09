@@ -27,6 +27,8 @@
  *     // as the `custom_payload` of the jetton transfer message.
  */
 
+import type { BalanceDisplayMode } from './formatBalance';
+
 export interface RMJClientOptions {
   /** Base URL of the backend (no trailing slash). */
   baseUrl: string;
@@ -60,6 +62,8 @@ export interface ActionResult {
   cumulative?: string;
   delta?: string;
   reason?: string;
+  /** Present when `ok` — matches backend `PUBLIC_BALANCE_DISPLAY`. */
+  balanceDisplay?: BalanceDisplayMode;
 }
 
 export interface BalanceInfo {
@@ -67,6 +71,7 @@ export interface BalanceInfo {
   cumulativeOffchain: string;
   cumulativeInTree: string;
   epoch: number;
+  balanceDisplay: BalanceDisplayMode;
 }
 
 export interface CustomPayloadInfo {
@@ -86,6 +91,17 @@ export interface BackendStatus {
   root: string;
   treeSize: number;
   signer: string;
+  balanceDisplay: BalanceDisplayMode;
+}
+
+/** Resolved jetton-wallet contract for the configured RMJ master (+ deploy payload when needed). */
+export interface JettonWalletInfo {
+  jettonMaster: string;
+  owner: string;
+  jettonWallet: string;
+  jettonWalletActive: boolean;
+  needsDeploy: boolean;
+  walletStateInitBase64: string | null;
 }
 
 export class RMJError extends Error {
@@ -107,8 +123,17 @@ export class RMJClient {
     if (!opts.baseUrl) throw new Error('RMJClient: baseUrl is required');
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.adminSecret = opts.adminSecret;
-    this.fetchImpl = opts.fetch ?? (globalThis.fetch as typeof fetch);
-    if (!this.fetchImpl) {
+    /**
+     * Browser fetch must be invoked with the correct `this` (see DOM “Illegal invocation”).
+     * Telegram WebView / some embedded browsers throw "'fetch' called on an object that does not implement interface Window"
+     * if we keep a loose reference — always bind to `globalThis`.
+     */
+    const g = globalThis as typeof globalThis & { fetch?: typeof fetch };
+    if (opts.fetch) {
+      this.fetchImpl = opts.fetch;
+    } else if (typeof g.fetch === 'function') {
+      this.fetchImpl = g.fetch.bind(g);
+    } else {
       throw new Error('RMJClient: no fetch implementation available (pass opts.fetch)');
     }
     this.timeoutMs = opts.timeoutMs ?? 10_000;
@@ -165,11 +190,21 @@ export class RMJClient {
       meta: input.meta,
     });
     const r = await this.request<
-      | { ok: true; cumulative_offchain: string; delta_applied: string }
+      | {
+          ok: true;
+          cumulative_offchain: string;
+          delta_applied: string;
+          balance_display?: BalanceDisplayMode;
+        }
       | { error: string }
     >(`/api/v1/action`, { method: 'POST', body });
     if ('ok' in r && r.ok) {
-      return { ok: true, cumulative: r.cumulative_offchain, delta: r.delta_applied };
+      return {
+        ok: true,
+        cumulative: r.cumulative_offchain,
+        delta: r.delta_applied,
+        balanceDisplay: r.balance_display ?? 'integer',
+      };
     }
     return { ok: false, reason: 'error' in r ? r.error : 'unknown' };
   }
@@ -189,7 +224,12 @@ export class RMJClient {
     });
     return r.results.map((x) =>
       x.ok
-        ? { ok: true, cumulative: x.cumulative, delta: x.delta }
+        ? {
+            ok: true,
+            cumulative: x.cumulative,
+            delta: x.delta,
+            balanceDisplay: x.balance_display ?? 'integer',
+          }
         : { ok: false, reason: x.reason },
     );
   }
@@ -200,12 +240,14 @@ export class RMJClient {
       cumulative_offchain: string;
       cumulative_in_tree: string;
       epoch: number;
+      balance_display?: BalanceDisplayMode;
     }>(`/api/v1/balance/${encodeURIComponent(address)}`);
     return {
       address: r.address,
       cumulativeOffchain: r.cumulative_offchain,
       cumulativeInTree: r.cumulative_in_tree,
       epoch: r.epoch,
+      balanceDisplay: r.balance_display ?? 'integer',
     };
   }
 
@@ -239,12 +281,37 @@ export class RMJClient {
       root: string;
       tree_size: number;
       signer: string;
+      balance_display?: BalanceDisplayMode;
     }>(`/api/v1/status`);
     return {
       epoch: r.epoch,
       root: r.root,
       treeSize: r.tree_size,
       signer: r.signer,
+      balanceDisplay: r.balance_display ?? 'integer',
+    };
+  }
+
+  /**
+   * Jetton-wallet address for this owner + optional StateInit (base64) when the wallet is not deployed yet.
+   * Used with TON Connect to send a self-transfer with {@link getCustomPayload} attached.
+   */
+  async getJettonWallet(owner: string): Promise<JettonWalletInfo> {
+    const r = await this.request<{
+      jetton_master: string;
+      owner: string;
+      jetton_wallet: string;
+      jetton_wallet_active: boolean;
+      needs_deploy: boolean;
+      wallet_state_init_base64: string | null;
+    }>(`/api/v1/jetton-wallet/${encodeURIComponent(owner)}`);
+    return {
+      jettonMaster: r.jetton_master,
+      owner: r.owner,
+      jettonWallet: r.jetton_wallet,
+      jettonWalletActive: r.jetton_wallet_active,
+      needsDeploy: r.needs_deploy,
+      walletStateInitBase64: r.wallet_state_init_base64,
     };
   }
 
