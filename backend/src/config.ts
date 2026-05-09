@@ -20,7 +20,7 @@ const schema = z.object({
   TON_RPC_API_KEY: z.string().default(''),
   JETTON_MASTER_ADDRESS: z.string().default(''),
 
-  EPOCH_DURATION_SECONDS: z.coerce.number().int().min(30).default(600),
+  EPOCH_DURATION_SECONDS: z.coerce.number().int().min(10).default(60),
   PROOF_VALIDITY_WINDOW_DAYS: z.coerce.number().int().min(1).default(365),
 
   MAX_TAPS_PER_SECOND: z.coerce.number().int().min(1).default(5),
