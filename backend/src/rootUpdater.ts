@@ -1,4 +1,6 @@
 import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
+// Not exported from the @ton/ton barrel; needed to decode deployed Wallet V5 R1 wallet_id (incl. custom/backoffice context).
+import { loadWalletIdV5R1 } from '@ton/ton/dist/wallets/v5r1/WalletV5R1WalletId';
 import { Address, Cell, internal, toNano, beginCell, SendMode } from '@ton/core';
 import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
@@ -65,7 +67,18 @@ export class RootUpdater {
 
     try {
       this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
-      this.wallet = this.createAdminWallet(this.keypair.publicKey);
+      if (config.ADMIN_WALLET_VERSION !== 'v5r1') {
+        this.wallet = WalletContractV4.create({
+          workchain: 0,
+          publicKey: this.keypair.publicKey,
+        });
+      } else {
+        let v5 = this.tryDeriveV5R1BySubwalletScan(this.keypair.publicKey);
+        if (!v5) {
+          v5 = await this.tryDeriveV5R1FromOnChainAdmin(this.keypair.publicKey);
+        }
+        this.wallet = v5;
+      }
     } catch (e) {
       logger.error(
         { err: e },
@@ -81,7 +94,15 @@ export class RootUpdater {
         admin: this.wallet.address.toString(),
         master: config.JETTON_MASTER_ADDRESS,
         admin_wallet_version: config.ADMIN_WALLET_VERSION,
-        admin_v5r1_subwallet: config.ADMIN_WALLET_VERSION === 'v5r1' ? config.ADMIN_V5R1_SUBWALLET : undefined,
+        admin_v5r1_subwallet:
+          config.ADMIN_WALLET_VERSION === 'v5r1' &&
+          this.wallet instanceof WalletContractV5R1 &&
+          typeof this.wallet.walletId.context === 'object'
+            ? (this.wallet.walletId.context as { subwalletNumber?: number }).subwalletNumber ??
+              config.ADMIN_V5R1_SUBWALLET
+            : config.ADMIN_WALLET_VERSION === 'v5r1'
+              ? config.ADMIN_V5R1_SUBWALLET
+              : undefined,
       },
       'root updater initialised',
     );
@@ -120,52 +141,48 @@ export class RootUpdater {
     };
   }
 
-  private createAdminWallet(publicKey: Buffer): WalletContractV4 | WalletContractV5R1 {
-    if (config.ADMIN_WALLET_VERSION !== 'v5r1') {
-      return WalletContractV4.create({
-        workchain: 0,
-        publicKey,
-      });
-    }
-
+  /**
+   * Derives Wallet V5 R1 using standard client context only (subwallet 0..32767).
+   * Returns null when ADMIN_WALLET_ADDRESS is set but no derivation matches — caller may fall back to on-chain wallet_id.
+   */
+  private tryDeriveV5R1BySubwalletScan(publicKey: Buffer): WalletContractV5R1 | null {
+    const networkGlobalId = config.TON_NETWORK === 'mainnet' ? -239 : -3;
     const makeV5 = (subwalletNumber: number) =>
       WalletContractV5R1.create({
         publicKey,
         walletId: {
-          networkGlobalId: config.TON_NETWORK === 'mainnet' ? -239 : -3,
+          networkGlobalId,
           context: { walletVersion: 'v5r1', workchain: 0, subwalletNumber },
         },
       });
 
     const expectedRaw = config.ADMIN_WALLET_ADDRESS.trim();
-    if (expectedRaw) {
-      try {
-        const expected = Address.parse(expectedRaw).toString({ bounceable: false, urlSafe: true });
+    if (!expectedRaw) {
+      return makeV5(config.ADMIN_V5R1_SUBWALLET);
+    }
 
-        let hit: WalletContractV5R1 | null = null;
-        let hitSubwallet: number | null = null;
+    try {
+      const expected = Address.parse(expectedRaw).toString({ bounceable: false, urlSafe: true });
 
-        const trySubwallet = (sw: number): void => {
-          if (hit) return;
-          const probed = makeV5(sw);
-          if (probed.address.toString({ bounceable: false, urlSafe: true }) === expected) {
-            hit = probed;
-            hitSubwallet = sw;
-          }
-        };
+      let hit: WalletContractV5R1 | null = null;
+      let hitSubwallet: number | null = null;
 
-        trySubwallet(config.ADMIN_V5R1_SUBWALLET);
-        for (let sw = 0; sw <= 32767 && !hit; sw += 1) {
-          if (sw === config.ADMIN_V5R1_SUBWALLET) continue;
-          trySubwallet(sw);
+      const trySubwallet = (sw: number): void => {
+        if (hit) return;
+        const probed = makeV5(sw);
+        if (probed.address.toString({ bounceable: false, urlSafe: true }) === expected) {
+          hit = probed;
+          hitSubwallet = sw;
         }
+      };
 
-        if (!hit) {
-          throw new Error(
-            `ADMIN_WALLET_ADDRESS does not match any v5r1 subwallet (0..32767) for this mnemonic on TON_NETWORK=${config.TON_NETWORK}`,
-          );
-        }
+      trySubwallet(config.ADMIN_V5R1_SUBWALLET);
+      for (let sw = 0; sw <= 32767 && !hit; sw += 1) {
+        if (sw === config.ADMIN_V5R1_SUBWALLET) continue;
+        trySubwallet(sw);
+      }
 
+      if (hit) {
         if (hitSubwallet !== null && hitSubwallet !== config.ADMIN_V5R1_SUBWALLET) {
           logger.warn(
             {
@@ -176,17 +193,94 @@ export class RootUpdater {
             'admin address matched via v5r1 subwallet auto-detection',
           );
         }
-
         return hit;
-      } catch (e) {
-        if (e instanceof Error && e.message.includes('ADMIN_WALLET_ADDRESS does not match')) {
-          throw e;
-        }
-        logger.warn({ admin_wallet_address: expectedRaw }, 'invalid ADMIN_WALLET_ADDRESS, skipping v5r1 auto-detection');
       }
+
+      return null;
+    } catch {
+      logger.warn({ admin_wallet_address: expectedRaw }, 'invalid ADMIN_WALLET_ADDRESS, skipping v5r1 subwallet scan');
+      return makeV5(config.ADMIN_V5R1_SUBWALLET);
+    }
+  }
+
+  /**
+   * Reads wallet_id + public key from deployed Wallet V5 R1 storage.
+   * Proves ADMIN_MNEMONIC controls ADMIN_WALLET_ADDRESS even when Tonkeeper uses a non-standard wallet_id encoding (custom/backoffice context).
+   */
+  private async tryDeriveV5R1FromOnChainAdmin(publicKey: Buffer): Promise<WalletContractV5R1> {
+    const expectedRaw = config.ADMIN_WALLET_ADDRESS.trim();
+    if (!expectedRaw || !this.client) {
+      throw new Error('ADMIN_WALLET_ADDRESS required when mnemonic-derived subwallet scan finds no match');
     }
 
-    return makeV5(config.ADMIN_V5R1_SUBWALLET);
+    const parsedAddr = Address.parse(expectedRaw);
+    const expectedFriendly = parsedAddr.toString({ bounceable: false, urlSafe: true });
+    const st = await this.client.getContractState(parsedAddr);
+
+    if (st.state !== 'active') {
+      throw new Error(
+        `ADMIN_WALLET_ADDRESS is ${st.state} on TON_NETWORK=${config.TON_NETWORK} — open Tonviewer on this network and deploy/fund this wallet`,
+      );
+    }
+    if (!st.code || !st.data) {
+      throw new Error('ADMIN_WALLET_ADDRESS has no code/data — verify network and address');
+    }
+
+    const onChainCodeHash = Buffer.from(Cell.fromBoc(st.code)[0].hash()).toString('hex');
+    if (onChainCodeHash !== WALLET_V5R1_CODE_HASH_HEX) {
+      throw new Error(
+        `ADMIN_WALLET_ADDRESS is not standard Wallet V5 R1 on ${config.TON_NETWORK} — set ADMIN_WALLET_VERSION=v4 if this is Wallet V4`,
+      );
+    }
+
+    const slice = Cell.fromBoc(st.data)[0].beginParse();
+    slice.loadUint(1);
+    slice.loadUint(32);
+
+    const networkGlobalId = config.TON_NETWORK === 'mainnet' ? -239 : -3;
+    const walletIdParsed = loadWalletIdV5R1(slice, networkGlobalId);
+    const onChainPublicKey = slice.loadBuffer(32);
+
+    if (Buffer.compare(onChainPublicKey, publicKey) !== 0) {
+      throw new Error(
+        `ADMIN_MNEMONIC does not control ADMIN_WALLET_ADDRESS on ${config.TON_NETWORK}: public keys differ — paste the exact 24-word recovery phrase for this Tonkeeper wallet into ADMIN_MNEMONIC`,
+      );
+    }
+
+    const wallet =
+      typeof walletIdParsed.context === 'number'
+        ? WalletContractV5R1.create({
+            publicKey,
+            walletId: {
+              networkGlobalId: walletIdParsed.networkGlobalId,
+              context: walletIdParsed.context,
+            },
+            workchain: parsedAddr.workChain,
+          })
+        : WalletContractV5R1.create({
+            publicKey,
+            walletId: {
+              networkGlobalId: walletIdParsed.networkGlobalId,
+              context: walletIdParsed.context,
+            },
+          });
+
+    const gotFriendly = wallet.address.toString({ bounceable: false, urlSafe: true });
+    if (expectedFriendly !== gotFriendly) {
+      throw new Error(
+        `Could not rebuild ADMIN_WALLET_ADDRESS from chain wallet_id — wrong TON_NETWORK or corrupted account data (expected ${expectedFriendly}, got ${gotFriendly})`,
+      );
+    }
+
+    logger.info(
+      {
+        admin_wallet_resolution: 'on_chain_wallet_id',
+        wallet_context_kind: typeof walletIdParsed.context === 'number' ? 'custom_counter' : 'client_subwallet',
+      },
+      'root updater: matched admin via on-chain Wallet V5 R1 wallet_id + mnemonic public key',
+    );
+
+    return wallet;
   }
 
   async queue(epoch: number, rootHex: string): Promise<void> {
