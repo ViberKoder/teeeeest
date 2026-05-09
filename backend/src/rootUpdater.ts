@@ -1,4 +1,4 @@
-import { TonClient, WalletContractV4 } from '@ton/ton';
+import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 import { Address, internal, toNano, beginCell, SendMode } from '@ton/core';
 import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
@@ -19,7 +19,7 @@ import { logger } from './logger';
  */
 export class RootUpdater {
   private client?: TonClient;
-  private wallet?: WalletContractV4;
+  private wallet?: WalletContractV4 | WalletContractV5R1;
   private keypair?: KeyPair;
   private ready = false;
   private running = false;
@@ -53,14 +53,21 @@ export class RootUpdater {
     });
 
     this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
-    this.wallet = WalletContractV4.create({
-      workchain: 0,
-      publicKey: this.keypair.publicKey,
-    });
+    this.wallet =
+      config.ADMIN_WALLET_VERSION === 'v5r1'
+        ? WalletContractV5R1.create({ publicKey: this.keypair.publicKey })
+        : WalletContractV4.create({
+            workchain: 0,
+            publicKey: this.keypair.publicKey,
+          });
     this.ready = true;
 
     logger.info(
-      { admin: this.wallet.address.toString(), master: config.JETTON_MASTER_ADDRESS },
+      {
+        admin: this.wallet.address.toString(),
+        master: config.JETTON_MASTER_ADDRESS,
+        admin_wallet_version: config.ADMIN_WALLET_VERSION,
+      },
       'root updater initialised',
     );
   }
@@ -105,19 +112,30 @@ export class RootUpdater {
       .storeUint(epoch, 32)
       .endCell();
 
-    await walletContract.sendTransfer({
-      seqno,
-      secretKey: this.keypair.secretKey,
-      sendMode: SendMode.PAY_GAS_SEPARATELY,
-      messages: [
-        internal({
-          to: master,
-          value: toNano('0.02'),
-          body,
-          bounce: true,
-        }),
-      ],
-    });
+    const messages = [
+      internal({
+        to: master,
+        value: toNano('0.02'),
+        body,
+        bounce: true,
+      }),
+    ];
+    if (config.ADMIN_WALLET_VERSION === 'v5r1') {
+      await walletContract.sendTransfer({
+        seqno,
+        secretKey: this.keypair.secretKey,
+        authType: 'external',
+        sendMode: SendMode.PAY_GAS_SEPARATELY,
+        messages,
+      });
+    } else {
+      await walletContract.sendTransfer({
+        seqno,
+        secretKey: this.keypair.secretKey,
+        sendMode: SendMode.PAY_GAS_SEPARATELY,
+        messages,
+      });
+    }
 
     await this.store.updateEpochCommitted(
       epoch,

@@ -12,6 +12,8 @@ const schema = z.object({
   ADMIN_JWT_SECRET: z.string().min(16),
   SIGNER_SEED_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/),
   ADMIN_MNEMONIC: z.string().default(''),
+  /** Admin wallet contract version used for on-chain root updates. */
+  ADMIN_WALLET_VERSION: z.enum(['v4', 'v5r1']).default('v4'),
 
   TON_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
   TON_RPC_ENDPOINT: z.string().default(''),
