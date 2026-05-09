@@ -2,13 +2,31 @@ import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 // Not exported from the @ton/ton barrel; needed to decode deployed Wallet V5 R1 wallet_id (incl. custom/backoffice context).
 import { loadWalletIdV5R1 } from '@ton/ton/dist/wallets/v5r1/WalletV5R1WalletId';
 import { Address, Cell, internal, toNano, beginCell, SendMode } from '@ton/core';
-import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
+import {
+  mnemonicToPrivateKey,
+  KeyPair,
+  keyPairFromSeed,
+  keyPairFromSecretKey,
+} from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
 import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
 
 /** Standard Wallet V5 R1 code hash (@ton/ton WalletContractV5R1). */
+function normalizeAdminPrivateKeyHex(raw: string): string {
+  return raw.trim().replace(/^0x/i, '').replace(/\s+/g, '');
+}
+
+/** 32-byte seed (64 hex) or 64-byte NaCl secret (128 hex), same as @ton/crypto wallet keys. */
+function keyPairFromAdminPrivateKeyHex(raw: string): KeyPair {
+  const hex = normalizeAdminPrivateKeyHex(raw);
+  const buf = Buffer.from(hex, 'hex');
+  if (buf.length === 32) return keyPairFromSeed(buf);
+  if (buf.length === 64) return keyPairFromSecretKey(buf);
+  throw new Error('ADMIN_PRIVATE_KEY_HEX must be 64 or 128 hex characters');
+}
+
 const WALLET_V5R1_CODE_HASH_HEX = Buffer.from(
   WalletContractV5R1.create({
     publicKey: Buffer.alloc(32),
@@ -23,7 +41,7 @@ const WALLET_V5R1_CODE_HASH_HEX = Buffer.from(
  * Root Updater: pushes `op::update_merkle_root` transactions from the
  * admin wallet to the Jetton Master after each epoch.
  *
- * The admin wallet is derived from ADMIN_MNEMONIC. In production this
+ * The admin wallet is derived from ADMIN_PRIVATE_KEY_HEX or ADMIN_MNEMONIC. In production this
  * should be replaced with a multisig wallet setup (ton-blockchain/multisig
  * v2) and the signer wrapped in the same HSM flow as VoucherSigner.
  *
@@ -39,7 +57,7 @@ export class RootUpdater {
 
   constructor(readonly store: AppStore) {}
 
-  /** True when admin mnemonic + jetton master are set and TonClient is wired — root txs will be broadcast. */
+  /** True when admin credentials + jetton master are set and TonClient is wired — root txs will be broadcast. */
   isReady(): boolean {
     return this.ready;
   }
@@ -49,8 +67,12 @@ export class RootUpdater {
       logger.warn('JETTON_MASTER_ADDRESS not set — root updates will be queued but not sent');
       return;
     }
-    if (!config.ADMIN_MNEMONIC) {
-      logger.warn('ADMIN_MNEMONIC not set — root updates will be queued but not sent');
+    const hasPrivateKey = Boolean(normalizeAdminPrivateKeyHex(config.ADMIN_PRIVATE_KEY_HEX));
+    const hasMnemonic = Boolean(config.ADMIN_MNEMONIC.trim());
+    if (!hasPrivateKey && !hasMnemonic) {
+      logger.warn(
+        'Neither ADMIN_PRIVATE_KEY_HEX nor ADMIN_MNEMONIC set — root updates will be queued but not sent',
+      );
       return;
     }
 
@@ -66,7 +88,19 @@ export class RootUpdater {
     });
 
     try {
-      this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
+      if (hasPrivateKey && hasMnemonic) {
+        logger.warn(
+          'Both ADMIN_PRIVATE_KEY_HEX and ADMIN_MNEMONIC are set — using ADMIN_PRIVATE_KEY_HEX for signing',
+        );
+      }
+
+      if (hasPrivateKey) {
+        this.keypair = keyPairFromAdminPrivateKeyHex(config.ADMIN_PRIVATE_KEY_HEX);
+      } else {
+        const mnemonicWords = config.ADMIN_MNEMONIC.trim().split(/\s+/).filter(Boolean);
+        const mnemonicPassword = config.ADMIN_MNEMONIC_PASSWORD.trim() || undefined;
+        this.keypair = await mnemonicToPrivateKey(mnemonicWords, mnemonicPassword);
+      }
       if (config.ADMIN_WALLET_VERSION !== 'v5r1') {
         this.wallet = WalletContractV4.create({
           workchain: 0,
@@ -82,7 +116,7 @@ export class RootUpdater {
     } catch (e) {
       logger.error(
         { err: e },
-        'root updater: admin wallet derivation failed — fix ADMIN_MNEMONIC / ADMIN_WALLET_ADDRESS / ADMIN_WALLET_VERSION',
+        'root updater: admin wallet derivation failed — fix ADMIN_PRIVATE_KEY_HEX / ADMIN_MNEMONIC / ADMIN_WALLET_ADDRESS / ADMIN_WALLET_VERSION',
       );
       return;
     }
@@ -94,6 +128,8 @@ export class RootUpdater {
         admin: this.wallet.address.toString(),
         master: config.JETTON_MASTER_ADDRESS,
         admin_wallet_version: config.ADMIN_WALLET_VERSION,
+        admin_signing: hasPrivateKey ? 'private_key_hex' : 'mnemonic',
+        admin_mnemonic_password_configured: Boolean(config.ADMIN_MNEMONIC_PASSWORD.trim()),
         admin_v5r1_subwallet:
           config.ADMIN_WALLET_VERSION === 'v5r1' &&
           this.wallet instanceof WalletContractV5R1 &&
@@ -205,7 +241,7 @@ export class RootUpdater {
 
   /**
    * Reads wallet_id + public key from deployed Wallet V5 R1 storage.
-   * Proves ADMIN_MNEMONIC controls ADMIN_WALLET_ADDRESS even when Tonkeeper uses a non-standard wallet_id encoding (custom/backoffice context).
+   * Proves the configured key controls ADMIN_WALLET_ADDRESS even when Tonkeeper uses a non-standard wallet_id encoding (custom/backoffice context).
    */
   private async tryDeriveV5R1FromOnChainAdmin(publicKey: Buffer): Promise<WalletContractV5R1> {
     const expectedRaw = config.ADMIN_WALLET_ADDRESS.trim();
@@ -243,7 +279,7 @@ export class RootUpdater {
 
     if (Buffer.compare(onChainPublicKey, publicKey) !== 0) {
       throw new Error(
-        `ADMIN_MNEMONIC does not control ADMIN_WALLET_ADDRESS on ${config.TON_NETWORK}: public keys differ — paste the exact 24-word recovery phrase for this Tonkeeper wallet into ADMIN_MNEMONIC`,
+        `Signer key does not control ADMIN_WALLET_ADDRESS on ${config.TON_NETWORK}: public keys differ — use ADMIN_PRIVATE_KEY_HEX from this wallet export, or the exact 24-word phrase (+ ADMIN_MNEMONIC_PASSWORD if used in Tonkeeper)`,
       );
     }
 
@@ -288,7 +324,7 @@ export class RootUpdater {
       logger.warn(
         {
           epoch,
-          hint: 'Set JETTON_MASTER_ADDRESS and ADMIN_MNEMONIC so epochs commit on-chain; until then proofs may disagree with chain.',
+          hint: 'Set JETTON_MASTER_ADDRESS and ADMIN_PRIVATE_KEY_HEX or ADMIN_MNEMONIC so epochs commit on-chain; until then proofs may disagree with chain.',
         },
         'root updater idle — Merkle epoch recorded in DB only',
       );

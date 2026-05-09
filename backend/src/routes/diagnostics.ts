@@ -23,7 +23,10 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
     const now = Math.floor(Date.now() / 1000);
 
     const jettonConfigured = Boolean(config.JETTON_MASTER_ADDRESS?.trim());
-    const adminConfigured = Boolean(config.ADMIN_MNEMONIC?.trim());
+    const adminConfigured = Boolean(
+      config.ADMIN_MNEMONIC?.trim() ||
+        config.ADMIN_PRIVATE_KEY_HEX?.replace(/^0x/i, '').replace(/\s+/g, '').trim(),
+    );
     const rootUpdatesEnabled = deps.rootUpdater.isReady();
     const adminOnChain = await deps.rootUpdater.getAdminWalletOnChain();
 
@@ -35,12 +38,12 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       merkle_tree_users: deps.state.tree.size,
       epoch_duration_seconds: config.EPOCH_DURATION_SECONDS,
       jetton_master_configured: jettonConfigured,
-      admin_mnemonic_configured: adminConfigured,
+      admin_mnemonic_or_private_key_configured: adminConfigured,
       root_updates_will_send_onchain: rootUpdatesEnabled,
       admin_wallet_onchain: adminOnChain,
       integration_warnings: [
         ...(!jettonConfigured ? ['JETTON_MASTER_ADDRESS is empty'] : []),
-        ...(!adminConfigured ? ['ADMIN_MNEMONIC is empty — root updates cannot broadcast'] : []),
+        ...(!adminConfigured ? ['ADMIN_MNEMONIC or ADMIN_PRIVATE_KEY_HEX required — root updates cannot broadcast'] : []),
         ...(jettonConfigured && adminConfigured && !rootUpdatesEnabled
           ? ['Root updater did not initialise — check logs at startup (often ADMIN_WALLET_ADDRESS vs mnemonic / v5r1 subwallet)']
           : []),
@@ -52,7 +55,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
         ...(adminOnChain?.matches_standard_v5r1_code === false &&
         adminOnChain.contract_state === 'active'
           ? [
-              'On-chain admin contract is not standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4, or fix ADMIN_MNEMONIC / ADMIN_WALLET_ADDRESS',
+              'On-chain admin contract is not standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4, or fix signing key / ADMIN_WALLET_ADDRESS',
             ]
           : []),
       ],
