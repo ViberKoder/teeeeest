@@ -5,8 +5,10 @@ import { buildDeploy } from './buildMaster';
 import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
 import { generateSignerSecrets } from './signer';
 import { buildStandaloneJettonMetadataJson } from './metadata';
+import { ClaimTab } from './ClaimTab';
 
 type Step = 1 | 2 | 3 | 4;
+type AppTab = 'minter' | 'claim';
 
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -52,6 +54,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [deployedMaster, setDeployedMaster] = useState('');
+  const [appTab, setAppTab] = useState<AppTab>('minter');
 
   const derivedMetadataUrl = useMemo(() => {
     const b = backendUrl.trim().replace(/\/$/, '');
@@ -143,9 +146,8 @@ export function App() {
       `# Bot (@rmj/example-telegram-bot)`,
       `RMJ_BACKEND_URL=${backendOrigin}`,
       ``,
-      `# Mini App (@rmj/example-tma)`,
+      `# Mini App + вкладка Claim в минтере (достаточно URL бэкенда)`,
       `VITE_RMJ_BACKEND_URL=${backendOrigin}`,
-      `VITE_JETTON_MASTER_ADDRESS=${deployedMaster}`,
     ].join('\n');
   }, [deployedMaster, signerSeedHex, backendOrigin, name, symbol, description, imageUrl]);
 
@@ -159,6 +161,44 @@ export function App() {
         lineHeight: 1.45,
       }}
     >
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={() => setAppTab('minter')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 8,
+            border: appTab === 'minter' ? '2px solid #2563eb' : '1px solid #ccc',
+            background: appTab === 'minter' ? '#eff6ff' : '#fff',
+            cursor: 'pointer',
+            fontWeight: appTab === 'minter' ? 700 : 400,
+          }}
+        >
+          Минтер (деплой)
+        </button>
+        <button
+          type="button"
+          onClick={() => setAppTab('claim')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 8,
+            border: appTab === 'claim' ? '2px solid #15803d' : '1px solid #ccc',
+            background: appTab === 'claim' ? '#f0fdf4' : '#fff',
+            cursor: 'pointer',
+            fontWeight: appTab === 'claim' ? 700 : 400,
+          }}
+        >
+          Забрать токены (claim)
+        </button>
+      </div>
+
+      {appTab === 'claim' ? (
+        <>
+          <h1 style={{ marginTop: 0 }}>RMJ — claim на цепь</h1>
+          <ClaimTab />
+        </>
+      ) : (
+        <>
       <h1 style={{ marginTop: 0 }}>RMJ — мастер за пару кликов</h1>
       <p style={{ opacity: 0.85 }}>
         Rolling Mintless Jetton: деплой master через TON Connect + готовые строки для бэкенда,
@@ -347,15 +387,13 @@ export function App() {
             {[
               `RMJ_BACKEND_URL=${backendOrigin}`,
               `VITE_RMJ_BACKEND_URL=${backendOrigin}`,
-              `VITE_JETTON_MASTER_ADDRESS=${deployedMaster}`,
             ].join('\n')}
           </pre>
 
           <p style={{ marginTop: 16, fontSize: 14 }}>
             · Хостинг минтер-UI: Vercel, корень репозитория (есть <code>vercel.json</code>).<br />
             · Бот: <code>examples/telegram-bot</code> — только <code>RMJ_BACKEND_URL</code> и токен Telegram.<br />
-            · TMA: <code>examples/tma</code> — <code>VITE_RMJ_BACKEND_URL</code> и{' '}
-            <code>VITE_JETTON_MASTER_ADDRESS</code>.
+            · TMA / вкладка Claim в этом минтере: <code>VITE_RMJ_BACKEND_URL</code>; master в TMA опционален (jetton-wallet берётся с API).
           </p>
           <button type="button" onClick={() => { setStep(1); setDeployedMaster(''); }}>
             Начать новый проект
@@ -365,6 +403,8 @@ export function App() {
 
       {toast && (
         <div style={{ marginTop: 16, padding: 10, background: '#fef3c7', borderRadius: 8 }}>{toast}</div>
+      )}
+        </>
       )}
     </div>
   );

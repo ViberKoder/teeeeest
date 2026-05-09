@@ -2,6 +2,8 @@
 
 Веб-мастер деплоя `RollingMintlessMaster` через TON Connect: генерация signer, выбор URL метаданных (часто `{backend}/jetton-metadata.json`), деплой и готовый блок `.env` для бэкенда, бота и TMA.
 
+Отдельная вкладка **«Забрать токены (claim)»** — тот же поток, что в `examples/tma`: запрос proof у бэкенда и отправка jetton-transfer с `custom_payload` через TON Connect (удобно, если обычный кошелёк не подтягивает mintless API). Задайте `VITE_RMJ_BACKEND_URL` или введите URL бэкенда в поле на странице. На бэкенде нужны `GET /api/v1/balance`, `/api/v1/custom-payload`, `/api/v1/jetton-wallet`.
+
 ## Локально
 
 ```bash
