@@ -53,13 +53,7 @@ export class RootUpdater {
     });
 
     this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
-    this.wallet =
-      config.ADMIN_WALLET_VERSION === 'v5r1'
-        ? WalletContractV5R1.create({ publicKey: this.keypair.publicKey })
-        : WalletContractV4.create({
-            workchain: 0,
-            publicKey: this.keypair.publicKey,
-          });
+    this.wallet = this.createAdminWallet(this.keypair.publicKey);
     this.ready = true;
 
     logger.info(
@@ -67,9 +61,67 @@ export class RootUpdater {
         admin: this.wallet.address.toString(),
         master: config.JETTON_MASTER_ADDRESS,
         admin_wallet_version: config.ADMIN_WALLET_VERSION,
+        admin_v5r1_subwallet: config.ADMIN_WALLET_VERSION === 'v5r1' ? config.ADMIN_V5R1_SUBWALLET : undefined,
       },
       'root updater initialised',
     );
+  }
+
+  private createAdminWallet(publicKey: Buffer): WalletContractV4 | WalletContractV5R1 {
+    if (config.ADMIN_WALLET_VERSION !== 'v5r1') {
+      return WalletContractV4.create({
+        workchain: 0,
+        publicKey,
+      });
+    }
+
+    const makeV5 = (subwalletNumber: number) =>
+      WalletContractV5R1.create({
+        publicKey,
+        walletId: {
+          networkGlobalId: config.TON_NETWORK === 'mainnet' ? -239 : -3,
+          context: { walletVersion: 'v5r1', workchain: 0, subwalletNumber },
+        },
+      });
+
+    const expectedRaw = config.ADMIN_WALLET_ADDRESS.trim();
+    if (expectedRaw) {
+      try {
+        const expected = Address.parse(expectedRaw).toString({ bounceable: false, urlSafe: true });
+        const candidate = makeV5(config.ADMIN_V5R1_SUBWALLET);
+        const candidateAddress = candidate.address.toString({ bounceable: false, urlSafe: true });
+        if (candidateAddress === expected) {
+          return candidate;
+        }
+
+        for (let sw = 0; sw <= 128; sw += 1) {
+          const probed = makeV5(sw);
+          const probedAddress = probed.address.toString({ bounceable: false, urlSafe: true });
+          if (probedAddress === expected) {
+            logger.warn(
+              { expected_admin: expected, detected_v5r1_subwallet: sw, configured_subwallet: config.ADMIN_V5R1_SUBWALLET },
+              'admin address mismatch fixed by v5r1 subwallet auto-detection',
+            );
+            return probed;
+          }
+        }
+
+        logger.error(
+          {
+            expected_admin: expected,
+            derived_admin: candidateAddress,
+            configured_subwallet: config.ADMIN_V5R1_SUBWALLET,
+            hint: 'Set correct ADMIN_V5R1_SUBWALLET (or ensure ADMIN_MNEMONIC/TON_NETWORK match the admin wallet).',
+          },
+          'could not match ADMIN_WALLET_ADDRESS with v5r1 derived wallet',
+        );
+        return candidate;
+      } catch {
+        logger.warn({ admin_wallet_address: expectedRaw }, 'invalid ADMIN_WALLET_ADDRESS, skipping v5r1 auto-detection');
+      }
+    }
+
+    return makeV5(config.ADMIN_V5R1_SUBWALLET);
   }
 
   async queue(epoch: number, rootHex: string): Promise<void> {
