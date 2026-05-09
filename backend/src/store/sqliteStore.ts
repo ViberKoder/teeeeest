@@ -139,10 +139,36 @@ export class SqliteStore implements AppStore {
   async listActiveSince(since: number): Promise<Array<{ address: string; cumulative_amount: string }>> {
     return this.db
       .prepare(
-        `SELECT address, cumulative_amount FROM users
-         WHERE is_banned = 0 AND last_tapped_at >= ?`,
+        `SELECT u.address, u.cumulative_amount
+         FROM users u
+         WHERE u.is_banned = 0
+           AND EXISTS (
+             SELECT 1 FROM tap_events t
+             WHERE t.address = u.address AND t.created_at >= ?
+           )`,
       )
       .all(since) as Array<{ address: string; cumulative_amount: string }>;
+  }
+
+  async getUserTapStats(): Promise<{
+    non_banned_users: number;
+    max_last_tapped_at: number;
+    max_tap_event_at: number;
+  }> {
+    const userRow = this.db
+      .prepare(
+        `SELECT COUNT(*) AS c, COALESCE(MAX(last_tapped_at), 0) AS m
+         FROM users WHERE is_banned = 0`,
+      )
+      .get() as { c: number; m: number };
+    const tapRow = this.db
+      .prepare('SELECT COALESCE(MAX(created_at), 0) AS m FROM tap_events')
+      .get() as { m: number };
+    return {
+      non_banned_users: userRow.c,
+      max_last_tapped_at: Number(userRow.m),
+      max_tap_event_at: Number(tapRow.m),
+    };
   }
 
   async insertEpoch(params: {
