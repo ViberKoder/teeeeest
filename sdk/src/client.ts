@@ -117,8 +117,17 @@ export class RMJClient {
     if (!opts.baseUrl) throw new Error('RMJClient: baseUrl is required');
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
     this.adminSecret = opts.adminSecret;
-    this.fetchImpl = opts.fetch ?? (globalThis.fetch as typeof fetch);
-    if (!this.fetchImpl) {
+    /**
+     * Browser fetch must be invoked with the correct `this` (see DOM “Illegal invocation”).
+     * Telegram WebView / some embedded browsers throw "'fetch' called on an object that does not implement interface Window"
+     * if we keep a loose reference — always bind to `globalThis`.
+     */
+    const g = globalThis as typeof globalThis & { fetch?: typeof fetch };
+    if (opts.fetch) {
+      this.fetchImpl = opts.fetch;
+    } else if (typeof g.fetch === 'function') {
+      this.fetchImpl = g.fetch.bind(g);
+    } else {
       throw new Error('RMJClient: no fetch implementation available (pass opts.fetch)');
     }
     this.timeoutMs = opts.timeoutMs ?? 10_000;
