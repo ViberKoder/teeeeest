@@ -126,6 +126,11 @@ In your jetton metadata (TEP-64 / TEP-89), set:
 The `custom_payload_api_uri` suffix is `/{address}` — Tonkeeper will
 append the user's address automatically.
 
+For wallets that **do not** call this URL automatically, use the bundled
+Telegram Mini App (`examples/tma`): it builds a TEP-74 jetton transfer with
+the Proof API payload via TON Connect (`Claim / sync on-chain`), using
+`GET /api/v1/jetton-wallet/:owner` so the browser never needs direct RPC access.
+
 ## Self-hosting
 
 Minimal setup:

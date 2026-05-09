@@ -69,36 +69,48 @@ export function App() {
 
   const syncToWallet = useCallback(async () => {
     if (!address) return;
-    setSyncStatus('Fetching proof…');
+    setSyncStatus('Preparing claim transaction…');
     try {
       const payload = await rmj.getCustomPayload(address);
       if (!payload) {
-        setSyncStatus('Nothing to sync yet — tap first!');
+        setSyncStatus('Nothing to claim yet — earn some balance first (or wait for the next epoch).');
         return;
       }
 
-      // For "sync to wallet" we self-transfer 0 jettons — the piggyback claim
-      // materializes pending cumulative into the wallet balance.
-      const masterAddress = import.meta.env.VITE_JETTON_MASTER_ADDRESS as string;
-      if (!masterAddress) {
-        setSyncStatus('VITE_JETTON_MASTER_ADDRESS not set in .env');
-        return;
-      }
+      const jw = await rmj.getJettonWallet(address);
 
-      // Look up user's jetton-wallet via backend or master get method.
-      // For simplicity we call the backend which exposes /api/v1/status
-      // but for wallet address we rely on master directly. This example
-      // uses a naive approach: ask the user to do any outgoing transfer,
-      // which Tonkeeper will auto-wrap with our custom payload.
+      const transferPayload = buildJettonTransferPayloadBase64({
+        jettonAmountNano: 0n,
+        toOwner: address,
+        responseAddress: address,
+        forwardTonAmountNano: 1n,
+        customPayload: payload,
+      });
+
+      await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [
+          {
+            address: jw.jettonWallet,
+            amount: DEFAULT_ATTACHED_TON_NANO.toString(),
+            payload: transferPayload,
+            stateInit: jw.walletStateInitBase64 ?? undefined,
+          },
+        ],
+      });
 
       setSyncStatus(
-        'Open Tonkeeper and do any transfer of this jetton — your pending balance will be materialized automatically.',
+        jw.needsDeploy
+          ? 'Transaction sent — first deployment + claim can take ~30s. Refresh your wallet.'
+          : 'Transaction sent — balance should appear after confirmation.',
       );
-
-      // Programmatic path (requires knowing user's jetton-wallet):
-      // await tonConnectUI.sendTransaction({ validUntil: ..., messages: [ ... ] });
     } catch (e) {
-      setSyncStatus(`Sync failed: ${(e as Error).message}`);
+      const msg = (e as Error).message;
+      if (msg.includes('Rejected') || msg.includes('reject')) {
+        setSyncStatus('Cancelled in wallet.');
+      } else {
+        setSyncStatus(`Sync failed: ${msg}`);
+      }
     }
   }, [address, tonConnectUI]);
 
@@ -137,14 +149,14 @@ export function App() {
           </button>
 
           <button onClick={syncToWallet} style={styles.sync}>
-            Sync balance to my wallet
+            Claim / sync on-chain (TON Connect)
           </button>
           {syncStatus && <div style={styles.syncStatus}>{syncStatus}</div>}
 
           <p style={styles.foot}>
-            Rewards automatically show up in your wallet the next time you
-            swap or transfer. You pay nothing extra — the claim is embedded
-            in any jetton transfer you already do.
+            Works even when your wallet app ignores mintless APIs: we attach the Proof API{' '}
+            <code style={{ fontSize: 11 }}>custom_payload</code> ourselves via TON Connect
+            (self-transfer 0 jettons + claim). ~0.1 TON gas covers fees / wallet deploy.
           </p>
         </>
       )}

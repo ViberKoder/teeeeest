@@ -88,6 +88,16 @@ export interface BackendStatus {
   signer: string;
 }
 
+/** Resolved jetton-wallet contract for the configured RMJ master (+ deploy payload when needed). */
+export interface JettonWalletInfo {
+  jettonMaster: string;
+  owner: string;
+  jettonWallet: string;
+  jettonWalletActive: boolean;
+  needsDeploy: boolean;
+  walletStateInitBase64: string | null;
+}
+
 export class RMJError extends Error {
   constructor(public readonly status: number, public readonly payload: unknown) {
     super(typeof payload === 'object' && payload && 'error' in (payload as any)
@@ -245,6 +255,29 @@ export class RMJClient {
       root: r.root,
       treeSize: r.tree_size,
       signer: r.signer,
+    };
+  }
+
+  /**
+   * Jetton-wallet address for this owner + optional StateInit (base64) when the wallet is not deployed yet.
+   * Used with TON Connect to send a self-transfer with {@link getCustomPayload} attached.
+   */
+  async getJettonWallet(owner: string): Promise<JettonWalletInfo> {
+    const r = await this.request<{
+      jetton_master: string;
+      owner: string;
+      jetton_wallet: string;
+      jetton_wallet_active: boolean;
+      needs_deploy: boolean;
+      wallet_state_init_base64: string | null;
+    }>(`/api/v1/jetton-wallet/${encodeURIComponent(owner)}`);
+    return {
+      jettonMaster: r.jetton_master,
+      owner: r.owner,
+      jettonWallet: r.jetton_wallet,
+      jettonWalletActive: r.jetton_wallet_active,
+      needsDeploy: r.needs_deploy,
+      walletStateInitBase64: r.wallet_state_init_base64,
     };
   }
 
