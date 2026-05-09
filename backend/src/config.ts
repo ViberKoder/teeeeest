@@ -14,6 +14,10 @@ const schema = z.object({
   ADMIN_MNEMONIC: z.string().default(''),
   /** Admin wallet contract version used for on-chain root updates. */
   ADMIN_WALLET_VERSION: z.enum(['v4', 'v5r1']).default('v4'),
+  /** Optional: expected admin wallet address (from Tonkeeper). Used to validate/autodetect v5r1 subwallet. */
+  ADMIN_WALLET_ADDRESS: z.string().default(''),
+  /** v5r1 subwallet number (0..32767). If ADMIN_WALLET_ADDRESS is provided, backend can auto-detect this. */
+  ADMIN_V5R1_SUBWALLET: z.coerce.number().int().min(0).max(32767).default(0),
 
   TON_NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
   TON_RPC_ENDPOINT: z.string().default(''),

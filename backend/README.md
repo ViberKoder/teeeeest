@@ -13,6 +13,8 @@
 | `SIGNER_SEED_HEX`                    | 64 hex-символа — тот же seed, что и pubkey в Jetton Master (генерируется в мастере минтера).                    |
 | `ADMIN_MNEMONIC`                     | Фраза кошелька-админа master (для on-chain root updates).                                                       |
 | `ADMIN_WALLET_VERSION`               | Тип админ-кошелька для подписи tx: `v4` или `v5r1` (если Tonkeeper Wallet V5R1 — укажите `v5r1`).              |
+| `ADMIN_WALLET_ADDRESS`               | (Опц.) Ожидаемый адрес админ-кошелька из Tonkeeper. Нужен для проверки/автоподбора v5r1 subwallet.              |
+| `ADMIN_V5R1_SUBWALLET`               | (Опц.) Номер subwallet для v5r1 (0..32767). По умолчанию `0`; может отличаться в приложении кошелька.          |
 | `JETTON_MASTER_ADDRESS`              | Адрес master после деплоя.                                                                                      |
 | `DATABASE_URL`                       | **Railway Postgres** — подключите БД к сервису; URL подставится автоматически. Без неё — SQLite файл `DB_PATH`. |
 | `PUBLIC_APP_URL` + `PUBLIC_JETTON_`* | По желанию: отдаёт `GET /jetton-metadata.json`.                                                                 |
