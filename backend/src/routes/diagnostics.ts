@@ -25,6 +25,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
     const jettonConfigured = Boolean(config.JETTON_MASTER_ADDRESS?.trim());
     const adminConfigured = Boolean(config.ADMIN_MNEMONIC?.trim());
     const rootUpdatesEnabled = deps.rootUpdater.isReady();
+    const adminOnChain = await deps.rootUpdater.getAdminWalletOnChain();
 
     return {
       service: 'rmj-backend',
@@ -36,11 +37,23 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       jetton_master_configured: jettonConfigured,
       admin_mnemonic_configured: adminConfigured,
       root_updates_will_send_onchain: rootUpdatesEnabled,
+      admin_wallet_onchain: adminOnChain,
       integration_warnings: [
         ...(!jettonConfigured ? ['JETTON_MASTER_ADDRESS is empty'] : []),
         ...(!adminConfigured ? ['ADMIN_MNEMONIC is empty — root updates cannot broadcast'] : []),
         ...(jettonConfigured && adminConfigured && !rootUpdatesEnabled
-          ? ['Root updater did not initialise — check logs at startup']
+          ? ['Root updater did not initialise — check logs at startup (often ADMIN_WALLET_ADDRESS vs mnemonic / v5r1 subwallet)']
+          : []),
+        ...(adminOnChain && adminOnChain.contract_state !== 'active'
+          ? [
+              `Admin wallet ${adminOnChain.derived_address} is ${adminOnChain.contract_state} on ${config.TON_NETWORK} — deploy it (send any outgoing tx in Tonkeeper) and fund TON before Merkle roots can broadcast`,
+            ]
+          : []),
+        ...(adminOnChain?.matches_standard_v5r1_code === false &&
+        adminOnChain.contract_state === 'active'
+          ? [
+              'On-chain admin contract is not standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4, or fix ADMIN_MNEMONIC / ADMIN_WALLET_ADDRESS',
+            ]
           : []),
       ],
       last_tree_builder_tick_unix: lastTickUnix,

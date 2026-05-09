@@ -1,10 +1,21 @@
 import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
-import { Address, internal, toNano, beginCell, SendMode } from '@ton/core';
+import { Address, Cell, internal, toNano, beginCell, SendMode } from '@ton/core';
 import { mnemonicToPrivateKey, KeyPair } from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
 import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
+
+/** Standard Wallet V5 R1 code hash (@ton/ton WalletContractV5R1). */
+const WALLET_V5R1_CODE_HASH_HEX = Buffer.from(
+  WalletContractV5R1.create({
+    publicKey: Buffer.alloc(32),
+    walletId: {
+      networkGlobalId: -239,
+      context: { walletVersion: 'v5r1', workchain: 0, subwalletNumber: 0 },
+    },
+  }).init.code.hash(),
+).toString('hex');
 
 /**
  * Root Updater: pushes `op::update_merkle_root` transactions from the
@@ -52,8 +63,17 @@ export class RootUpdater {
       apiKey: config.TON_RPC_API_KEY || undefined,
     });
 
-    this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
-    this.wallet = this.createAdminWallet(this.keypair.publicKey);
+    try {
+      this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
+      this.wallet = this.createAdminWallet(this.keypair.publicKey);
+    } catch (e) {
+      logger.error(
+        { err: e },
+        'root updater: admin wallet derivation failed — fix ADMIN_MNEMONIC / ADMIN_WALLET_ADDRESS / ADMIN_WALLET_VERSION',
+      );
+      return;
+    }
+
     this.ready = true;
 
     logger.info(
@@ -65,6 +85,39 @@ export class RootUpdater {
       },
       'root updater initialised',
     );
+  }
+
+  /**
+   * Snapshot of the derived admin address on the configured RPC (for /diagnostics).
+   * Null when the updater never initialised a wallet (missing env or derivation error).
+   */
+  async getAdminWalletOnChain(): Promise<null | {
+    derived_address: string;
+    contract_state: 'active' | 'uninitialized' | 'frozen';
+    code_hash_hex: string | null;
+    matches_standard_v5r1_code: boolean | null;
+  }> {
+    if (!this.client || !this.wallet) return null;
+
+    const adminAddr = this.wallet.address;
+    const st = await this.client.getContractState(adminAddr);
+    let code_hash_hex: string | null = null;
+    if (st.code) {
+      code_hash_hex = Buffer.from(Cell.fromBoc(st.code)[0].hash()).toString('hex');
+    }
+    const matches_standard_v5r1_code =
+      config.ADMIN_WALLET_VERSION !== 'v5r1'
+        ? null
+        : code_hash_hex === null
+          ? null
+          : code_hash_hex === WALLET_V5R1_CODE_HASH_HEX;
+
+    return {
+      derived_address: adminAddr.toString({ bounceable: false, urlSafe: true }),
+      contract_state: st.state,
+      code_hash_hex,
+      matches_standard_v5r1_code,
+    };
   }
 
   private createAdminWallet(publicKey: Buffer): WalletContractV4 | WalletContractV5R1 {
@@ -88,35 +141,47 @@ export class RootUpdater {
     if (expectedRaw) {
       try {
         const expected = Address.parse(expectedRaw).toString({ bounceable: false, urlSafe: true });
-        const candidate = makeV5(config.ADMIN_V5R1_SUBWALLET);
-        const candidateAddress = candidate.address.toString({ bounceable: false, urlSafe: true });
-        if (candidateAddress === expected) {
-          return candidate;
-        }
 
-        for (let sw = 0; sw <= 128; sw += 1) {
+        let hit: WalletContractV5R1 | null = null;
+        let hitSubwallet: number | null = null;
+
+        const trySubwallet = (sw: number): void => {
+          if (hit) return;
           const probed = makeV5(sw);
-          const probedAddress = probed.address.toString({ bounceable: false, urlSafe: true });
-          if (probedAddress === expected) {
-            logger.warn(
-              { expected_admin: expected, detected_v5r1_subwallet: sw, configured_subwallet: config.ADMIN_V5R1_SUBWALLET },
-              'admin address mismatch fixed by v5r1 subwallet auto-detection',
-            );
-            return probed;
+          if (probed.address.toString({ bounceable: false, urlSafe: true }) === expected) {
+            hit = probed;
+            hitSubwallet = sw;
           }
+        };
+
+        trySubwallet(config.ADMIN_V5R1_SUBWALLET);
+        for (let sw = 0; sw <= 32767 && !hit; sw += 1) {
+          if (sw === config.ADMIN_V5R1_SUBWALLET) continue;
+          trySubwallet(sw);
         }
 
-        logger.error(
-          {
-            expected_admin: expected,
-            derived_admin: candidateAddress,
-            configured_subwallet: config.ADMIN_V5R1_SUBWALLET,
-            hint: 'Set correct ADMIN_V5R1_SUBWALLET (or ensure ADMIN_MNEMONIC/TON_NETWORK match the admin wallet).',
-          },
-          'could not match ADMIN_WALLET_ADDRESS with v5r1 derived wallet',
-        );
-        return candidate;
-      } catch {
+        if (!hit) {
+          throw new Error(
+            `ADMIN_WALLET_ADDRESS does not match any v5r1 subwallet (0..32767) for this mnemonic on TON_NETWORK=${config.TON_NETWORK}`,
+          );
+        }
+
+        if (hitSubwallet !== null && hitSubwallet !== config.ADMIN_V5R1_SUBWALLET) {
+          logger.warn(
+            {
+              expected_admin: expected,
+              detected_v5r1_subwallet: hitSubwallet,
+              configured_subwallet: config.ADMIN_V5R1_SUBWALLET,
+            },
+            'admin address matched via v5r1 subwallet auto-detection',
+          );
+        }
+
+        return hit;
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('ADMIN_WALLET_ADDRESS does not match')) {
+          throw e;
+        }
         logger.warn({ admin_wallet_address: expectedRaw }, 'invalid ADMIN_WALLET_ADDRESS, skipping v5r1 auto-detection');
       }
     }
@@ -148,7 +213,7 @@ export class RootUpdater {
       const rpcCode = err?.response?.data?.code as number | undefined;
       const hint =
         rpcError?.includes('Failed to unpack account state')
-          ? 'Likely network/address mismatch: check TON_NETWORK, TON_RPC_ENDPOINT, JETTON_MASTER_ADDRESS, and ADMIN_WALLET_VERSION.'
+          ? 'Lite server rejected the wallet external message: admin wallet may be uninitialized on this network, not standard Wallet V5R1/V4 (wrong ADMIN_WALLET_VERSION), wrong mnemonic vs ADMIN_WALLET_ADDRESS, or TON_NETWORK/RPC mismatch. Call GET /api/v1/diagnostics for admin contract_state and code hash.'
           : rpcCode === 429
             ? 'Toncenter rate limit: set TON_RPC_API_KEY and consider retry/backoff.'
             : undefined;
@@ -190,6 +255,41 @@ export class RootUpdater {
         'root update aborted: jetton master is not active',
       );
       return;
+    }
+
+    const adminAddr = this.wallet.address;
+    const walletState = await this.client.getContractState(adminAddr);
+    const adminFriendly = adminAddr.toString({ bounceable: false, urlSafe: true });
+
+    if (walletState.state !== 'active') {
+      logger.error(
+        {
+          epoch,
+          admin_wallet: adminFriendly,
+          admin_wallet_state: walletState.state,
+          ton_network: config.TON_NETWORK,
+          hint: 'Open this address in Tonviewer on this network; send any outgoing tx once so the wallet deploys, then top up TON for fees.',
+        },
+        'root update aborted: admin wallet is not active',
+      );
+      return;
+    }
+
+    if (config.ADMIN_WALLET_VERSION === 'v5r1' && walletState.code) {
+      const onChainHash = Buffer.from(Cell.fromBoc(walletState.code)[0].hash()).toString('hex');
+      if (onChainHash !== WALLET_V5R1_CODE_HASH_HEX) {
+        logger.error(
+          {
+            epoch,
+            admin_wallet: adminFriendly,
+            on_chain_code_hash: onChainHash,
+            expected_v5r1_code_hash: WALLET_V5R1_CODE_HASH_HEX,
+            hint: 'Chain code differs from standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4, or use the mnemonic for the wallet that owns this address.',
+          },
+          'root update aborted: admin wallet code is not Wallet V5 R1',
+        );
+        return;
+      }
     }
 
     const walletContract = this.client.open(this.wallet);
