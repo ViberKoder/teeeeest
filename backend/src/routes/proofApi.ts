@@ -1,6 +1,8 @@
 import { FastifyInstance } from 'fastify';
-import { Address } from '@ton/core';
+import { Address, beginCell, storeStateInit } from '@ton/core';
+import { JettonMaster } from '@ton/ton';
 import {
+  RollingMintlessWallet,
   buildRollingClaimPayload,
   payloadToBase64,
 } from '@rmj/contracts';
@@ -9,6 +11,7 @@ import { GameServer } from '../gameServer';
 import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
 import { config } from '../config';
+import { createTonClient } from '../tonClient';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -16,73 +19,164 @@ export interface ProofApiDeps {
   signer: VoucherSigner;
 }
 
+type CustomPayloadBody = {
+  custom_payload: string;
+  state_init: string | null;
+  compressed_info: {
+    amount: string;
+    start_from: number;
+    expired_at: number;
+  };
+  epoch: number;
+  root: string;
+};
+
+async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
+  const masterRaw = config.JETTON_MASTER_ADDRESS?.trim();
+  if (!masterRaw) return null;
+  try {
+    const client = createTonClient();
+    const masterAddr = Address.parse(masterRaw);
+    const master = client.open(JettonMaster.create(masterAddr));
+    const jettonWalletAddr = await master.getWalletAddress(owner);
+    const st = await client.getContractState(jettonWalletAddr);
+    if (st.state !== 'active') {
+      return 0n;
+    }
+    const jw = client.open(RollingMintlessWallet.createFromAddress(jettonWalletAddr));
+    return await jw.getAlreadyClaimed();
+  } catch (e) {
+    logger.warn({ err: e, owner: owner.toString() }, 'custom-payload: could not read on-chain already_claimed');
+    return null;
+  }
+}
+
+async function maybeJettonWalletStateInitBase64(
+  owner: Address,
+  signerPubkey: bigint,
+): Promise<string | null> {
+  const masterRaw = config.JETTON_MASTER_ADDRESS?.trim();
+  if (!masterRaw) return null;
+  try {
+    const client = createTonClient();
+    const masterAddr = Address.parse(masterRaw);
+    const master = client.open(JettonMaster.create(masterAddr));
+    const jettonWalletAddr = await master.getWalletAddress(owner);
+    const st = await client.getContractState(jettonWalletAddr);
+    if (st.state === 'active') {
+      return null;
+    }
+    const jd = await master.getJettonData();
+    const walletCode = jd.walletCode;
+    const jw = RollingMintlessWallet.createFromConfig(
+      {
+        owner,
+        master: masterAddr,
+        walletCode,
+        signerPubkey,
+      },
+      walletCode,
+    );
+    if (!jw.init?.code || !jw.init?.data) {
+      return null;
+    }
+    const si = beginCell().store(storeStateInit({ code: jw.init.code, data: jw.init.data })).endCell();
+    const resolved = jw.address.toString({ bounceable: false, urlSafe: true });
+    const expected = jettonWalletAddr.toString({ bounceable: false, urlSafe: true });
+    if (resolved !== expected) {
+      logger.error(
+        { resolved, expected, owner: owner.toString() },
+        'custom-payload: derived StateInit address mismatch — check SIGNER_SEED_HEX vs on-chain master',
+      );
+      return null;
+    }
+    return si.toBoc().toString('base64');
+  } catch (e) {
+    logger.warn({ err: e, owner: owner.toString() }, 'custom-payload: could not build jetton wallet state_init');
+    return null;
+  }
+}
+
+async function buildCustomPayloadBody(owner: Address, deps: ProofApiDeps): Promise<CustomPayloadBody | null> {
+  if (!deps.state.tree.has(owner)) {
+    return null;
+  }
+  const leaf = deps.state.tree.get(owner)!;
+  const treeAmt = leaf.cumulativeAmount;
+
+  const onChain = await readOnChainAlreadyClaimed(owner);
+  const already = onChain ?? 0n;
+  const delta = treeAmt > already ? treeAmt - already : 0n;
+
+  if (delta === 0n) {
+    return null;
+  }
+
+  const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
+  const proof = deps.state.tree.generateProof(owner);
+  const customPayload = buildRollingClaimPayload({ proof, voucher });
+
+  const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
+
+  return {
+    custom_payload: payloadToBase64(customPayload),
+    state_init: stateInit,
+    compressed_info: {
+      amount: delta.toString(),
+      start_from: leaf.startFrom,
+      expired_at: leaf.expiredAt,
+    },
+    epoch: deps.state.epoch,
+    root: deps.state.rootHex(),
+  };
+}
+
 /**
- * Public Proof API. Endpoint matches the TEP-177 `custom_payload_api_uri`
- * convention, so Tonkeeper / MyTonWallet will consume it automatically.
+ * Public Proof API. Matches TEP-177 `custom_payload_api_uri` (`GET …/custom-payload/:owner`)
+ * and ton-wallet / mintless `GET …/custom-payload/wallet/:owner`.
  *
- * GET /api/v1/custom-payload/:address
- *
- *   Response:
- *   {
- *     "custom_payload": "<base64 BoC of rolling_claim cell>",
- *     "state_init": null,
- *     "compressed_info": {
- *       "amount": "<delta: unclaimed cumulative as string>",
- *       "start_from": 0,
- *       "expired_at": 9999999999
- *     }
- *   }
- *
- * The `compressed_info.amount` is the DELTA between the tree's cumulative
- * and the on-chain `already_claimed` — this is the number the wallet UI
- * displays as "unclaimed". For now we show the full cumulative (since
- * querying on-chain `already_claimed` requires a lite-client roundtrip);
- * the on-chain contract rejects stale-amount claims anyway, so this only
- * affects the wallet display.
+ * `compressed_info.amount` is the unclaimed delta (tree cumulative minus on-chain
+ * `already_claimed`) when `JETTON_MASTER_ADDRESS` is set and RPC succeeds; otherwise
+ * on-chain is treated as 0 (undeployed jetton-wallet).
  */
 export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void {
-  app.get<{
-    Params: { address: string };
-  }>('/api/v1/custom-payload/:address', async (req, reply) => {
-    let addr: Address;
+  const serveCustomPayload = async (addressParam: string, reply: { code: (n: number) => void }) => {
+    let owner: Address;
     try {
-      addr = Address.parse(req.params.address);
+      owner = Address.parse(addressParam);
     } catch {
       reply.code(400);
       return { error: 'invalid-address' };
     }
 
-    if (!deps.state.tree.has(addr)) {
+    const body = await buildCustomPayloadBody(owner, deps);
+    if (!body) {
+      const inTree = deps.state.tree.has(owner);
       logger.debug(
         {
-          address: addr.toString({ urlSafe: true, bounceable: false }),
+          address: owner.toString({ urlSafe: true, bounceable: false }),
           epoch: deps.state.epoch,
           tree_users: deps.state.tree.size,
+          in_tree: inTree,
         },
-        'custom-payload: address not in tree yet (normal until next epoch; set LOG_LEVEL=debug to see these)',
+        'custom-payload: address not in tree or nothing to claim',
       );
       reply.code(404);
-      return { error: 'address-not-in-tree' };
+      return inTree ? { error: 'nothing-to-claim' } : { error: 'address-not-in-tree' };
     }
 
-    const leaf = deps.state.tree.get(addr)!;
+    return body;
+  };
 
-    const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
-    const proof = deps.state.tree.generateProof(addr);
-    const customPayload = buildRollingClaimPayload({ proof, voucher });
+  app.get<{ Params: { address: string } }>(
+    '/api/v1/custom-payload/wallet/:address',
+    async (req, reply) => serveCustomPayload(req.params.address, reply),
+  );
 
-    return {
-      custom_payload: payloadToBase64(customPayload),
-      state_init: null, // wallet state_init handled by consuming wallet apps / SDK
-      compressed_info: {
-        amount: leaf.cumulativeAmount.toString(),
-        start_from: leaf.startFrom,
-        expired_at: leaf.expiredAt,
-      },
-      epoch: deps.state.epoch,
-      root: deps.state.rootHex(),
-    };
-  });
+  app.get<{ Params: { address: string } }>(
+    '/api/v1/custom-payload/:address',
+    async (req, reply) => serveCustomPayload(req.params.address, reply),
+  );
 
   /**
    * Lightweight "what do we know about this address" endpoint, used by TMAs
@@ -118,5 +212,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     balance_display: config.PUBLIC_BALANCE_DISPLAY,
   }));
 
-  logger.info('proof api routes registered');
+  logger.info(
+    'proof api routes registered: GET /api/v1/custom-payload/:address, GET /api/v1/custom-payload/wallet/:address',
+  );
 }

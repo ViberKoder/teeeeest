@@ -136,6 +136,12 @@ export class RollingMintlessWallet implements Contract {
     return res.stack.readBigNumber();
   }
 
+  /** Mintless / ton-wallet compatibility: TVM `is_claimed` (always false for rolling semantics). */
+  async getIsClaimed(provider: ContractProvider): Promise<boolean> {
+    const res = await provider.get('is_claimed', []);
+    return res.stack.readBoolean();
+  }
+
   async getCachedRoot(provider: ContractProvider): Promise<{ root: bigint; epoch: number }> {
     const res = await provider.get('get_cached_root', []);
     return {
