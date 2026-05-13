@@ -12,6 +12,7 @@ import { OpCodes } from '@rmj/contracts';
 import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
+import { createTonClient } from './tonClient';
 
 /** Standard Wallet V5 R1 code hash (@ton/ton WalletContractV5R1). */
 function normalizeAdminPrivateKeyHex(raw: string): string {
@@ -76,16 +77,7 @@ export class RootUpdater {
       return;
     }
 
-    const endpoint =
-      config.TON_RPC_ENDPOINT ||
-      (config.TON_NETWORK === 'mainnet'
-        ? 'https://toncenter.com/api/v2/jsonRPC'
-        : 'https://testnet.toncenter.com/api/v2/jsonRPC');
-
-    this.client = new TonClient({
-      endpoint,
-      apiKey: config.TON_RPC_API_KEY || undefined,
-    });
+    this.client = createTonClient();
 
     try {
       if (hasPrivateKey && hasMnemonic) {
