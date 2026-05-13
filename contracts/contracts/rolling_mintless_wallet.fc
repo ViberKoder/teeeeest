@@ -311,6 +311,13 @@ int get_already_claimed() method_id {
   return already_claimed;
 }
 
+;; Mintless / ton-wallet compatibility: they call `is_claimed` on deployed jetton-wallets.
+;; Rolling jettons claim repeatedly against an updating Merkle root; we always return false
+;; so wallets keep calling custom_payload_api for fresh `compressed_info.amount` deltas.
+int is_claimed() method_id {
+  return 0;
+}
+
 (int, int) get_cached_root() method_id {
   (_, _, _, _, _, int root, int epoch, _) = load_data();
   return (root, epoch);

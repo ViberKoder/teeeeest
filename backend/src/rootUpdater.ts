@@ -5,6 +5,7 @@ import { OpCodes } from '@rmj/contracts';
 import type { AppStore } from './store/appStore';
 import { config } from './config';
 import { logger } from './logger';
+import { createTonClient } from './tonClient';
 
 /**
  * Root Updater: pushes `op::update_merkle_root` transactions from the
@@ -41,16 +42,7 @@ export class RootUpdater {
       return;
     }
 
-    const endpoint =
-      config.TON_RPC_ENDPOINT ||
-      (config.TON_NETWORK === 'mainnet'
-        ? 'https://toncenter.com/api/v2/jsonRPC'
-        : 'https://testnet.toncenter.com/api/v2/jsonRPC');
-
-    this.client = new TonClient({
-      endpoint,
-      apiKey: config.TON_RPC_API_KEY || undefined,
-    });
+    this.client = createTonClient();
 
     this.keypair = await mnemonicToPrivateKey(config.ADMIN_MNEMONIC.trim().split(/\s+/));
     this.wallet = WalletContractV4.create({

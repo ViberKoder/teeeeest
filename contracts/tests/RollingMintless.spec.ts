@@ -162,6 +162,7 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
     const cached1 = await userWallet.getCachedRoot();
     expect(cached1.epoch).toBe(1);
     expect(cached1.root).toBe(onChainRoot1);
+    expect(await userWallet.getIsClaimed()).toBe(false);
 
     // ---- Epoch 2: user earns 5 more jettons off-chain ----
     tree.set(user.address, {
