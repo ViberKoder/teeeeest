@@ -44,4 +44,5 @@ export const ErrorCodes = {
   proofExpired: 805,
   proofStaleAmount: 806,
   epochNotIncreasing: 807,
+  maxSupplyExceeded: 808,
 } as const;

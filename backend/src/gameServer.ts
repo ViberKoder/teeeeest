@@ -29,7 +29,14 @@ export interface GameAction {
 
 export type GameActionResult =
   | { ok: true; cumulativeAmount: bigint; deltaApplied: bigint }
-  | { ok: false; reason: 'rate-limited-per-second' | 'daily-cap-reached' | 'user-banned' };
+  | {
+      ok: false;
+      reason:
+        | 'rate-limited-per-second'
+        | 'daily-cap-reached'
+        | 'user-banned'
+        | 'max-supply-reached';
+    };
 
 export class GameServer {
   constructor(readonly store: AppStore) {}
@@ -65,6 +72,21 @@ export class GameServer {
     }
 
     const newCumulative = BigInt(user.cumulative_amount) + reward;
+
+    const cap = config.JETTON_MAX_SUPPLY_NANO;
+    if (cap > 0n) {
+      const sumStr = await this.store.sumCumulativeNonBanned();
+      const sum = BigInt(sumStr);
+      const oldC = BigInt(user.cumulative_amount);
+      const projectedSum = sum - oldC + newCumulative;
+      if (projectedSum > cap) {
+        logger.warn(
+          { address, projected_sum: projectedSum.toString(), cap: cap.toString() },
+          'tap/action rejected — global max supply reached',
+        );
+        return { ok: false, reason: 'max-supply-reached' };
+      }
+    }
 
     await this.store.applyRewardAndTap({
       address,

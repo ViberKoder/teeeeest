@@ -117,11 +117,13 @@ In your jetton metadata (TEP-64 / TEP-89), set:
 {
   "name": "TapCoin",
   "symbol": "TAP",
-  "decimals": "9",
+  "decimals": "0",
   "mintless_merkle_dump_uri": "https://rmj.example.com/dumps/latest.boc",
   "custom_payload_api_uri": "https://rmj.example.com/api/v1/custom-payload"
 }
 ```
+
+Use **`"decimals": "0"`** when one off-chain / on-chain smallest unit should display as **one whole token** in wallets (RMJ default with `PUBLIC_BALANCE_DISPLAY=integer`). Use `"9"` only for fractional jettons (`PUBLIC_BALANCE_DISPLAY=jetton_nano` on the backend metadata route).
 
 The `custom_payload_api_uri` suffix is `/{address}` — Tonkeeper will
 append the user's address automatically.

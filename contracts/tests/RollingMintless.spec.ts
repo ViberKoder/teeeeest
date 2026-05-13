@@ -342,3 +342,80 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
     });
   });
 });
+
+describe('Rolling Mintless Jetton — max supply (admin mint)', () => {
+  let masterCode: Cell;
+  let walletCode: Cell;
+  let blockchain: Blockchain;
+  let admin: SandboxContract<TreasuryContract>;
+  let master: SandboxContract<RollingMintlessMaster>;
+  let signer: KeyPair;
+
+  beforeAll(async () => {
+    masterCode = await compile('RollingMintlessMaster');
+    walletCode = await compile('RollingMintlessWallet');
+  });
+
+  beforeEach(async () => {
+    blockchain = await Blockchain.create();
+    admin = await blockchain.treasury('admin');
+    signer = await mnemonicToPrivateKey(await mnemonicNew());
+    const content = beginCell().storeUint(0, 8).endCell();
+    master = blockchain.openContract(
+      RollingMintlessMaster.createFromConfig(
+        {
+          totalSupply: 0n,
+          maxSupply: toNano('100'),
+          admin: admin.address,
+          content,
+          walletCode,
+          signerPubkey: BigInt('0x' + signer.publicKey.toString('hex')),
+        },
+        masterCode,
+      ),
+    );
+    await master.sendDeploy(admin.getSender(), toNano('1'));
+  });
+
+  it('rejects mint that would exceed max_supply', async () => {
+    const to = await blockchain.treasury('holder');
+    const ok = await master.sendMint(admin.getSender(), {
+      to: to.address,
+      jettonAmount: toNano('60'),
+      forwardTonAmount: 0n,
+      totalTonAmount: toNano('0.2'),
+    });
+    expect((await master.getJettonData()).totalSupply).toEqual(toNano('60'));
+    expect(await master.getMaxSupply()).toEqual(toNano('100'));
+
+    const bad = await master.sendMint(admin.getSender(), {
+      to: to.address,
+      jettonAmount: toNano('50'),
+      forwardTonAmount: 0n,
+      totalTonAmount: toNano('0.2'),
+    });
+    expect(bad.transactions).toHaveTransaction({
+      on: master.address,
+      success: false,
+      exitCode: ErrorCodes.maxSupplyExceeded,
+    });
+
+    const jd = await master.getJettonData();
+    expect(jd.totalSupply).toEqual(toNano('60'));
+    expect(jd.mintable).toBe(true);
+  });
+
+  it('get_jetton_data reports mintable = false when supply is at cap', async () => {
+    const to = await blockchain.treasury('holder');
+    const res = await master.sendMint(admin.getSender(), {
+      to: to.address,
+      jettonAmount: toNano('100'),
+      forwardTonAmount: 0n,
+      totalTonAmount: toNano('0.25'),
+    });
+    expect((await master.getJettonData()).totalSupply).toEqual(toNano('100'));
+    const jd = await master.getJettonData();
+    expect(jd.totalSupply).toEqual(toNano('100'));
+    expect(jd.mintable).toBe(false);
+  });
+});

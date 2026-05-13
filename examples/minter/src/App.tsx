@@ -51,6 +51,8 @@ export function App() {
   const [manualMetadataUrl, setManualMetadataUrl] = useState('');
 
   const [deployValueTon, setDeployValueTon] = useState('0.15');
+  /** Empty = unlimited; whole jettons (×1e9 nano), same semantics as backend JETTON_MAX_SUPPLY_NANO. */
+  const [maxSupplyWholeJettons, setMaxSupplyWholeJettons] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [deployedMaster, setDeployedMaster] = useState('');
@@ -67,6 +69,12 @@ export function App() {
   const effectiveMetadataUrl =
     metadataMode === 'backend' ? derivedMetadataUrl : manualMetadataUrl.trim();
 
+  const maxSupplyNano = useMemo(() => {
+    const t = maxSupplyWholeJettons.trim();
+    if (!t) return 0n;
+    return BigInt(t) * 1_000_000_000n;
+  }, [maxSupplyWholeJettons]);
+
   const validationDeploy = useMemo(() => {
     if (!walletAddress) return 'Подключите кошелёк';
     if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex))
@@ -74,8 +82,10 @@ export function App() {
     if (!effectiveMetadataUrl || !effectiveMetadataUrl.startsWith('http'))
       return 'Нужен URL метаданных (https)';
     if (!/^[0-9]+(\.[0-9]+)?$/.test(deployValueTon)) return 'Сумма деплоя — число TON';
+    const ms = maxSupplyWholeJettons.trim();
+    if (ms && !/^[0-9]+$/.test(ms)) return 'Макс. выпуск — только целое число jetton (или пусто = без лимита)';
     return null;
-  }, [walletAddress, signerPubkeyHex, effectiveMetadataUrl, deployValueTon]);
+  }, [walletAddress, signerPubkeyHex, effectiveMetadataUrl, deployValueTon, maxSupplyWholeJettons]);
 
   function regenerateSigner() {
     const s = generateSignerSecrets();
@@ -99,6 +109,7 @@ export function App() {
         metadataUrl: effectiveMetadataUrl,
         walletCodeBase64: WALLET_BOC_BASE64,
         masterCodeBase64: MASTER_BOC_BASE64,
+        maxSupplyNano,
       });
       const masterFriendly = address.toString({
         bounceable: false,
@@ -142,6 +153,7 @@ export function App() {
       `PUBLIC_JETTON_DESCRIPTION=${description.trim()}`,
       `PUBLIC_JETTON_IMAGE_URL=${imageUrl.trim()}`,
       `TON_NETWORK=${NETWORK === 'mainnet' ? 'mainnet' : 'testnet'}`,
+      ...(maxSupplyNano > 0n ? [`JETTON_MAX_SUPPLY_NANO=${maxSupplyNano.toString()}`] : []),
       ``,
       `# Bot (@rmj/example-telegram-bot)`,
       `RMJ_BACKEND_URL=${backendOrigin}`,
@@ -149,7 +161,7 @@ export function App() {
       `# Mini App + вкладка Claim в минтере (достаточно URL бэкенда)`,
       `VITE_RMJ_BACKEND_URL=${backendOrigin}`,
     ].join('\n');
-  }, [deployedMaster, signerSeedHex, backendOrigin, name, symbol, description, imageUrl]);
+  }, [deployedMaster, signerSeedHex, backendOrigin, name, symbol, description, imageUrl, maxSupplyNano]);
 
   return (
     <div
@@ -261,6 +273,15 @@ export function App() {
             <label>
               Картинка (URL)
               <input style={{ width: '100%' }} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
+            </label>
+            <label>
+              Макс. выпуск (целых jetton, пусто = без лимита)
+              <input
+                style={{ width: '100%' }}
+                value={maxSupplyWholeJettons}
+                onChange={(e) => setMaxSupplyWholeJettons(e.target.value)}
+                placeholder="например 1000000"
+              />
             </label>
             <label>
               URL бэкенда (без слэша в конце)

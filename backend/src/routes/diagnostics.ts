@@ -39,6 +39,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       epoch_duration_seconds: config.EPOCH_DURATION_SECONDS,
       balance_display: config.PUBLIC_BALANCE_DISPLAY,
       jetton_master_configured: jettonConfigured,
+      jetton_max_supply_nano: config.JETTON_MAX_SUPPLY_NANO.toString(),
       admin_mnemonic_or_private_key_configured: adminConfigured,
       root_updates_will_send_onchain: rootUpdatesEnabled,
       admin_wallet_onchain: adminOnChain,

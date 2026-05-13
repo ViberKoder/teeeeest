@@ -6,6 +6,8 @@ export interface BuildMasterParams {
   metadataUrl: string;
   walletCodeBase64: string;
   masterCodeBase64: string;
+  /** 0n = unlimited admin mint on-chain; otherwise master rejects mints above this cap. */
+  maxSupplyNano?: bigint;
 }
 
 /** Макс. байт UTF-8, которые помещаются в одну ячейку после префикса 0x01 (1023−8 бит). */
@@ -52,6 +54,7 @@ function masterDataCell(params: BuildMasterParams): Cell {
 
   return beginCell()
     .storeCoins(0n) // total_supply
+    .storeCoins(params.maxSupplyNano ?? 0n) // max_supply (0 = unlimited)
     .storeAddress(params.admin)
     .storeRef(content)
     .storeRef(walletCode)

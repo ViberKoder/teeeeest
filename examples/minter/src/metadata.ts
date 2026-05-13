@@ -11,7 +11,7 @@ export function buildStandaloneJettonMetadataJson(opts: {
     name: opts.name.trim(),
     symbol: opts.symbol.trim(),
     description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
-    decimals: '9',
+    decimals: '0',
     custom_payload_api_uri: `${base}/api/v1/custom-payload`,
   };
   const img = opts.image.trim();

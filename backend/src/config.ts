@@ -44,6 +44,24 @@ const schema = z.object({
   TON_RPC_ENDPOINT: z.string().default(''),
   TON_RPC_API_KEY: z.string().default(''),
   JETTON_MASTER_ADDRESS: z.string().default(''),
+  /**
+   * Optional global cap on the sum of all non-banned users' off-chain cumulative_amount (jetton nano).
+   * When set (>0), POST /api/v1/action and admin grant reject if the new sum would exceed this value.
+   * Should match the jetton master's on-chain max_supply (admin mint cap) for consistent economics.
+   */
+  JETTON_MAX_SUPPLY_NANO: z
+    .string()
+    .default('')
+    .transform((s) => {
+      const t = s.trim().replace(/\s+/g, '');
+      if (!t) return 0n;
+      if (!/^[0-9]+$/.test(t)) return 0n;
+      try {
+        return BigInt(t);
+      } catch {
+        return 0n;
+      }
+    }),
 
   EPOCH_DURATION_SECONDS: z.coerce.number().int().min(10).default(60),
   PROOF_VALIDITY_WINDOW_DAYS: z.coerce.number().int().min(1).default(365),

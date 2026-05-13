@@ -86,17 +86,15 @@ slice calculate_user_jetton_wallet_address(
 
 ;; Build outgoing internal-message cell with given destination, value, body and optional state-init.
 cell build_message_with_init(slice to_addr, int ton_amount, cell body, cell state_init) inline {
-  builder b = begin_cell()
+  ;; CommonMsgInfoRelaxed + init/body both as refs (same pattern as ton-community jetton masters).
+  return begin_cell()
     .store_uint(0x18, 6)
     .store_slice(to_addr)
     .store_coins(ton_amount)
-    .store_uint(0, 1 + 4 + 4 + 64 + 32)
-    .store_uint(1, 1)
-    .store_uint(1, 1)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
     .store_ref(state_init)
-    .store_uint(1, 1)
-    .store_ref(body);
-  return b.end_cell();
+    .store_ref(body)
+    .end_cell();
 }
 
 cell build_message_no_init(slice to_addr, int ton_amount, cell body) inline {

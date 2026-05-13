@@ -29,6 +29,9 @@ export interface AppStore {
 
   getCumulativeAmount(address: string): Promise<string | undefined>;
 
+  /** Sum of `cumulative_amount` for all non-banned users (string bigint). */
+  sumCumulativeNonBanned(): Promise<string>;
+
   setBan(address: string, banned: boolean): Promise<void>;
 
   listActiveSince(since: number): Promise<Array<{ address: string; cumulative_amount: string }>>;
