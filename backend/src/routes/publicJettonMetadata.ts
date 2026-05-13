@@ -22,13 +22,15 @@ export function registerPublicJettonMetadata(app: FastifyInstance): void {
     }
 
     const image = config.PUBLIC_JETTON_IMAGE_URL.trim();
+    /** Wallets divide on-chain balance by 10^decimals. Use `0` so 1 DB / 1 chain unit = 1 shown token (see PUBLIC_BALANCE_DISPLAY=integer). */
+    const decimals = config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '0' : '9';
     const body: Record<string, string> = {
       name,
       symbol,
       description:
         config.PUBLIC_JETTON_DESCRIPTION.trim() ||
         `${symbol} — Rolling Mintless Jetton rewards.`,
-      decimals: '9',
+      decimals,
       custom_payload_api_uri: `${base}/api/v1/custom-payload`,
     };
     if (image) body.image = image;
