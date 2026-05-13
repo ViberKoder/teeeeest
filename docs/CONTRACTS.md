@@ -42,6 +42,7 @@ Wallet-side errors relevant to the rolling claim:
 | 805  | Claim expired (now > expired_at)                 |
 | 806  | Stale amount (cumulative <= already_claimed)     |
 | 807  | Admin sent non-increasing epoch                  |
+| 808  | Admin mint would exceed `max_supply`           |
 
 ## Storage layouts
 
@@ -50,6 +51,7 @@ Wallet-side errors relevant to the rolling claim:
 ```
 storage$_
   total_supply:Coins
+  max_supply:Coins        ;; 0 = unlimited admin mint
   admin_address:MsgAddressInt
   content:^Cell
   wallet_code:^Cell
@@ -146,6 +148,7 @@ async function main() {
   const master = RollingMintlessMaster.createFromConfig(
     {
       totalSupply: 0n,
+      maxSupply: 0n,
       admin: adminWallet.address,
       content,
       walletCode,

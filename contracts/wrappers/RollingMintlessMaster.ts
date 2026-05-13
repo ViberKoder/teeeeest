@@ -13,6 +13,8 @@ import { OpCodes } from './OpCodes';
 
 export interface RollingMintlessMasterConfig {
   totalSupply: bigint;
+  /** 0n = unlimited admin mints; otherwise mint rejects when total_supply + amount > maxSupply. */
+  maxSupply?: bigint;
   admin: Address;
   content: Cell;
   walletCode: Cell;
@@ -31,6 +33,7 @@ export function rollingMintlessMasterConfigToCell(cfg: RollingMintlessMasterConf
     .endCell();
   return beginCell()
     .storeCoins(cfg.totalSupply)
+    .storeCoins(cfg.maxSupply ?? 0n)
     .storeAddress(cfg.admin)
     .storeRef(cfg.content)
     .storeRef(cfg.walletCode)
@@ -191,11 +194,18 @@ export class RollingMintlessMaster implements Contract {
     const res = await provider.get('get_jetton_data', []);
     return {
       totalSupply: res.stack.readBigNumber(),
+      // TEP-74: mintable is -1 (yes) or 0 (no) on-chain; any non-zero reads as true here.
       mintable: res.stack.readNumber() !== 0,
       admin: res.stack.readAddress(),
       content: res.stack.readCell(),
       walletCode: res.stack.readCell(),
     };
+  }
+
+  /** 0n = no on-chain cap for admin mint (unlimited). */
+  async getMaxSupply(provider: ContractProvider): Promise<bigint> {
+    const res = await provider.get('get_max_supply', []);
+    return res.stack.readBigNumber();
   }
 
   async getWalletAddress(provider: ContractProvider, owner: Address): Promise<Address> {

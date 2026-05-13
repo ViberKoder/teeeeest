@@ -17,6 +17,7 @@
 | `ADMIN_WALLET_ADDRESS`               | (Опц.) Ожидаемый адрес админ-кошелька из Tonkeeper. Нужен для проверки/автоподбора v5r1 subwallet.              |
 | `ADMIN_V5R1_SUBWALLET`               | (Опц.) Номер subwallet для v5r1 (0..32767). По умолчанию `0`; может отличаться в приложении кошелька.          |
 | `JETTON_MASTER_ADDRESS`              | Адрес master после деплоя.                                                                                      |
+| `JETTON_MAX_SUPPLY_NANO`             | (Опц.) Потолок суммы `cumulative_amount` по всем не забаненным пользователям (nano). Пусто = без лимита; совпадайте с `max_supply` при деплое master. |
 | `DATABASE_URL`                       | **Railway Postgres** — подключите БД к сервису; URL подставится автоматически. Без неё — SQLite файл `DB_PATH`. |
 | `PUBLIC_APP_URL` + `PUBLIC_JETTON_`* | По желанию: отдаёт `GET /jetton-metadata.json`.                                                                 |
 | `PUBLIC_BALANCE_DISPLAY`             | `integer` (по умолчанию) — в UI целые «токены» без `0.000…`; `jetton_nano` — делить на 10⁹ как у jetton на сети. |

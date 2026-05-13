@@ -132,6 +132,17 @@ export class SqliteStore implements AppStore {
     return row?.cumulative_amount;
   }
 
+  async sumCumulativeNonBanned(): Promise<string> {
+    const rows = this.db
+      .prepare('SELECT cumulative_amount FROM users WHERE is_banned = 0')
+      .all() as Array<{ cumulative_amount: string }>;
+    let t = 0n;
+    for (const r of rows) {
+      t += BigInt(r.cumulative_amount || '0');
+    }
+    return t.toString();
+  }
+
   async setBan(address: string, banned: boolean): Promise<void> {
     this.db.prepare('UPDATE users SET is_banned = ? WHERE address = ?').run(banned ? 1 : 0, address);
   }

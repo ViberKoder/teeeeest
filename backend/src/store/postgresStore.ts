@@ -163,6 +163,17 @@ export class PostgresStore implements AppStore {
     return rows[0]?.cumulative_amount;
   }
 
+  async sumCumulativeNonBanned(): Promise<string> {
+    const { rows } = await this.pool.query<{ cumulative_amount: string }>(
+      'SELECT cumulative_amount FROM users WHERE is_banned = 0',
+    );
+    let t = 0n;
+    for (const r of rows) {
+      t += BigInt(r.cumulative_amount || '0');
+    }
+    return t.toString();
+  }
+
   async setBan(address: string, banned: boolean): Promise<void> {
     await this.pool.query('UPDATE users SET is_banned = $1 WHERE address = $2', [
       banned ? 1 : 0,

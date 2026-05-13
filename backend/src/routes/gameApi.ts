@@ -58,7 +58,7 @@ export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
         { address: parsed.data.address, reason: result.reason, source: parsed.data.source },
         'POST /api/v1/action rejected',
       );
-      reply.code(429);
+      reply.code(result.reason === 'max-supply-reached' ? 409 : 429);
       return { error: result.reason };
     }
 
