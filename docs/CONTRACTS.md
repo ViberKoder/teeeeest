@@ -35,14 +35,15 @@ Wallet-side errors relevant to the rolling claim:
 | 73   | Unauthorized                                     |
 | 74   | Master paused                                    |
 | 800  | Voucher signature invalid                        |
-| 801  | Voucher epoch not strictly greater than cached   |
+| 801  | Voucher epoch is behind wallet cache (rolled back) |
 | 802  | Merkle proof root mismatch                       |
 | 803  | Airdrop entry not found in proof                 |
 | 804  | Claim not started (now < start_from)             |
 | 805  | Claim expired (now > expired_at)                 |
-| 806  | Stale amount (cumulative <= already_claimed)     |
+| 806  | Proof cumulative below already_claimed           |
 | 807  | Admin sent non-increasing epoch                  |
-| 808  | Admin mint would exceed `max_supply`           |
+| 808  | Admin mint would exceed `max_supply`             |
+| 809  | Voucher epoch matches cache but root differs   |
 
 ## Storage layouts
 

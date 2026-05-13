@@ -53,6 +53,8 @@ int error::proof_expired()          asm "805 PUSHINT";
 int error::proof_stale_amount()     asm "806 PUSHINT";
 int error::epoch_not_increasing()   asm "807 PUSHINT";
 int error::max_supply_exceeded()    asm "808 PUSHINT";
+;; Same merkle epoch as wallet cache but different root (invalid voucher replay).
+int error::voucher_epoch_root_mismatch() asm "809 PUSHINT";
 
 int const::min_tons_for_storage()   asm "10000000 PUSHINT"; ;; 0.01 TON
 int const::gas_consumption()        asm "15000000 PUSHINT"; ;; 0.015 TON
