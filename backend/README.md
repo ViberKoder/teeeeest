@@ -21,6 +21,7 @@
 | `DATABASE_URL`                       | **Railway Postgres** — подключите БД к сервису; URL подставится автоматически. Без неё — SQLite файл `DB_PATH`. |
 | `PUBLIC_APP_URL` + `PUBLIC_JETTON_`* | По желанию: отдаёт `GET /jetton-metadata.json`.                                                                 |
 | `PUBLIC_BALANCE_DISPLAY`             | `integer` (по умолчанию) — API и бот показывают целые «поинты»; `jetton_nano` — делить на 10⁹. Влияет и на **`GET /jetton-metadata.json`**: при `integer` поле **`decimals` = `"0"`** (MyTonWallet/Tonkeeper покажут **77**, а не `0.000000077`); при `jetton_nano` — **`decimals` = `"9"`**. |
+| `TAP_VALUE_NANO`                     | При **`PUBLIC_BALANCE_DISPLAY=integer`** обычно **`1`**: один тап = +1 к cumulative (один отображаемый токен за тап). Для `jetton_nano` часто **`1000000000`** (+1.0 jetton за тап при `decimals` `"9"`). |
 
 
 Сеть TON: `TON_NETWORK=testnet|mainnet`, при необходимости `TON_RPC_API_KEY`.

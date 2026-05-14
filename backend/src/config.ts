@@ -68,7 +68,11 @@ const schema = z.object({
 
   MAX_TAPS_PER_SECOND: z.coerce.number().int().min(1).default(5),
   MAX_TAPS_PER_DAY: z.coerce.number().int().min(1).default(100_000),
-  TAP_VALUE_NANO: z.coerce.bigint().default(1_000_000_000n),
+  /**
+   * Raw amount added to `users.cumulative_amount` per tap (same units as on-chain jetton `Coins`).
+   * Default `1` pairs with `PUBLIC_BALANCE_DISPLAY=integer` (decimals `"0"` in jetton metadata) so one tap ≈ one shown token.
+   */
+  TAP_VALUE_NANO: z.coerce.bigint().default(1n),
 
   DB_PATH: z.string().default('./rmj.db'),
 

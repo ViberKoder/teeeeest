@@ -6,6 +6,7 @@ import { config } from '../config';
  * `content` URL at `{PUBLIC_APP_URL}/jetton-metadata.json` without a separate host.
  *
  * Requires: PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL.
+ * TEP-64 `decimals` follows `PUBLIC_BALANCE_DISPLAY` (`integer` → `"0"`, `jetton_nano` → `"9"`).
  */
 export function registerPublicJettonMetadata(app: FastifyInstance): void {
   app.get('/jetton-metadata.json', async (_req, reply) => {
