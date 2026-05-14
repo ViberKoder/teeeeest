@@ -26,7 +26,7 @@ const ActionSchema = z.object({
  *
  * The server is the sole source of truth: the `reward` override is only
  * honoured if it's within product-configured bounds. Otherwise the default
- * TAP_VALUE_NANO is used.
+ * TAP_VALUE_NANO is used (same units as on-chain jetton balance; see PUBLIC_JETTON_DECIMALS).
  */
 export function registerGameApi(app: FastifyInstance, deps: GameApiDeps): void {
   app.post('/api/v1/action', async (req, reply) => {

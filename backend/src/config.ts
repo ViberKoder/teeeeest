@@ -23,7 +23,11 @@ const schema = z.object({
 
   MAX_TAPS_PER_SECOND: z.coerce.number().int().min(1).default(5),
   MAX_TAPS_PER_DAY: z.coerce.number().int().min(1).default(100_000),
-  TAP_VALUE_NANO: z.coerce.bigint().default(1_000_000_000n),
+  /**
+   * Raw amount added to `users.cumulative_amount` per tap (same units as on-chain jetton `Coins`).
+   * Default 1 pairs with PUBLIC_JETTON_DECIMALS=0 so one bot point ≈ one displayed token.
+   */
+  TAP_VALUE_NANO: z.coerce.bigint().default(1n),
 
   DB_PATH: z.string().default('./rmj.db'),
 
@@ -38,6 +42,11 @@ const schema = z.object({
   PUBLIC_JETTON_SYMBOL: z.string().default(''),
   PUBLIC_JETTON_DESCRIPTION: z.string().default(''),
   PUBLIC_JETTON_IMAGE_URL: z.string().default(''),
+  /**
+   * TEP-64 `decimals` for `/jetton-metadata.json`. Use `0` so wallet UIs show whole tokens
+   * (1 on-chain unit = "1"), or `9` for fractional nano-jetton display.
+   */
+  PUBLIC_JETTON_DECIMALS: z.enum(['0', '9']).default('0'),
 });
 
 const parsed = schema.safeParse(process.env);

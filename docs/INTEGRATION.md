@@ -117,14 +117,15 @@ In your jetton metadata (TEP-64 / TEP-89), set:
 {
   "name": "TapCoin",
   "symbol": "TAP",
-  "decimals": "9",
+  "decimals": "0",
   "mintless_merkle_dump_uri": "https://rmj.example.com/dumps/latest.boc",
   "custom_payload_api_uri": "https://rmj.example.com/api/v1/custom-payload"
 }
 ```
 
-The `custom_payload_api_uri` suffix is `/{address}` — Tonkeeper will
-append the user's address automatically.
+Use **`decimals": "0"`** when one off-chain point maps to **one smallest on-chain jetton unit**, so wallets show `1` instead of `0.000000001` (which happens with `"9"`). Hosted backends set `PUBLIC_JETTON_DECIMALS` (default `0`) for `GET /jetton-metadata.json`.
+
+The `custom_payload_api_uri` base is loaded from jetton metadata; Tonkeeper requests `{uri}/{address}`. **MyTonWallet** requests `{uri}/wallet/{rawAddress}` — this backend serves both paths.
 
 ## Self-hosting
 

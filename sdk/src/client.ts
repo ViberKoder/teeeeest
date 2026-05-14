@@ -49,7 +49,7 @@ export interface ActionInput {
   address: string;
   /** Where the action was triggered from. */
   source?: 'web' | 'telegram-inline' | 'tma' | 'api';
-  /** Optional override of TAP_VALUE_NANO (nano units, as string). */
+  /** Optional override of per-tap reward (same units as server `TAP_VALUE_NANO`, decimal string). */
   rewardNano?: string;
   /** Arbitrary metadata persisted in tap_events for anti-cheat forensics. */
   meta?: Record<string, unknown>;

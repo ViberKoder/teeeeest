@@ -6,6 +6,7 @@ import { config } from '../config';
  * `content` URL at `{PUBLIC_APP_URL}/jetton-metadata.json` without a separate host.
  *
  * Requires: PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL.
+ * Decimals come from PUBLIC_JETTON_DECIMALS (default 0 = one on-chain unit displays as one token).
  */
 export function registerPublicJettonMetadata(app: FastifyInstance): void {
   app.get('/jetton-metadata.json', async (_req, reply) => {
@@ -28,7 +29,7 @@ export function registerPublicJettonMetadata(app: FastifyInstance): void {
       description:
         config.PUBLIC_JETTON_DESCRIPTION.trim() ||
         `${symbol} — Rolling Mintless Jetton rewards.`,
-      decimals: '9',
+      decimals: config.PUBLIC_JETTON_DECIMALS,
       custom_payload_api_uri: `${base}/api/v1/custom-payload`,
     };
     if (image) body.image = image;

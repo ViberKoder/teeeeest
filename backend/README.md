@@ -15,6 +15,8 @@
 | `JETTON_MASTER_ADDRESS`              | Адрес master после деплоя.                                                                                      |
 | `DATABASE_URL`                       | **Railway Postgres** — подключите БД к сервису; URL подставится автоматически. Без неё — SQLite файл `DB_PATH`. |
 | `PUBLIC_APP_URL` + `PUBLIC_JETTON_`* | По желанию: отдаёт `GET /jetton-metadata.json`.                                                                 |
+| `PUBLIC_JETTON_DECIMALS`            | `0` (по умолчанию) — в кошельке **1** единица баланса = **1** токен в UI; `9` — классические nano-jetton (деление на 10⁹). |
+| `TAP_VALUE_NANO`                    | При `PUBLIC_JETTON_DECIMALS=0` обычно **`1`**: один тап = +1 к cumulative и к отображаемому балансу.                    |
 
 
 Сеть TON: `TON_NETWORK=testnet|mainnet`, при необходимости `TON_RPC_API_KEY`.
