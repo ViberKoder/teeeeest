@@ -28,6 +28,15 @@
  */
 
 import type { BalanceDisplayMode } from './formatBalance';
+import { Address } from '@ton/core';
+
+/**
+ * Path segment for `/api/v1/balance/…`, `/api/v1/custom-payload/…`, etc.
+ * MyTonWallet mintless calls use `workchain:hex` (`Address.toRawString()`), not user-facing UQ/EQ.
+ */
+export function addressToApiPathSegment(address: string): string {
+  return Address.parse(address).toRawString();
+}
 
 export interface RMJClientOptions {
   /** Base URL of the backend (no trailing slash). */
@@ -241,7 +250,7 @@ export class RMJClient {
       cumulative_in_tree: string;
       epoch: number;
       balance_display?: BalanceDisplayMode;
-    }>(`/api/v1/balance/${encodeURIComponent(address)}`);
+    }>(`/api/v1/balance/${addressToApiPathSegment(address)}`);
     return {
       address: r.address,
       cumulativeOffchain: r.cumulative_offchain,
@@ -259,7 +268,7 @@ export class RMJClient {
         compressed_info: { amount: string; start_from: number; expired_at: number };
         epoch: number;
         root: string;
-      }>(`/api/v1/custom-payload/${encodeURIComponent(address)}`);
+      }>(`/api/v1/custom-payload/${addressToApiPathSegment(address)}`);
       return {
         customPayload: r.custom_payload,
         stateInit: r.state_init,
@@ -304,7 +313,7 @@ export class RMJClient {
       jetton_wallet_active: boolean;
       needs_deploy: boolean;
       wallet_state_init_base64: string | null;
-    }>(`/api/v1/jetton-wallet/${encodeURIComponent(owner)}`);
+    }>(`/api/v1/jetton-wallet/${addressToApiPathSegment(owner)}`);
     return {
       jettonMaster: r.jetton_master,
       owner: r.owner,
