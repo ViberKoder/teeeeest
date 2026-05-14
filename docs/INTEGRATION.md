@@ -125,7 +125,7 @@ In your jetton metadata (TEP-64 / TEP-89), set:
 
 Use **`"decimals": "0"`** when one off-chain / on-chain smallest unit should display as **one whole token** in wallets (RMJ default with `PUBLIC_BALANCE_DISPLAY=integer`). Use `"9"` only for fractional jettons (`PUBLIC_BALANCE_DISPLAY=jetton_nano` on the backend metadata route).
 
-The `custom_payload_api_uri` base is loaded from jetton metadata. **Tonkeeper** requests `{uri}/{address}`. **MyTonWallet** requests `{uri}/wallet/{rawAddress}` — this backend serves both paths.
+The `custom_payload_api_uri` base is loaded from jetton metadata. **Tonkeeper** requests `{uri}/{address}`. **MyTonWallet** requests `{uri}/wallet/{rawAddress}` where `rawAddress` is `workchain:hex` (`0:…`, from `Address.toRawString()`), not `UQ…` / `EQ…` — this backend serves both paths. The **`@rmj/sdk`** client normalizes any friendly address to that raw path segment for `getBalance`, `getCustomPayload`, and `getJettonWallet`.
 
 For wallets that **do not** call this URL automatically, use the bundled
 Telegram Mini App (`examples/tma`): it builds a TEP-74 jetton transfer with
