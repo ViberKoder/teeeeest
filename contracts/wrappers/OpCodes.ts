@@ -45,4 +45,5 @@ export const ErrorCodes = {
   proofStaleAmount: 806,
   epochNotIncreasing: 807,
   maxSupplyExceeded: 808,
+  voucherEpochRootMismatch: 809,
 } as const;

@@ -203,8 +203,8 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
     // Now we "bump" the epoch on-chain WITHOUT growing the user's leaf —
     // this simulates an operator pushing a new root for unrelated users while
     // the user's cumulative_amount stays at 10. The wallet should accept the
-    // fresh voucher (new epoch) but reject the claim because leaf.amount ==
-    // already_claimed.
+    // fresh voucher (new epoch) syncs root/epoch with zero balance delta, then the
+    // transfer fails because the wallet has no jettons to send.
     await updateRoot(2);
 
     const res = await performClaim(recipient, toNano('1'));
@@ -213,11 +213,11 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
       from: user.address,
       to: userWalletAddr,
       success: false,
-      exitCode: ErrorCodes.proofStaleAmount,
+      exitCode: ErrorCodes.notEnoughJetton,
     });
   });
 
-  it('rejects voucher with stale epoch', async () => {
+  it('rejects same-epoch voucher when merkle root disagrees with cache', async () => {
     tree.set(user.address, {
       cumulativeAmount: toNano('10'),
       startFrom: 0,
@@ -250,8 +250,90 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
       from: user.address,
       to: userWallet.address,
       success: false,
+      exitCode: ErrorCodes.voucherEpochRootMismatch,
+    });
+  });
+
+  it('rejects voucher when signed epoch is behind wallet cache', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+    const rootAtEpoch1 = tree.root();
+
+    const recipient = await blockchain.treasury('recipient');
+    await performClaim(recipient, toNano('10'));
+
+    tree.set(user.address, {
+      cumulativeAmount: toNano('15'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(2);
+    await performClaim(recipient, toNano('5'));
+
+    const voucher = signVoucher(1, rootAtEpoch1, signer.secretKey);
+    const proof = tree.generateProof(user.address);
+    const customPayload = buildRollingClaimPayload({ proof, voucher });
+
+    const userWallet = await openUserWalletWithInit();
+    const res = await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: toNano('1'),
+      to: recipient.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.3'),
+      customPayload,
+    });
+    expect(res.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: false,
       exitCode: ErrorCodes.voucherStaleEpoch,
     });
+  });
+
+  it('allows transfer when wallet replays same-epoch voucher after partial claim', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+
+    const recipient = await blockchain.treasury('recipient');
+    const first = await performClaim(recipient, toNano('5'));
+    const userWallet = await openUserWalletWithInit();
+    expect(first.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: true,
+    });
+    expect((await userWallet.getWalletData()).balance).toBe(toNano('5'));
+
+    const root = tree.root();
+    const voucher = signVoucher(
+      (await master.getMerkleRoot()).epoch,
+      root,
+      signer.secretKey,
+    );
+    const proof = tree.generateProof(user.address);
+    const customPayload = buildRollingClaimPayload({ proof, voucher });
+
+    const second = await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: toNano('5'),
+      to: recipient.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.3'),
+      customPayload,
+    });
+    expect(second.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: true,
+    });
+    expect((await userWallet.getWalletData()).balance).toBe(0n);
   });
 
   it('rejects voucher with bad signature', async () => {

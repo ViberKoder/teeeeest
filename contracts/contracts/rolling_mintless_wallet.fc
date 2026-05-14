@@ -18,10 +18,12 @@
 ;; On receipt of a transfer with a rolling-claim custom payload:
 ;;   1. If voucher is present and voucher.epoch > cached_epoch, verify the
 ;;      signature against signer_pubkey and update cached_merkle_root/epoch.
+;;      If voucher.epoch == cached_epoch, the root must match the cache (wallets
+;;      often replay the same signed voucher on every transfer after a claim).
 ;;   2. Verify proof commits to cached_merkle_root.
 ;;   3. Inside the proof's proven cell, lookup this wallet owner's 267-bit
 ;;      key and extract `{cumulative_amount, start_from, expired_at}`.
-;;   4. Check timing, check cumulative_amount > already_claimed, credit the
+;;   4. Check timing, check cumulative_amount >= already_claimed, credit the
 ;;      delta to balance, set already_claimed := cumulative_amount.
 ;;   5. Continue the standard TEP-74 transfer flow with the user's `amount`.
 ;;
@@ -102,7 +104,10 @@ int handle_rolling_claim(
     slice sig_slice = sig_cell.begin_parse();
     slice signature = sig_slice~load_bits(512);
 
-    throw_unless(error::voucher_stale_epoch(), v_epoch > cached_epoch);
+    throw_unless(error::voucher_stale_epoch(), v_epoch >= cached_epoch);
+    if (v_epoch == cached_epoch) {
+      throw_unless(error::voucher_epoch_root_mismatch(), v_root == cached_root);
+    }
     int msg_hash = cell_hash(
       begin_cell()
         .store_uint(v_epoch, 32)
@@ -124,7 +129,7 @@ int handle_rolling_claim(
   int now_ts = now();
   throw_unless(error::proof_not_started(), now_ts >= start_from);
   throw_unless(error::proof_expired(), now_ts <= expired_at);
-  throw_unless(error::proof_stale_amount(), cumulative_amount > already_claimed);
+  throw_unless(error::proof_stale_amount(), cumulative_amount >= already_claimed);
 
   int delta = cumulative_amount - already_claimed;
 
