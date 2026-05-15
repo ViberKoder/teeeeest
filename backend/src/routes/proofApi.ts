@@ -132,8 +132,10 @@ async function buildCustomPayloadBody(owner: Address, deps: ProofApiDeps): Promi
 }
 
 /**
- * Public Proof API. Matches TEP-177 `custom_payload_api_uri` (`GET …/custom-payload/:owner`)
- * and ton-wallet / mintless `GET …/custom-payload/wallet/:owner`.
+ * Mintless / TEP-177 proof API. Jetton metadata sets `custom_payload_api_uri` to
+ * `{PUBLIC_APP_URL}/api/v1/custom-payload`; wallets request
+ * `GET {custom_payload_api_uri}/wallet/{owner}` where `owner` is raw `workchain:hex`
+ * (`Address.toRawString()`, e.g. `0:abc…`).
  *
  * `compressed_info.amount` is the unclaimed delta (tree cumulative minus on-chain
  * `already_claimed`) when `JETTON_MASTER_ADDRESS` is set and RPC succeeds; otherwise
@@ -173,11 +175,6 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     async (req, reply) => serveCustomPayload(req.params.address, reply),
   );
 
-  app.get<{ Params: { address: string } }>(
-    '/api/v1/custom-payload/:address',
-    async (req, reply) => serveCustomPayload(req.params.address, reply),
-  );
-
   /**
    * Lightweight "what do we know about this address" endpoint, used by TMAs
    * and bots to display a growing balance in their own UI.
@@ -212,7 +209,5 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     balance_display: config.PUBLIC_BALANCE_DISPLAY,
   }));
 
-  logger.info(
-    'proof api routes registered: GET /api/v1/custom-payload/:address, GET /api/v1/custom-payload/wallet/:address',
-  );
+  logger.info('proof api route registered: GET /api/v1/custom-payload/wallet/:address (raw owner)');
 }

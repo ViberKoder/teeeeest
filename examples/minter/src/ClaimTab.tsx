@@ -187,7 +187,7 @@ export function ClaimTab() {
       )}
 
       <p style={{ marginTop: 24, fontSize: 13, opacity: 0.75 }}>
-        Нужны методы <code>/api/v1/balance</code>, <code>/api/v1/custom-payload</code>,{' '}
+        Нужны методы <code>/api/v1/balance</code>, <code>/api/v1/custom-payload/wallet/…</code>,{' '}
         <code>/api/v1/jetton-wallet</code> на бэкенде (ветка с jetton-wallet API).
       </p>
     </section>

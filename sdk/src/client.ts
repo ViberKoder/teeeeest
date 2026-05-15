@@ -31,8 +31,7 @@ import type { BalanceDisplayMode } from './formatBalance';
 import { Address } from '@ton/core';
 
 /**
- * Path segment for `/api/v1/balance/…`, `/api/v1/custom-payload/…`, etc.
- * MyTonWallet mintless calls use `workchain:hex` (`Address.toRawString()`), not user-facing UQ/EQ.
+ * Raw owner segment for wallet-facing mintless URLs (`workchain:hex`, not UQ/EQ).
  */
 export function addressToApiPathSegment(address: string): string {
   return Address.parse(address).toRawString();
@@ -268,7 +267,7 @@ export class RMJClient {
         compressed_info: { amount: string; start_from: number; expired_at: number };
         epoch: number;
         root: string;
-      }>(`/api/v1/custom-payload/${addressToApiPathSegment(address)}`);
+      }>(`/api/v1/custom-payload/wallet/${addressToApiPathSegment(address)}`);
       return {
         customPayload: r.custom_payload,
         stateInit: r.state_init,

@@ -67,7 +67,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       seconds_since_last_tree_tick: lastTickUnix != null ? now - lastTickUnix : null,
       how_balance_works: [
         'Taps POST to /api/v1/action increase cumulative_offchain in the DB immediately.',
-        `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/custom-payload/:addr may return 404.`,
+        `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/custom-payload/wallet/:addr may return 404.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
         'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (TEP-177); many UIs show 0 until then.',
         'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree to see DB vs Merkle lag.',
