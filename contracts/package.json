@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "build": "ts-node scripts/exportBocs.ts",
+    "deploy:master": "ts-node scripts/deployMaster.ts",
     "test": "jest --runInBand",
     "start": "blueprint run"
   },
