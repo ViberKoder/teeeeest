@@ -16,7 +16,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { Address, beginCell, Cell, internal, SendMode, toNano } from '@ton/core';
-import { mnemonicToPrivateKey, keyPairFromSeed, mnemonicNew } from '@ton/crypto';
+import { mnemonicToPrivateKey, keyPairFromSeed, keyPairFromSecretKey, mnemonicNew } from '@ton/crypto';
 import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 import { RollingMintlessMaster } from '../wrappers/RollingMintlessMaster';
 
@@ -59,8 +59,10 @@ function rpcEndpoint(network: string): string {
 async function adminKeyPair() {
   const pkHex = process.env.ADMIN_PRIVATE_KEY_HEX?.replace(/^0x/i, '').replace(/\s+/g, '');
   if (pkHex && pkHex.length >= 64) {
-    const seed = Buffer.from(pkHex.slice(0, 64), 'hex');
-    return keyPairFromSeed(seed);
+    const buf = Buffer.from(pkHex, 'hex');
+    if (buf.length === 32) return keyPairFromSeed(buf);
+    if (buf.length === 64) return keyPairFromSecretKey(buf);
+    throw new Error('ADMIN_PRIVATE_KEY_HEX must be 64 or 128 hex characters');
   }
   const words = process.env.ADMIN_MNEMONIC?.trim().split(/\s+/);
   if (!words?.length) {
@@ -93,23 +95,72 @@ async function main() {
   const walletVersion = (process.env.ADMIN_WALLET_VERSION || 'v4').trim();
   const subwallet = Number(process.env.ADMIN_V5R1_SUBWALLET || '0');
 
+  const apiKey = process.env.TON_RPC_API_KEY?.trim() || undefined;
+  if (!apiKey) {
+    console.warn('TON_RPC_API_KEY is not set — toncenter may rate-limit (429). Get a free key at https://toncenter.com');
+  }
+
   const client = new TonClient({
     endpoint: rpcEndpoint(network),
-    apiKey: process.env.TON_RPC_API_KEY?.trim() || undefined,
+    apiKey,
   });
 
+  async function withRpcRetry<T>(label: string, fn: () => Promise<T>, attempts = 8): Promise<T> {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        return await fn();
+      } catch (e: unknown) {
+        lastErr = e;
+        const status = (e as { response?: { status?: number } })?.response?.status;
+        if (status === 429 && i + 1 < attempts) {
+          const waitMs = 2000 * (i + 1);
+          console.warn(`${label}: RPC 429, retry in ${waitMs}ms (${i + 1}/${attempts})`);
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue;
+        }
+        throw e;
+      }
+    }
+    throw lastErr;
+  }
+
   const networkGlobalId = network === 'mainnet' ? -239 : -3;
+  const expectedAdmin = process.env.ADMIN_WALLET_ADDRESS?.trim();
+
+  function makeV5(sw: number) {
+    return WalletContractV5R1.create({
+      publicKey: adminKp.publicKey,
+      walletId: {
+        networkGlobalId,
+        context: { walletVersion: 'v5r1', workchain: 0, subwalletNumber: sw },
+      },
+    });
+  }
+
+  let v5Wallet = makeV5(subwallet);
+  if (expectedAdmin && walletVersion === 'v5r1') {
+    const expected = Address.parse(expectedAdmin).toString({ bounceable: false, urlSafe: true });
+    const got = v5Wallet.address.toString({ bounceable: false, urlSafe: true });
+    if (got !== expected) {
+      let found = false;
+      for (let sw = 0; sw <= 512 && !found; sw++) {
+        const w = makeV5(sw);
+        if (w.address.toString({ bounceable: false, urlSafe: true }) === expected) {
+          v5Wallet = w;
+          console.log('Matched ADMIN_WALLET_ADDRESS at v5r1 subwallet', sw);
+          found = true;
+        }
+      }
+      if (!found) {
+        throw new Error(`No v5r1 subwallet 0..512 matches ADMIN_WALLET_ADDRESS ${expected}`);
+      }
+    }
+  }
+
   const adminWallet =
     walletVersion === 'v5r1'
-      ? client.open(
-          WalletContractV5R1.create({
-            publicKey: adminKp.publicKey,
-            walletId: {
-              networkGlobalId,
-              context: { walletVersion: 'v5r1', workchain: 0, subwalletNumber: subwallet },
-            },
-          }),
-        )
+      ? client.open(v5Wallet)
       : client.open(WalletContractV4.create({ workchain: 0, publicKey: adminKp.publicKey }));
 
   const masterCode = loadBoc('RollingMintlessMaster');
@@ -136,8 +187,9 @@ async function main() {
   console.log('Metadata URL:', metadataUrl);
   console.log('Master address (pre-send):', master.address.toString({ bounceable: false, urlSafe: true }));
 
-  const seqno = await adminWallet.getSeqno();
-  await adminWallet.sendTransfer({
+  const seqno = await withRpcRetry('getSeqno', () => adminWallet.getSeqno());
+  await withRpcRetry('sendTransfer', () =>
+    adminWallet.sendTransfer({
     seqno,
     secretKey: adminKp.secretKey,
     sendMode: SendMode.PAY_GAS_SEPARATELY,
@@ -150,7 +202,8 @@ async function main() {
         bounce: false,
       }),
     ],
-  });
+    }),
+  );
 
   console.log('\nDeploy transaction sent. Wait ~30s then verify on Tonviewer.');
   console.log('JETTON_MASTER_ADDRESS=' + master.address.toString({ bounceable: false, urlSafe: true }));
