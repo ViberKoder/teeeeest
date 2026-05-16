@@ -13,9 +13,15 @@ import {
 } from '@rmj/sdk';
 
 const BACKEND = import.meta.env.VITE_RMJ_BACKEND_URL as string;
+const JETTON_MASTER = (import.meta.env.VITE_JETTON_MASTER_ADDRESS as string | undefined)?.trim() || '';
+const TON_NETWORK = (import.meta.env.VITE_TON_NETWORK as string | undefined) === 'testnet' ? 'testnet' : 'mainnet';
 const PROJECT_NAME = (import.meta.env.VITE_PROJECT_NAME as string) ?? 'TapCoin';
 
-const rmj = new RMJClient({ baseUrl: BACKEND });
+const rmj = new RMJClient({
+  baseUrl: BACKEND,
+  jettonMasterAddress: JETTON_MASTER || undefined,
+  tonNetwork: TON_NETWORK,
+});
 
 interface Balance {
   offchain: string;

@@ -12,6 +12,7 @@ import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
 import { config } from '../config';
 import { createTonClient } from '../tonClient';
+import { configuredJettonMaster, parseJettonMasterParam } from '../jettonMaster';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -19,7 +20,10 @@ export interface ProofApiDeps {
   signer: VoucherSigner;
 }
 
-type CustomPayloadBody = {
+/** TEP offchain-payloads / ton-community mintless-jetton wallet response (required fields + RMJ extras). */
+type MintlessWalletResponse = {
+  owner: string;
+  jetton_wallet: string;
   custom_payload: string;
   state_init: string | null;
   compressed_info: {
@@ -32,13 +36,12 @@ type CustomPayloadBody = {
 };
 
 async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
-  const masterRaw = config.JETTON_MASTER_ADDRESS?.trim();
-  if (!masterRaw) return null;
+  const master = configuredJettonMaster();
+  if (!master) return null;
   try {
     const client = createTonClient();
-    const masterAddr = Address.parse(masterRaw);
-    const master = client.open(JettonMaster.create(masterAddr));
-    const jettonWalletAddr = await master.getWalletAddress(owner);
+    const masterContract = client.open(JettonMaster.create(master));
+    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
     const st = await client.getContractState(jettonWalletAddr);
     if (st.state !== 'active') {
       return 0n;
@@ -46,8 +49,30 @@ async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null>
     const jw = client.open(RollingMintlessWallet.createFromAddress(jettonWalletAddr));
     return await jw.getAlreadyClaimed();
   } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'custom-payload: could not read on-chain already_claimed');
+    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not read on-chain already_claimed');
     return null;
+  }
+}
+
+async function resolveJettonWalletRaw(owner: Address, signerPubkey: bigint): Promise<string> {
+  const master = configuredJettonMaster();
+  if (!master) {
+    throw new Error('JETTON_MASTER_ADDRESS not configured');
+  }
+  try {
+    const client = createTonClient();
+    const masterContract = client.open(JettonMaster.create(master));
+    return (await masterContract.getWalletAddress(owner)).toRawString();
+  } catch (e) {
+    logger.warn({ err: e, owner: owner.toString() }, 'mintless: RPC jetton wallet address failed, using local derive');
+    const client = createTonClient();
+    const masterContract = client.open(JettonMaster.create(master));
+    const jd = await masterContract.getJettonData();
+    const jw = RollingMintlessWallet.createFromConfig(
+      { owner, master, walletCode: jd.walletCode, signerPubkey },
+      jd.walletCode,
+    );
+    return jw.address.toRawString();
   }
 }
 
@@ -55,26 +80,20 @@ async function maybeJettonWalletStateInitBase64(
   owner: Address,
   signerPubkey: bigint,
 ): Promise<string | null> {
-  const masterRaw = config.JETTON_MASTER_ADDRESS?.trim();
-  if (!masterRaw) return null;
+  const master = configuredJettonMaster();
+  if (!master) return null;
   try {
     const client = createTonClient();
-    const masterAddr = Address.parse(masterRaw);
-    const master = client.open(JettonMaster.create(masterAddr));
-    const jettonWalletAddr = await master.getWalletAddress(owner);
+    const masterContract = client.open(JettonMaster.create(master));
+    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
     const st = await client.getContractState(jettonWalletAddr);
     if (st.state === 'active') {
       return null;
     }
-    const jd = await master.getJettonData();
+    const jd = await masterContract.getJettonData();
     const walletCode = jd.walletCode;
     const jw = RollingMintlessWallet.createFromConfig(
-      {
-        owner,
-        master: masterAddr,
-        walletCode,
-        signerPubkey,
-      },
+      { owner, master, walletCode, signerPubkey },
       walletCode,
     );
     if (!jw.init?.code || !jw.init?.data) {
@@ -86,18 +105,21 @@ async function maybeJettonWalletStateInitBase64(
     if (resolved !== expected) {
       logger.error(
         { resolved, expected, owner: owner.toString() },
-        'custom-payload: derived StateInit address mismatch — check SIGNER_SEED_HEX vs on-chain master',
+        'mintless: derived StateInit address mismatch — check SIGNER_SEED_HEX vs on-chain master',
       );
       return null;
     }
     return si.toBoc().toString('base64');
   } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'custom-payload: could not build jetton wallet state_init');
+    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not build jetton wallet state_init');
     return null;
   }
 }
 
-async function buildCustomPayloadBody(owner: Address, deps: ProofApiDeps): Promise<CustomPayloadBody | null> {
+async function buildMintlessWalletResponse(
+  owner: Address,
+  deps: ProofApiDeps,
+): Promise<MintlessWalletResponse | null> {
   if (!deps.state.tree.has(owner)) {
     return null;
   }
@@ -115,10 +137,12 @@ async function buildCustomPayloadBody(owner: Address, deps: ProofApiDeps): Promi
   const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
   const proof = deps.state.tree.generateProof(owner);
   const customPayload = buildRollingClaimPayload({ proof, voucher });
-
   const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
+  const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
 
   return {
+    owner: owner.toRawString(),
+    jetton_wallet: jettonWallet,
     custom_payload: payloadToBase64(customPayload),
     state_init: stateInit,
     compressed_info: {
@@ -132,26 +156,32 @@ async function buildCustomPayloadBody(owner: Address, deps: ProofApiDeps): Promi
 }
 
 /**
- * Mintless / TEP-177 proof API. Jetton metadata sets `custom_payload_api_uri` to
- * `{PUBLIC_APP_URL}/api/v1/custom-payload`; wallets request
- * `GET {custom_payload_api_uri}/wallet/{owner}` where `owner` is raw `workchain:hex`
- * (`Address.toRawString()`, e.g. `0:abc…`).
+ * Mintless proof API (Tonkeeper TEP offchain-payloads, HMSTR / tonapi style).
  *
- * `compressed_info.amount` is the unclaimed delta (tree cumulative minus on-chain
- * `already_claimed`) when `JETTON_MASTER_ADDRESS` is set and RPC succeeds; otherwise
- * on-chain is treated as 0 (undeployed jetton-wallet).
+ * Metadata `custom_payload_api_uri` MUST be the final root, e.g.
+ * `https://backend/api/v1/jettons/EQ…master` (no trailing slash).
+ * Wallets request `GET {custom_payload_api_uri}/wallet/{owner_raw}`.
  */
 export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void {
-  const serveCustomPayload = async (addressParam: string, reply: { code: (n: number) => void }) => {
+  const serveMintlessWallet = async (
+    masterParam: string,
+    ownerParam: string,
+    reply: { code: (n: number) => void },
+  ) => {
+    if (!parseJettonMasterParam(masterParam)) {
+      reply.code(404);
+      return { error: 'unknown-jetton-master' };
+    }
+
     let owner: Address;
     try {
-      owner = Address.parse(addressParam);
+      owner = Address.parse(ownerParam);
     } catch {
       reply.code(400);
       return { error: 'invalid-address' };
     }
 
-    const body = await buildCustomPayloadBody(owner, deps);
+    const body = await buildMintlessWalletResponse(owner, deps);
     if (!body) {
       const inTree = deps.state.tree.has(owner);
       logger.debug(
@@ -161,7 +191,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
           tree_users: deps.state.tree.size,
           in_tree: inTree,
         },
-        'custom-payload: address not in tree or nothing to claim',
+        'mintless: address not in tree or nothing to claim',
       );
       reply.code(404);
       return inTree ? { error: 'nothing-to-claim' } : { error: 'address-not-in-tree' };
@@ -170,15 +200,23 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     return body;
   };
 
-  app.get<{ Params: { address: string } }>(
-    '/api/v1/custom-payload/wallet/:address',
-    async (req, reply) => serveCustomPayload(req.params.address, reply),
+  app.get<{ Params: { master: string; owner: string } }>(
+    '/api/v1/jettons/:master/wallet/:owner',
+    async (req, reply) => serveMintlessWallet(req.params.master, req.params.owner, reply),
   );
 
-  /**
-   * Lightweight "what do we know about this address" endpoint, used by TMAs
-   * and bots to display a growing balance in their own UI.
-   */
+  app.get<{ Params: { master: string } }>('/api/v1/jettons/:master/state', async (req, reply) => {
+    const master = parseJettonMasterParam(req.params.master);
+    if (!master) {
+      reply.code(404);
+      return { error: 'unknown-jetton-master' };
+    }
+    return {
+      total_wallets: deps.state.tree.size,
+      master_address: master.toRawString(),
+    };
+  });
+
   app.get<{ Params: { address: string } }>('/api/v1/balance/:address', async (req, reply) => {
     let addr: Address;
     try {
@@ -198,9 +236,6 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     };
   });
 
-  /**
-   * Health + state introspection for dashboards / monitoring.
-   */
   app.get('/api/v1/status', async () => ({
     epoch: deps.state.epoch,
     root: deps.state.rootHex(),
@@ -209,5 +244,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     balance_display: config.PUBLIC_BALANCE_DISPLAY,
   }));
 
-  logger.info('proof api route registered: GET /api/v1/custom-payload/wallet/:address (raw owner)');
+  logger.info(
+    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, GET /api/v1/jettons/:master/state',
+  );
 }

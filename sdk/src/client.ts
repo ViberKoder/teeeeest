@@ -37,9 +37,28 @@ export function addressToApiPathSegment(address: string): string {
   return Address.parse(address).toRawString();
 }
 
+/** Friendly master segment for `/api/v1/jettons/{master}/…` (HMSTR / tonapi style). */
+export function jettonMasterPathSegment(
+  master: string,
+  tonNetwork: 'testnet' | 'mainnet' = 'mainnet',
+): string {
+  return Address.parse(master).toString({
+    urlSafe: true,
+    bounceable: true,
+    testOnly: tonNetwork === 'testnet',
+  });
+}
+
 export interface RMJClientOptions {
   /** Base URL of the backend (no trailing slash). */
   baseUrl: string;
+  /**
+   * Jetton master address (EQ… / UQ… / 0:…). Required for {@link RMJClient.getCustomPayload}
+   * (mintless API is per-master: `/api/v1/jettons/{master}/wallet/{owner}`).
+   */
+  jettonMasterAddress?: string;
+  /** Used when formatting the master segment in mintless URLs (default `mainnet`). */
+  tonNetwork?: 'testnet' | 'mainnet';
   /**
    * Optional bearer token. When set the SDK passes it as
    * `Authorization: Bearer <secret>` on admin routes.
@@ -123,6 +142,8 @@ export class RMJError extends Error {
 
 export class RMJClient {
   private readonly baseUrl: string;
+  private readonly jettonMasterAddress?: string;
+  private readonly tonNetwork: 'testnet' | 'mainnet';
   private readonly adminSecret?: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
@@ -130,6 +151,8 @@ export class RMJClient {
   constructor(opts: RMJClientOptions) {
     if (!opts.baseUrl) throw new Error('RMJClient: baseUrl is required');
     this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
+    this.jettonMasterAddress = opts.jettonMasterAddress?.trim() || undefined;
+    this.tonNetwork = opts.tonNetwork ?? 'mainnet';
     this.adminSecret = opts.adminSecret;
     /**
      * Browser fetch must be invoked with the correct `this` (see DOM “Illegal invocation”).
@@ -259,15 +282,24 @@ export class RMJClient {
     };
   }
 
-  async getCustomPayload(address: string): Promise<CustomPayloadInfo | null> {
+  async getCustomPayload(address: string, jettonMasterAddress?: string): Promise<CustomPayloadInfo | null> {
+    const master = jettonMasterAddress?.trim() || this.jettonMasterAddress;
+    if (!master) {
+      throw new Error(
+        'RMJClient: jettonMasterAddress is required for getCustomPayload (constructor option or method argument)',
+      );
+    }
+    const masterSeg = jettonMasterPathSegment(master, this.tonNetwork);
     try {
       const r = await this.request<{
+        owner: string;
+        jetton_wallet: string;
         custom_payload: string;
         state_init: string | null;
         compressed_info: { amount: string; start_from: number; expired_at: number };
         epoch: number;
         root: string;
-      }>(`/api/v1/custom-payload/wallet/${addressToApiPathSegment(address)}`);
+      }>(`/api/v1/jettons/${masterSeg}/wallet/${addressToApiPathSegment(address)}`);
       return {
         customPayload: r.custom_payload,
         stateInit: r.state_init,

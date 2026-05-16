@@ -118,14 +118,29 @@ In your jetton metadata (TEP-64 / TEP-89), set:
   "name": "TapCoin",
   "symbol": "TAP",
   "decimals": "0",
-  "mintless_merkle_dump_uri": "https://rmj.example.com/dumps/latest.boc",
-  "custom_payload_api_uri": "https://rmj.example.com/api/v1/custom-payload"
+  "custom_payload_api_uri": "https://your-backend.example.com/api/v1/jettons/EQ…your_jetton_master"
 }
 ```
 
 Use **`"decimals": "0"`** when one off-chain / on-chain smallest unit should display as **one whole token** in wallets (RMJ default with `PUBLIC_BALANCE_DISPLAY=integer`). Use `"9"` only for fractional jettons (`PUBLIC_BALANCE_DISPLAY=jetton_nano` on the backend metadata route).
 
-Set `custom_payload_api_uri` to `https://your-backend/api/v1/custom-payload`. Wallets call **`GET {uri}/wallet/{owner}`** with `owner` in raw form (`0:…`, `Address.toRawString()`). This backend exposes only that path (no legacy `GET …/custom-payload/{address}`). The **`@rmj/sdk`** uses the same URL shape in `getCustomPayload` and raw segments for `getBalance` / `getJettonWallet`.
+### `custom_payload_api_uri` (Tonkeeper TEP, HMSTR / tonapi style)
+
+Per [jetton offchain payloads](https://github.com/tonkeeper/TEPs2/blob/custom-payload/text/0000-jetton-offchain-payloads.md):
+
+- The URI in metadata is the **final API root** (no trailing `/`), and **includes the jetton master address** — same pattern as Hamster Kombat (`…/jettons/EQ…`) and tonapi claim API.
+- Wallets call **`GET {custom_payload_api_uri}/wallet/{owner_raw}`** where `owner_raw` is `0:…` (`Address.toRawString()`), not `UQ…`.
+
+RMJ backend (with `JETTON_MASTER_ADDRESS` set) serves:
+
+| Method | Path |
+|--------|------|
+| Wallet proof | `GET /api/v1/jettons/{master}/wallet/{owner}` |
+| API state | `GET /api/v1/jettons/{master}/state` |
+
+Hosted metadata: `GET /jetton-metadata.json` sets `custom_payload_api_uri` to `{PUBLIC_APP_URL}/api/v1/jettons/{master}` automatically.
+
+Response includes TEP-required fields `owner`, `jetton_wallet`, `custom_payload`, plus `compressed_info`, optional `state_init`.
 
 For wallets that **do not** call this URL automatically, use the bundled
 Telegram Mini App (`examples/tma`): it builds a TEP-74 jetton transfer with

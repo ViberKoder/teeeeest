@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import { config } from '../config';
+import { buildCustomPayloadApiUri } from '../jettonMaster';
 
 /**
  * Serves TEP-64-compatible jetton metadata JSON so creators can point the master
@@ -32,8 +33,16 @@ export function registerPublicJettonMetadata(app: FastifyInstance): void {
         config.PUBLIC_JETTON_DESCRIPTION.trim() ||
         `${symbol} — Rolling Mintless Jetton rewards.`,
       decimals,
-      custom_payload_api_uri: `${base}/api/v1/custom-payload`,
     };
+    const customPayloadApiUri = buildCustomPayloadApiUri(base);
+    if (!customPayloadApiUri) {
+      reply.code(503);
+      return {
+        error: 'jetton-master-not-configured',
+        hint: 'Set JETTON_MASTER_ADDRESS on the backend so custom_payload_api_uri can be …/api/v1/jettons/{master}',
+      };
+    }
+    body.custom_payload_api_uri = customPayloadApiUri;
     if (image) body.image = image;
 
     reply.type('application/json; charset=utf-8');

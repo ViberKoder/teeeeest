@@ -7,6 +7,7 @@ import {
   DEFAULT_ATTACHED_TON_NANO,
   formatBalanceDisplay,
 } from '@rmj/sdk';
+import { NETWORK } from './constants';
 
 /**
  * Заклеймить mintless-баланс на цепь без Tonkeeper/TEP-177: TON Connect шлёт TEP-74 transfer
@@ -16,8 +17,10 @@ export function ClaimTab() {
   const address = useTonAddress();
   const [tonConnectUI] = useTonConnectUI();
   const envBackend = (import.meta.env.VITE_RMJ_BACKEND_URL as string | undefined)?.trim() || '';
+  const envMaster = (import.meta.env.VITE_JETTON_MASTER_ADDRESS as string | undefined)?.trim() || '';
 
   const [backendUrl, setBackendUrl] = useState(envBackend);
+  const [jettonMaster, setJettonMaster] = useState(envMaster);
   const [balanceOffchain, setBalanceOffchain] = useState<string | null>(null);
   const [balanceTree, setBalanceTree] = useState<string | null>(null);
   const [epoch, setEpoch] = useState<number | null>(null);
@@ -26,7 +29,17 @@ export function ClaimTab() {
   const [hint, setHint] = useState('');
 
   const baseUrl = backendUrl.trim().replace(/\/$/, '');
-  const rmj = useMemo(() => (baseUrl ? new RMJClient({ baseUrl }) : null), [baseUrl]);
+  const rmj = useMemo(
+    () =>
+      baseUrl
+        ? new RMJClient({
+            baseUrl,
+            jettonMasterAddress: jettonMaster.trim() || undefined,
+            tonNetwork: NETWORK === 'testnet' ? 'testnet' : 'mainnet',
+          })
+        : null,
+    [baseUrl, jettonMaster],
+  );
 
   const refreshBalance = useCallback(async () => {
     if (!rmj || !address) {
@@ -122,8 +135,23 @@ export function ClaimTab() {
         />
       </label>
 
+      <label style={{ display: 'block', marginBottom: 12 }}>
+        Jetton Master (EQ… / UQ…)
+        <input
+          style={{ width: '100%', marginTop: 6, padding: 8 }}
+          value={jettonMaster}
+          onChange={(e) => setJettonMaster(e.target.value)}
+          placeholder="EQ… — тот же, что JETTON_MASTER_ADDRESS на бэкенде"
+        />
+      </label>
+
       {!baseUrl && (
         <p style={{ color: '#b45309' }}>Укажите URL или задайте <code>VITE_RMJ_BACKEND_URL</code> при сборке.</p>
+      )}
+      {baseUrl && !jettonMaster.trim() && (
+        <p style={{ color: '#b45309' }}>
+          Укажите master для mintless API (<code>VITE_JETTON_MASTER_ADDRESS</code>).
+        </p>
       )}
 
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -187,7 +215,7 @@ export function ClaimTab() {
       )}
 
       <p style={{ marginTop: 24, fontSize: 13, opacity: 0.75 }}>
-        Нужны методы <code>/api/v1/balance</code>, <code>/api/v1/custom-payload/wallet/…</code>,{' '}
+        Нужны <code>/api/v1/balance</code>, <code>/api/v1/jettons/&#123;master&#125;/wallet/0:…</code>,{' '}
         <code>/api/v1/jetton-wallet</code> на бэкенде (ветка с jetton-wallet API).
       </p>
     </section>
