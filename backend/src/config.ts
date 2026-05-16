@@ -44,6 +44,15 @@ const schema = z.object({
   TON_RPC_ENDPOINT: z.string().default(''),
   TON_RPC_API_KEY: z.string().default(''),
   JETTON_MASTER_ADDRESS: z.string().default(''),
+  /** ton-community/mintless-jetton master (TEP-177). Enables GET /api/v1/wallet/:owner. */
+  STANDARD_JETTON_MASTER_ADDRESS: z.string().default(''),
+  /**
+   * When true, /jetton-metadata.json targets standard mintless (custom_payload_api_uri = {PUBLIC_APP_URL}/api/v1).
+   * When false, uses RMJ rolling mintless (/api/v1/jettons/{master}).
+   */
+  USE_STANDARD_MINTLESS_JETTON: z
+    .preprocess((v) => v === true || v === 'true' || v === '1', z.boolean())
+    .default(false),
   /**
    * Optional global cap on the sum of all non-banned users' off-chain cumulative_amount (jetton nano).
    * When set (>0), POST /api/v1/action and admin grant reject if the new sum would exceed this value.

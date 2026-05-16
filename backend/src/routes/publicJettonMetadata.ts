@@ -34,12 +34,19 @@ export function registerPublicJettonMetadata(app: FastifyInstance): void {
         `${symbol} — Rolling Mintless Jetton rewards.`,
       decimals,
     };
-    const customPayloadApiUri = buildCustomPayloadApiUri(base);
+    let customPayloadApiUri: string | null;
+    if (config.USE_STANDARD_MINTLESS_JETTON) {
+      customPayloadApiUri = `${base}/api/v1`;
+    } else {
+      customPayloadApiUri = buildCustomPayloadApiUri(base);
+    }
     if (!customPayloadApiUri) {
       reply.code(503);
       return {
         error: 'jetton-master-not-configured',
-        hint: 'Set JETTON_MASTER_ADDRESS on the backend so custom_payload_api_uri can be …/api/v1/jettons/{master}',
+        hint: config.USE_STANDARD_MINTLESS_JETTON
+          ? 'Set PUBLIC_APP_URL for standard mintless metadata (custom_payload_api_uri → …/api/v1)'
+          : 'Set JETTON_MASTER_ADDRESS on the backend so custom_payload_api_uri can be …/api/v1/jettons/{master}',
       };
     }
     body.custom_payload_api_uri = customPayloadApiUri;

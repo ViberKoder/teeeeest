@@ -16,6 +16,7 @@ import { registerAdminApi } from './routes/adminApi';
 import { registerPublicJettonMetadata } from './routes/publicJettonMetadata';
 import { registerDiagnostics } from './routes/diagnostics';
 import { registerJettonWalletApi } from './routes/jettonWalletApi';
+import { registerStandardMintlessProofApi } from './routes/standardMintlessProofApi';
 
 async function main() {
   const store = await createAppStore();
@@ -54,7 +55,11 @@ async function main() {
   registerDiagnostics(app, { store, state, rootUpdater });
   registerJettonWalletApi(app, { signer: voucherSigner });
   registerPublicJettonMetadata(app);
-  registerProofApi(app, { state, gameServer, signer: voucherSigner });
+  if (config.USE_STANDARD_MINTLESS_JETTON) {
+    registerStandardMintlessProofApi(app, state);
+  } else {
+    registerProofApi(app, { state, gameServer, signer: voucherSigner });
+  }
   registerGameApi(app, { gameServer });
   registerAdminApi(app, { gameServer, treeBuilder });
 
