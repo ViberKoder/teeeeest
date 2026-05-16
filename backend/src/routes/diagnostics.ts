@@ -3,6 +3,7 @@ import type { AppStore } from '../store/appStore';
 import type { AirdropState } from '../state';
 import type { RootUpdater } from '../rootUpdater';
 import { config } from '../config';
+import { buildCustomPayloadApiUri } from '../jettonMaster';
 import { logger } from '../logger';
 
 const KV_TREE_TICK_AT = 'tree_builder_last_tick_at';
@@ -40,6 +41,9 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       balance_display: config.PUBLIC_BALANCE_DISPLAY,
       jetton_metadata_decimals: config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '0' : '9',
       tap_value_per_action: config.TAP_VALUE_NANO.toString(),
+      custom_payload_api_uri: config.PUBLIC_APP_URL.trim()
+        ? buildCustomPayloadApiUri(config.PUBLIC_APP_URL)
+        : null,
       jetton_master_configured: jettonConfigured,
       jetton_max_supply_nano: config.JETTON_MAX_SUPPLY_NANO.toString(),
       admin_mnemonic_or_private_key_configured: adminConfigured,
@@ -67,7 +71,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       seconds_since_last_tree_tick: lastTickUnix != null ? now - lastTickUnix : null,
       how_balance_works: [
         'Taps POST to /api/v1/action increase cumulative_offchain in the DB immediately.',
-        `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/custom-payload/:addr may return 404.`,
+        `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/jettons/{master}/wallet/:owner may return 404.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
         'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (TEP-177); many UIs show 0 until then.',
         'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree to see DB vs Merkle lag.',

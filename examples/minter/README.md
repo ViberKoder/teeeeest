@@ -2,7 +2,7 @@
 
 Веб-мастер деплоя `RollingMintlessMaster` через TON Connect: генерация signer, выбор URL метаданных (часто `{backend}/jetton-metadata.json`), опциональный **макс. выпуск** (целые jetton → `max_supply` on-chain и строка `JETTON_MAX_SUPPLY_NANO` в `.env`), деплой и готовый блок `.env` для бэкенда, бота и TMA.
 
-Отдельная вкладка **«Забрать токены (claim)»** — тот же поток, что в `examples/tma`: запрос proof у бэкенда и отправка jetton-transfer с `custom_payload` через TON Connect (удобно, если обычный кошелёк не подтягивает mintless API). Задайте `VITE_RMJ_BACKEND_URL` или введите URL бэкенда в поле на странице. На бэкенде нужны `GET /api/v1/balance`, `/api/v1/custom-payload`, `/api/v1/jetton-wallet`.
+Отдельная вкладка **«Забрать токены (claim)»** — тот же поток, что в `examples/tma`: запрос proof у бэкенда и отправка jetton-transfer с `custom_payload` через TON Connect (удобно, если обычный кошелёк не подтягивает mintless API). Задайте `VITE_RMJ_BACKEND_URL` или введите URL бэкенда в поле на странице. На бэкенде нужны `GET /api/v1/balance`, `GET /api/v1/custom-payload/wallet/{0:…}`, `/api/v1/jetton-wallet`.
 
 Скачанный **`jetton-metadata.json`** задаёт **`decimals: "0"`** — так кошельки (MyTonWallet и др.) показывают целые поинты: **77**, а не `0.000000077` при том же сыром балансе на цепи.
 

@@ -1,3 +1,6 @@
+import { Address } from '@ton/core';
+import { NETWORK } from './constants';
+
 /** Same shape as backend GET /jetton-metadata.json for manual hosting (Gist, R2, …). */
 export function buildStandaloneJettonMetadataJson(opts: {
   name: string;
@@ -5,14 +8,20 @@ export function buildStandaloneJettonMetadataJson(opts: {
   description: string;
   image: string;
   backendBaseUrl: string;
+  jettonMasterAddress: string;
 }): string {
   const base = opts.backendBaseUrl.trim().replace(/\/$/, '');
+  const masterSeg = Address.parse(opts.jettonMasterAddress.trim()).toString({
+    urlSafe: true,
+    bounceable: true,
+    testOnly: NETWORK === 'testnet',
+  });
   const o: Record<string, string> = {
     name: opts.name.trim(),
     symbol: opts.symbol.trim(),
     description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
     decimals: '0',
-    custom_payload_api_uri: `${base}/api/v1/custom-payload`,
+    custom_payload_api_uri: `${base}/api/v1/jettons/${masterSeg}`,
   };
   const img = opts.image.trim();
   if (img) o.image = img;

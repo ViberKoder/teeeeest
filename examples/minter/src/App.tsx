@@ -158,8 +158,9 @@ export function App() {
       `# Bot (@rmj/example-telegram-bot)`,
       `RMJ_BACKEND_URL=${backendOrigin}`,
       ``,
-      `# Mini App + вкладка Claim в минтере (достаточно URL бэкенда)`,
+      `# Mini App + вкладка Claim (URL бэкенда + master для mintless API)`,
       `VITE_RMJ_BACKEND_URL=${backendOrigin}`,
+      `VITE_JETTON_MASTER_ADDRESS=${deployedMaster}`,
     ].join('\n');
   }, [deployedMaster, signerSeedHex, backendOrigin, name, symbol, description, imageUrl, maxSupplyNano]);
 
@@ -325,12 +326,12 @@ export function App() {
             )}
           </fieldset>
 
+          <p style={{ fontSize: 14, opacity: 0.85 }}>
+            Полный <code>jetton-metadata.json</code> с <code>custom_payload_api_uri</code> (…/api/v1/jettons/EQ…master)
+            — после деплоя на шаге 4.
+          </p>
+
           <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button type="button" onClick={() => downloadText('jetton-metadata.json', buildStandaloneJettonMetadataJson({
-              name, symbol, description, image: imageUrl, backendBaseUrl: backendUrl,
-            }))}>
-              Скачать jetton-metadata.json
-            </button>
             <button type="button" onClick={() => setStep(1)}>← Назад</button>
             <button type="button" onClick={() => setStep(3)}>Далее →</button>
           </div>
@@ -401,6 +402,26 @@ export function App() {
           </pre>
           <button type="button" onClick={() => void copyText('.env', envSnippet, setToast)}>
             Копировать всё
+          </button>
+
+          <button
+            type="button"
+            style={{ marginLeft: 10 }}
+            onClick={() =>
+              downloadText(
+                'jetton-metadata.json',
+                buildStandaloneJettonMetadataJson({
+                  name,
+                  symbol,
+                  description,
+                  image: imageUrl,
+                  backendBaseUrl: backendUrl,
+                  jettonMasterAddress: deployedMaster,
+                }),
+              )
+            }
+          >
+            Скачать jetton-metadata.json
           </button>
 
           <h3 style={{ marginTop: 24 }}>Интеграция бота / TMA (по одному URL)</h3>
