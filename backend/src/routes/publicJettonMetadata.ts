@@ -43,6 +43,8 @@ export function registerPublicJettonMetadata(app: FastifyInstance): void {
       };
     }
     body.custom_payload_api_uri = customPayloadApiUri;
+    /** TonAPI may still index the pre-/jettons/{master} URI — keep routes alive (see wallet-display-audit). */
+    body.legacy_custom_payload_api_uri = `${base}/api/v1/custom-payload`;
     if (image) body.image = image;
 
     reply.type('application/json; charset=utf-8');
