@@ -51,6 +51,19 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       admin_wallet_onchain: adminOnChain,
       integration_warnings: [
         ...(!jettonConfigured ? ['JETTON_MASTER_ADDRESS is empty'] : []),
+        ...(!config.PUBLIC_APP_URL?.trim()
+          ? [
+              'PUBLIC_APP_URL is empty — GET /jetton-metadata.json will return 503 and custom_payload_api_uri will be missing. ' +
+              'Wallets will not call the proof API, so unclaimed token balances will be INVISIBLE in Tonkeeper / MyTonWallet. ' +
+              'Set PUBLIC_APP_URL to the public HTTPS URL of this backend (no trailing slash).',
+            ]
+          : []),
+        ...(config.PUBLIC_APP_URL?.trim() && !buildCustomPayloadApiUri(config.PUBLIC_APP_URL)
+          ? [
+              'custom_payload_api_uri could not be built — JETTON_MASTER_ADDRESS is missing or invalid. ' +
+              'Token balances will not appear in wallets until this is fixed.',
+            ]
+          : []),
         ...(!adminConfigured ? ['ADMIN_MNEMONIC or ADMIN_PRIVATE_KEY_HEX required — root updates cannot broadcast'] : []),
         ...(jettonConfigured && adminConfigured && !rootUpdatesEnabled
           ? ['Root updater did not initialise — check logs at startup (often ADMIN_WALLET_ADDRESS vs mnemonic / v5r1 subwallet)']
@@ -73,7 +86,9 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
         'Taps POST to /api/v1/action increase cumulative_offchain in the DB immediately.',
         `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/jettons/{master}/wallet/:owner may return 404.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
-        'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (TEP-177); many UIs show 0 until then.',
+        'TEP-177-aware wallets (Tonkeeper, MyTonWallet) show the pending mintless balance as soon as the user adds the jetton — they call custom_payload_api_uri automatically. ' +
+          'The balance becomes on-chain only after the first transfer/swap that attaches the custom_payload. ' +
+          'If the balance is invisible, check that custom_payload_api_uri is set in the jetton metadata (see /jetton-metadata.json) and that the on-chain master content URL points to this backend.',
         'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree to see DB vs Merkle lag.',
       ],
     };

@@ -1,7 +1,9 @@
 {
+  "_comment": "IMPORTANT: custom_payload_api_uri is REQUIRED for unclaimed token balances to appear in wallets (Tonkeeper, MyTonWallet, etc.). Without it wallets will never call your backend and tokens will be invisible. Replace the placeholder below with your actual backend URL + jetton master address.",
   "name": "TEST",
   "symbol": "TEST",
   "description": "TEST",
   "image": "https://ton.org/_next/image?url=%2Fimages%2Ffeature-cards%2Fiphone-telegram-app.png&w=3840&q=75",
-  "decimals": "0"
+  "decimals": "0",
+  "custom_payload_api_uri": "https://YOUR_BACKEND_URL/api/v1/jettons/YOUR_JETTON_MASTER_EQ_ADDRESS"
 }
