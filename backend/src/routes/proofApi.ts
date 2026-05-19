@@ -8,6 +8,7 @@ import { AirdropState } from '../state';
 import { GameServer } from '../gameServer';
 import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
+import { parseJettonMasterParam } from '../jettonMaster';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -78,6 +79,19 @@ async function handleCustomPayloadForAddress(
 }
 
 export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void {
+  /** TEP / HMSTR: GET {custom_payload_api_uri}/wallet/{owner_raw} */
+  app.get<{ Params: { master: string; owner: string } }>(
+    '/api/v1/jettons/:master/wallet/:owner',
+    async (req, reply) => {
+      if (!parseJettonMasterParam(req.params.master)) {
+        reply.code(404);
+        return { error: 'unknown-jetton-master' };
+      }
+      return handleCustomPayloadForAddress(req.params.owner, deps, reply);
+    },
+  );
+
+  /** Legacy URI still indexed by TonAPI for many jettons */
   app.get<{ Params: { address: string } }>(
     '/api/v1/custom-payload/wallet/:address',
     async (req, reply) => handleCustomPayloadForAddress(req.params.address, deps, reply),

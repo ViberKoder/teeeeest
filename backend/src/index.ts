@@ -15,6 +15,7 @@ import { registerGameApi } from './routes/gameApi';
 import { registerAdminApi } from './routes/adminApi';
 import { registerPublicJettonMetadata } from './routes/publicJettonMetadata';
 import { registerDiagnostics } from './routes/diagnostics';
+import { registerWalletDisplayAudit } from './routes/walletDisplayAudit';
 
 async function main() {
   const store = await createAppStore();
@@ -51,6 +52,7 @@ async function main() {
   }));
 
   registerDiagnostics(app, { store, state, rootUpdater });
+  registerWalletDisplayAudit(app);
   registerPublicJettonMetadata(app);
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
