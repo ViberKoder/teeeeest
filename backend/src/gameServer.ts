@@ -54,7 +54,8 @@ export class GameServer {
 
     const user = await this.store.getUserRow(address);
     if (!user) {
-      return { ok: false, reason: 'rate-limited-per-second' };
+      logger.error({ address }, 'gameServer: getUserRow returned undefined after upsert — possible DB error');
+      throw new Error('db-lookup-failed');
     }
 
     if (user.is_banned) {
