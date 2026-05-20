@@ -76,6 +76,11 @@ export function buildDeploy(params: BuildMasterParams) {
   return { address, stateInit };
 }
 
+/** EQ… segment for URLs (TonAPI / Tonkeeper style). */
+export function jettonMasterSegment(master: Address, testnet: boolean): string {
+  return master.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
+}
+
 /** Placeholder EQ… for the metadata URL → address fixed-point (URL embeds final master). */
 const METADATA_URL_PLACEHOLDER =
   'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
@@ -86,34 +91,60 @@ const METADATA_URL_PLACEHOLDER =
  */
 export function jettonMetadataHostedUrl(publicBaseUrl: string, master: Address, testnet: boolean): string {
   const base = publicBaseUrl.trim().replace(/\/$/, '');
-  const seg = master.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
-  return `${base}/api/v1/jettons/${seg}/metadata.json`;
+  return `${base}/api/v1/jettons/${jettonMasterSegment(master, testnet)}/metadata.json`;
 }
 
+/** Final API root for TEP offchain-payloads (`GET …/wallet/0:owner`). */
+export function customPayloadApiRoot(publicBaseUrl: string, master: Address, testnet: boolean): string {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  return `${base}/api/v1/jettons/${jettonMasterSegment(master, testnet)}`;
+}
+
+export type PlannedDeploy = {
+  metadataUrl: string;
+  customPayloadApiUri: string;
+  address: Address;
+  stateInit: Cell;
+};
+
 /**
- * Resolve metadata URL and deploy address together (content URL affects contract address).
+ * Compute jetton master address **before** deploy. On-chain `content` will point at
+ * `metadataUrl`; that JSON (on your backend) must expose `custom_payload_api_uri`
+ * with the same master — iteration accounts for URL length changing the address.
  */
-export function resolveDeployWithMetadataUrl(
+export function computePlannedDeploy(
   params: Omit<BuildMasterParams, 'metadataUrl'>,
   publicBaseUrl: string,
   testnet: boolean,
-): { metadataUrl: string; address: Address; stateInit: Cell } {
+): PlannedDeploy {
   const base = publicBaseUrl.trim().replace(/\/$/, '');
   let metadataUrl = `${base}/api/v1/jettons/${METADATA_URL_PLACEHOLDER}/metadata.json`;
   let prevAddress: Address | null = null;
 
   for (let i = 0; i < 6; i++) {
     const built = buildDeploy({ ...params, metadataUrl });
-    const seg = built.address.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
-    const nextUrl = `${base}/api/v1/jettons/${seg}/metadata.json`;
+    const nextUrl = jettonMetadataHostedUrl(base, built.address, testnet);
     if (prevAddress?.equals(built.address) && metadataUrl === nextUrl) {
-      return { metadataUrl: nextUrl, address: built.address, stateInit: built.stateInit };
+      return {
+        metadataUrl: nextUrl,
+        customPayloadApiUri: customPayloadApiRoot(base, built.address, testnet),
+        address: built.address,
+        stateInit: built.stateInit,
+      };
     }
     prevAddress = built.address;
     metadataUrl = nextUrl;
   }
 
   const built = buildDeploy({ ...params, metadataUrl });
-  return { metadataUrl, address: built.address, stateInit: built.stateInit };
+  return {
+    metadataUrl,
+    customPayloadApiUri: customPayloadApiRoot(base, built.address, testnet),
+    address: built.address,
+    stateInit: built.stateInit,
+  };
 }
+
+/** @deprecated Use computePlannedDeploy */
+export const resolveDeployWithMetadataUrl = computePlannedDeploy;
 
