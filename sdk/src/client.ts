@@ -37,16 +37,9 @@ export function addressToApiPathSegment(address: string): string {
   return Address.parse(address).toRawString();
 }
 
-/** Friendly master segment for `/api/v1/jettons/{master}/…` (HMSTR / tonapi style). */
-export function jettonMasterPathSegment(
-  master: string,
-  tonNetwork: 'testnet' | 'mainnet' = 'mainnet',
-): string {
-  return Address.parse(master).toString({
-    urlSafe: true,
-    bounceable: true,
-    testOnly: tonNetwork === 'testnet',
-  });
+/** Raw `0:…` path segment for `/api/v1/jettons/{master}/…` (TEP offchain-payloads). */
+export function jettonMasterPathSegment(master: string, _tonNetwork: 'testnet' | 'mainnet' = 'mainnet'): string {
+  return encodeURIComponent(Address.parse(master).toRawString());
 }
 
 export interface RMJClientOptions {

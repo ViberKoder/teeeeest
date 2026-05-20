@@ -1,5 +1,4 @@
 import { Address } from '@ton/core';
-import { NETWORK } from './constants';
 import { customPayloadApiRoot } from './buildMaster';
 
 /**
@@ -14,13 +13,12 @@ export function buildJettonMetadataJson(opts: {
   backendBaseUrl: string;
   master: Address;
 }): Record<string, string> {
-  const testnet = NETWORK === 'testnet';
   const o: Record<string, string> = {
     name: opts.name.trim(),
     symbol: opts.symbol.trim(),
     description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
     decimals: '0',
-    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master, testnet),
+    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master),
   };
   const img = opts.image.trim();
   if (img) o.image = img;

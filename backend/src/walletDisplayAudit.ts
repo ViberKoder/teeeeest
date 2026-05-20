@@ -1,4 +1,5 @@
 import { Address, Cell } from '@ton/core';
+import { masterFromJettonApiUrl } from './jettonAddressPath';
 
 const OP_ROLLING_CLAIM = 0xc9e56df3;
 const OP_MERKLE_CLAIM = 0x0df602d6;
@@ -112,7 +113,15 @@ export async function runWalletDisplayAudit(params: {
         dec !== '' &&
         uri.includes('/api/v1/jettons/') &&
         !uri.endsWith('/custom-payload') &&
-        !uri.endsWith('/api/v1/custom-payload');
+        !uri.endsWith('/api/v1/custom-payload') &&
+        (() => {
+          try {
+            const m = masterFromJettonApiUrl(uri);
+            return m != null && m.equals(master);
+          } catch {
+            return false;
+          }
+        })();
       checks.push(
         check(
           'hosted_metadata',
@@ -134,7 +143,7 @@ export async function runWalletDisplayAudit(params: {
 
   // --- Backend mirror ---
   if (backendBase) {
-    const canonicalMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
+    const canonicalMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterRaw)}/metadata.json`;
     const mirror = await fetchJson(canonicalMetaUrl);
     if (mirror.ok && mirror.body && typeof mirror.body === 'object') {
       const m = mirror.body as JsonRecord;

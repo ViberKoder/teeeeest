@@ -1,5 +1,10 @@
 import { Address } from '@ton/core';
 import { config } from './config';
+import {
+  customPayloadApiRoot,
+  jettonMasterPathSegment,
+  parseJettonMasterPathSegment,
+} from './jettonAddressPath';
 
 /** Parsed master from `JETTON_MASTER_ADDRESS`, if configured and valid. */
 export function configuredJettonMaster(): Address | null {
@@ -12,15 +17,11 @@ export function configuredJettonMaster(): Address | null {
   }
 }
 
-/** Friendly master segment for URLs and metadata (EQ… / UQ…), matching tonapi / HMSTR style. */
+/** Raw `0:…` path segment (canonical; also accepts EQ/UQ when parsing). */
 export function jettonMasterUrlSegment(master?: Address): string | null {
   const m = master ?? configuredJettonMaster();
   if (!m) return null;
-  return m.toString({
-    urlSafe: true,
-    bounceable: true,
-    testOnly: config.TON_NETWORK === 'testnet',
-  });
+  return jettonMasterPathSegment(m);
 }
 
 /**
@@ -29,18 +30,17 @@ export function jettonMasterUrlSegment(master?: Address): string | null {
  */
 export function buildCustomPayloadApiUri(publicAppUrl: string, master?: Address): string | null {
   const base = publicAppUrl.trim().replace(/\/$/, '');
-  const seg = jettonMasterUrlSegment(master);
-  if (!base || !seg) return null;
-  return `${base}/api/v1/jettons/${seg}`;
+  const m = master ?? configuredJettonMaster();
+  if (!base || !m) return null;
+  return customPayloadApiRoot(base, m);
 }
 
 export function parseJettonMasterParam(param: string): Address | null {
   const expected = configuredJettonMaster();
   if (!expected) return null;
-  try {
-    const requested = Address.parse(decodeURIComponent(param));
-    return requested.equals(expected) ? expected : null;
-  } catch {
-    return null;
-  }
+  const requested = parseJettonMasterPathSegment(param);
+  if (!requested || !requested.equals(expected)) return null;
+  return expected;
 }
+
+export { jettonMasterPathSegment, parseJettonMasterPathSegment, customPayloadApiRoot, jettonMetadataHostedUrl } from './jettonAddressPath';

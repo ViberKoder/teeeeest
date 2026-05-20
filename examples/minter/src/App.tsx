@@ -3,7 +3,7 @@ import { Address } from '@ton/core';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import {
   computePlannedDeploy,
-  jettonMasterSegment,
+  jettonMasterDisplay,
   jettonMetadataHostedUrl,
 } from './buildMaster';
 import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
@@ -84,12 +84,12 @@ export function App() {
           maxSupplyNano,
         },
         backendOrigin,
-        testnet,
       );
-    } catch {
+    } catch (e) {
+      console.warn('computePlannedDeploy', e);
       return null;
     }
-  }, [walletAddress, signerPubkeyHex, backendOrigin, maxSupplyNano, testnet]);
+  }, [walletAddress, signerPubkeyHex, backendOrigin, maxSupplyNano]);
 
   const plannedMetadataJson = useMemo(() => {
     if (!plannedDeploy) return null;
@@ -137,7 +137,7 @@ export function App() {
     setBusy(true);
     try {
       const { address, stateInit, metadataUrl } = plannedDeploy;
-      const masterFriendly = jettonMasterSegment(address, testnet);
+      const masterFriendly = jettonMasterDisplay(address, testnet);
       const deployNano = BigInt(Math.floor(Number(deployValueTon) * 1e9)).toString();
 
       await tonConnectUI.sendTransaction({
@@ -338,12 +338,15 @@ export function App() {
             <div style={{ marginTop: 16, padding: 12, background: '#eff6ff', borderRadius: 8, border: '1px solid #93c5fd' }}>
               <h3 style={{ marginTop: 0, fontSize: 16 }}>Jetton Master (будет задеплоен)</h3>
               <p style={{ margin: '0 0 8px' }}>
-                <code style={{ wordBreak: 'break-all' }}>{jettonMasterSegment(plannedDeploy.address, testnet)}</code>
+                <code style={{ wordBreak: 'break-all' }}>{jettonMasterDisplay(plannedDeploy.address, testnet)}</code>
+                <span style={{ opacity: 0.75, marginLeft: 8, fontSize: 12 }}>
+                  raw: {plannedDeploy.address.toRawString()}
+                </span>
                 <button
                   type="button"
                   style={{ marginLeft: 8 }}
                   onClick={() =>
-                    void copyText('master', jettonMasterSegment(plannedDeploy.address, testnet), setToast)
+                    void copyText('master', jettonMasterDisplay(plannedDeploy.address, testnet), setToast)
                   }
                 >
                   Копировать
@@ -404,7 +407,7 @@ export function App() {
           <h2>3. Деплой Jetton Master</h2>
           <p>
             В state init уже записан URL метаданных с master{' '}
-            <code>{jettonMasterSegment(plannedDeploy.address, testnet)}</code> и{' '}
+            <code>{jettonMasterDisplay(plannedDeploy.address, testnet)}</code> и{' '}
             <code>custom_payload_api_uri</code> с тем же master. После деплоя пропишите адрес в{' '}
             <code>JETTON_MASTER_ADDRESS</code> на бэкенде.
           </p>
@@ -437,7 +440,7 @@ export function App() {
             вставьте переменные ниже (сначала <code>JETTON_MASTER_ADDRESS</code>), затем проверьте{' '}
             <code style={{ wordBreak: 'break-all' }}>
               {deployedMetadataUrl ||
-                jettonMetadataHostedUrl(backendOrigin, Address.parse(deployedMaster), testnet)}
+                jettonMetadataHostedUrl(backendOrigin, Address.parse(deployedMaster))}
             </code>
             .
           </p>

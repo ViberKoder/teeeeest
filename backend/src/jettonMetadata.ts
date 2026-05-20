@@ -1,6 +1,11 @@
 import { Address } from '@ton/core';
 import { config } from './config';
-import { buildCustomPayloadApiUri, jettonMasterUrlSegment } from './jettonMaster';
+import {
+  customPayloadApiRoot,
+  jettonMetadataHostedUrl,
+  masterFromJettonApiUrl,
+  parseJettonMasterPathSegment,
+} from './jettonAddressPath';
 
 /**
  * TEP-64 jetton metadata JSON + TEP offchain-payloads `custom_payload_api_uri`.
@@ -8,24 +13,10 @@ import { buildCustomPayloadApiUri, jettonMasterUrlSegment } from './jettonMaster
  */
 export type JettonMetadataJson = Record<string, string>;
 
-/** Parse master from URL path (`EQ…` / `UQ…` / `0:…`). Does not require env match. */
-export function parseMasterAddressParam(param: string): Address | null {
-  try {
-    return Address.parse(decodeURIComponent(param.trim()));
-  } catch {
-    return null;
-  }
-}
+/** Parse master from URL path (`0:…` preferred; `EQ…` / `UQ…` accepted). */
+export const parseMasterAddressParam = parseJettonMasterPathSegment;
 
-/** Canonical hosted metadata URL for on-chain TEP-64 `content` (includes master in path). */
-export function jettonMetadataHostedUrl(publicAppUrl: string, master: Address): string {
-  const base = publicAppUrl.trim().replace(/\/$/, '');
-  const seg = jettonMasterUrlSegment(master);
-  if (!base || !seg) {
-    throw new Error('invalid publicAppUrl or master for metadata URL');
-  }
-  return `${base}/api/v1/jettons/${seg}/metadata.json`;
-}
+export { jettonMetadataHostedUrl, customPayloadApiRoot, masterFromJettonApiUrl };
 
 /**
  * Build TEP-64 metadata body. `custom_payload_api_uri` is the **final** API root
@@ -49,10 +40,7 @@ export function buildJettonMetadataJson(
     return null;
   }
 
-  const customPayloadApiUri = buildCustomPayloadApiUri(base, master);
-  if (!customPayloadApiUri) {
-    return null;
-  }
+  const customPayloadApiUri = customPayloadApiRoot(base, master);
 
   const decimals =
     opts?.decimals ??
