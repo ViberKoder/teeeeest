@@ -27,9 +27,9 @@ export function jettonMasterUrlSegment(master?: Address): string | null {
  * TEP offchain-payloads: `custom_payload_api_uri` is the final API root (no trailing slash).
  * Wallets call `GET {uri}/wallet/{owner_raw}`.
  */
-export function buildCustomPayloadApiUri(publicAppUrl: string): string | null {
+export function buildCustomPayloadApiUri(publicAppUrl: string, master?: Address): string | null {
   const base = publicAppUrl.trim().replace(/\/$/, '');
-  const seg = jettonMasterUrlSegment();
+  const seg = jettonMasterUrlSegment(master);
   if (!base || !seg) return null;
   return `${base}/api/v1/jettons/${seg}`;
 }

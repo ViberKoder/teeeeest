@@ -1,10 +1,14 @@
 import { useMemo, useState } from 'react';
 import { Address } from '@ton/core';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { buildDeploy } from './buildMaster';
+import {
+  computePlannedDeploy,
+  jettonMasterSegment,
+  jettonMetadataHostedUrl,
+} from './buildMaster';
 import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
 import { generateSignerSecrets } from './signer';
-import { buildStandaloneJettonMetadataJson } from './metadata';
+import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson } from './metadata';
 import { ClaimTab } from './ClaimTab';
 
 type Step = 1 | 2 | 3 | 4;
@@ -47,27 +51,17 @@ export function App() {
   const [signerSeedHex, setSignerSeedHex] = useState('');
   const [signerPubkeyHex, setSignerPubkeyHex] = useState('');
 
-  const [metadataMode, setMetadataMode] = useState<'backend' | 'manual'>('backend');
-  const [manualMetadataUrl, setManualMetadataUrl] = useState('');
-
   const [deployValueTon, setDeployValueTon] = useState('0.15');
   /** Empty = unlimited; whole jettons (×1e9 nano), same semantics as backend JETTON_MAX_SUPPLY_NANO. */
   const [maxSupplyWholeJettons, setMaxSupplyWholeJettons] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [deployedMaster, setDeployedMaster] = useState('');
+  const [deployedMetadataUrl, setDeployedMetadataUrl] = useState('');
   const [appTab, setAppTab] = useState<AppTab>('minter');
 
-  const derivedMetadataUrl = useMemo(() => {
-    const b = backendUrl.trim().replace(/\/$/, '');
-    if (!b || !b.startsWith('http')) return '';
-    return `${b}/jetton-metadata.json`;
-  }, [backendUrl]);
-
   const backendOrigin = backendUrl.trim().replace(/\/$/, '');
-
-  const effectiveMetadataUrl =
-    metadataMode === 'backend' ? derivedMetadataUrl : manualMetadataUrl.trim();
+  const testnet = NETWORK === 'testnet';
 
   const maxSupplyNano = useMemo(() => {
     const t = maxSupplyWholeJettons.trim();
@@ -75,17 +69,57 @@ export function App() {
     return BigInt(t) * 1_000_000_000n;
   }, [maxSupplyWholeJettons]);
 
-  const validationDeploy = useMemo(() => {
+  /** Master + metadata URLs computed from admin/signer/backend **before** deploy. */
+  const plannedDeploy = useMemo(() => {
+    if (!walletAddress || !signerPubkeyHex || !backendOrigin.startsWith('http')) return null;
+    if (!/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex)) return null;
+    try {
+      const admin = Address.parse(walletAddress);
+      return computePlannedDeploy(
+        {
+          admin,
+          signerPubkeyHex,
+          walletCodeBase64: WALLET_BOC_BASE64,
+          masterCodeBase64: MASTER_BOC_BASE64,
+          maxSupplyNano,
+        },
+        backendOrigin,
+        testnet,
+      );
+    } catch {
+      return null;
+    }
+  }, [walletAddress, signerPubkeyHex, backendOrigin, maxSupplyNano, testnet]);
+
+  const plannedMetadataJson = useMemo(() => {
+    if (!plannedDeploy) return null;
+    return buildJettonMetadataJson({
+      name,
+      symbol,
+      description,
+      image: imageUrl,
+      backendBaseUrl: backendOrigin,
+      master: plannedDeploy.address,
+    });
+  }, [plannedDeploy, name, symbol, description, imageUrl, backendOrigin]);
+
+  const validationStep2 = useMemo(() => {
     if (!walletAddress) return 'Подключите кошелёк';
+    if (!backendOrigin.startsWith('http')) return 'Нужен https URL бэкенда';
     if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex))
-      return 'Сгенерируйте ключ signer (кнопка ниже)';
-    if (!effectiveMetadataUrl || !effectiveMetadataUrl.startsWith('http'))
-      return 'Нужен URL метаданных (https)';
+      return 'Сгенерируйте ключ signer';
+    if (!plannedDeploy) return 'Не удалось вычислить адрес master — проверьте поля';
+    return null;
+  }, [walletAddress, backendOrigin, signerPubkeyHex, plannedDeploy]);
+
+  const validationDeploy = useMemo(() => {
+    const base = validationStep2;
+    if (base) return base;
     if (!/^[0-9]+(\.[0-9]+)?$/.test(deployValueTon)) return 'Сумма деплоя — число TON';
     const ms = maxSupplyWholeJettons.trim();
     if (ms && !/^[0-9]+$/.test(ms)) return 'Макс. выпуск — только целое число jetton (или пусто = без лимита)';
     return null;
-  }, [walletAddress, signerPubkeyHex, effectiveMetadataUrl, deployValueTon, maxSupplyWholeJettons]);
+  }, [validationStep2, deployValueTon, maxSupplyWholeJettons]);
 
   function regenerateSigner() {
     const s = generateSignerSecrets();
@@ -96,25 +130,14 @@ export function App() {
   }
 
   async function deployMaster() {
-    if (validationDeploy) {
-      setToast(validationDeploy);
+    if (validationDeploy || !plannedDeploy) {
+      setToast(validationDeploy ?? 'Сначала заполните шаг 2');
       return;
     }
     setBusy(true);
     try {
-      const admin = Address.parse(walletAddress!);
-      const { address, stateInit } = buildDeploy({
-        admin,
-        signerPubkeyHex,
-        metadataUrl: effectiveMetadataUrl,
-        walletCodeBase64: WALLET_BOC_BASE64,
-        masterCodeBase64: MASTER_BOC_BASE64,
-        maxSupplyNano,
-      });
-      const masterFriendly = address.toString({
-        bounceable: false,
-        urlSafe: true,
-      });
+      const { address, stateInit, metadataUrl } = plannedDeploy;
+      const masterFriendly = jettonMasterSegment(address, testnet);
       const deployNano = BigInt(Math.floor(Number(deployValueTon) * 1e9)).toString();
 
       await tonConnectUI.sendTransaction({
@@ -129,6 +152,7 @@ export function App() {
       });
 
       setDeployedMaster(masterFriendly);
+      setDeployedMetadataUrl(metadataUrl);
       setStep(4);
       setToast('');
     } catch (e) {
@@ -232,7 +256,7 @@ export function App() {
               cursor: 'pointer',
             }}
           >
-            {s}. {['Кошелёк', 'Токен и URL', 'Signer и деплой', 'Готово'][s - 1]}
+            {s}. {['Кошелёк', 'Токен и master', 'Деплой', 'Готово'][s - 1]}
           </button>
         ))}
       </div>
@@ -252,11 +276,12 @@ export function App() {
 
       {step === 2 && (
         <section>
-          <h2>2. Имя токена и адрес бэкенда</h2>
+          <h2>2. Токен, бэкенд и адрес master (до деплоя)</h2>
           <p>
-            Укажите публичный <b>https</b> URL сервиса RMJ (например Render/Railway после первого деплоя).
-            По нему же будет доступно <code>/jetton-metadata.json</code>, если задать переменные{' '}
-            <code>PUBLIC_*</code> на сервере.
+            Минтер <b>сначала вычисляет адрес Jetton Master</b> из admin + signer + параметров, подставляет
+            его в <code>custom_payload_api_uri</code> и в on-chain URL метаданных. TonAPI увидит правильные
+            данные с первого запроса. На бэкенде должны быть <code>PUBLIC_APP_URL</code>,{' '}
+            <code>PUBLIC_JETTON_NAME</code>, <code>PUBLIC_JETTON_SYMBOL</code>.
           </p>
           <div style={{ display: 'grid', gap: 10 }}>
             <label>
@@ -295,73 +320,98 @@ export function App() {
             </label>
           </div>
 
-          <fieldset style={{ marginTop: 16, border: '1px solid #ddd', borderRadius: 8, padding: 12 }}>
-            <legend>Метаданные jetton (TEP-64 URL)</legend>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-              <input
-                type="radio"
-                checked={metadataMode === 'backend'}
-                onChange={() => setMetadataMode('backend')}
-              />
-              Брать с бэкенда:{' '}
-              <code style={{ opacity: derivedMetadataUrl ? 1 : 0.5 }}>
-                {derivedMetadataUrl || '(исправьте URL бэкенда)'}
-              </code>
-            </label>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-              <input
-                type="radio"
-                checked={metadataMode === 'manual'}
-                onChange={() => setMetadataMode('manual')}
-              />
-              Свой URL JSON (Gist / статический хостинг)
-            </label>
-            {metadataMode === 'manual' && (
-              <input
-                style={{ width: '100%', marginTop: 8 }}
-                value={manualMetadataUrl}
-                onChange={(e) => setManualMetadataUrl(e.target.value)}
-                placeholder="https://gist.githubusercontent.com/.../raw/.../jetton.json"
-              />
+          <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginTop: 0, fontSize: 16 }}>Signer (в контракт)</h3>
+            <button type="button" onClick={regenerateSigner} style={{ marginBottom: 12 }}>
+              Сгенерировать signer (seed + pubkey)
+            </button>
+            {signerPubkeyHex ? (
+              <pre style={{ background: '#fff', padding: 10, borderRadius: 6, fontSize: 12, overflow: 'auto' }}>
+                {`Pubkey: ${signerPubkeyHex}\nSeed → SIGNER_SEED_HEX на бэкенде`}
+              </pre>
+            ) : (
+              <p style={{ color: '#b45309', margin: 0 }}>Обязательно перед расчётом master.</p>
             )}
-          </fieldset>
+          </div>
 
-          <p style={{ fontSize: 14, opacity: 0.85 }}>
-            Полный <code>jetton-metadata.json</code> с <code>custom_payload_api_uri</code> (…/api/v1/jettons/EQ…master)
-            — после деплоя на шаге 4.
-          </p>
+          {plannedDeploy && plannedMetadataJson && (
+            <div style={{ marginTop: 16, padding: 12, background: '#eff6ff', borderRadius: 8, border: '1px solid #93c5fd' }}>
+              <h3 style={{ marginTop: 0, fontSize: 16 }}>Jetton Master (будет задеплоен)</h3>
+              <p style={{ margin: '0 0 8px' }}>
+                <code style={{ wordBreak: 'break-all' }}>{jettonMasterSegment(plannedDeploy.address, testnet)}</code>
+                <button
+                  type="button"
+                  style={{ marginLeft: 8 }}
+                  onClick={() =>
+                    void copyText('master', jettonMasterSegment(plannedDeploy.address, testnet), setToast)
+                  }
+                >
+                  Копировать
+                </button>
+              </p>
+              <p style={{ fontSize: 13, margin: '8px 0' }}>
+                On-chain metadata URL:{' '}
+                <code style={{ wordBreak: 'break-all' }}>{plannedDeploy.metadataUrl}</code>
+              </p>
+              <p style={{ fontSize: 13, margin: '8px 0' }}>
+                <code>custom_payload_api_uri</code>:{' '}
+                <code style={{ wordBreak: 'break-all' }}>{plannedDeploy.customPayloadApiUri}</code>
+              </p>
+              <details style={{ marginTop: 10 }}>
+                <summary style={{ cursor: 'pointer' }}>JSON метаданных (как отдаст бэкенд)</summary>
+                <pre
+                  style={{
+                    marginTop: 8,
+                    background: '#0f172a',
+                    color: '#e2e8f0',
+                    padding: 12,
+                    borderRadius: 6,
+                    fontSize: 11,
+                    overflow: 'auto',
+                  }}
+                >
+                  {JSON.stringify(plannedMetadataJson, null, 2)}
+                </pre>
+              </details>
+              <button
+                type="button"
+                style={{ marginTop: 10 }}
+                onClick={() =>
+                  downloadText(
+                    'jetton-metadata.json',
+                    JSON.stringify(plannedMetadataJson, null, 2),
+                  )
+                }
+              >
+                Скачать jetton-metadata.json (с master)
+              </button>
+            </div>
+          )}
+
+          {validationStep2 && <p style={{ color: '#b45309' }}>{validationStep2}</p>}
 
           <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <button type="button" onClick={() => setStep(1)}>← Назад</button>
-            <button type="button" onClick={() => setStep(3)}>Далее →</button>
+            <button type="button" disabled={!!validationStep2} onClick={() => setStep(3)}>
+              Далее →
+            </button>
           </div>
         </section>
       )}
 
-      {step === 3 && (
+      {step === 3 && plannedDeploy && (
         <section>
-          <h2>3. Signer и деплой Master</h2>
+          <h2>3. Деплой Jetton Master</h2>
           <p>
-            Voucher-подпись на бэкенде должна совпадать с публичным ключом в контракте.
-            Нажмите «Сгенерировать», сохраните <b>SIGNER_SEED_HEX</b> — он показывается один раз здесь.
+            В state init уже записан URL метаданных с master{' '}
+            <code>{jettonMasterSegment(plannedDeploy.address, testnet)}</code> и{' '}
+            <code>custom_payload_api_uri</code> с тем же master. После деплоя пропишите адрес в{' '}
+            <code>JETTON_MASTER_ADDRESS</code> на бэкенде.
           </p>
-          <button type="button" onClick={regenerateSigner} style={{ marginBottom: 12 }}>
-            Сгенерировать signer (seed + pubkey)
-          </button>
-          {signerPubkeyHex ? (
-            <pre style={{ background: '#f4f4f5', padding: 12, borderRadius: 8, overflow: 'auto', fontSize: 13 }}>
-              {`Pubkey (в контракт): ${signerPubkeyHex}\nSeed (backend SIGNER_SEED_HEX): ${signerSeedHex.slice(0, 16)}…`}
-            </pre>
-          ) : (
-            <p style={{ color: '#b45309' }}>Сгенерируйте ключ перед деплоем.</p>
-          )}
           <label style={{ display: 'block', marginTop: 12 }}>
             TON на деплой master
             <input value={deployValueTon} onChange={(e) => setDeployValueTon(e.target.value)} />
           </label>
-          <p style={{ fontSize: 14, opacity: 0.85 }}>
-            Метаданные: <code>{effectiveMetadataUrl || '—'}</code>
-          </p>
           {validationDeploy && <p style={{ color: '#b45309' }}>{validationDeploy}</p>}
           <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
             <button type="button" disabled={busy || !!validationDeploy} onClick={() => void deployMaster()}>
@@ -384,8 +434,12 @@ export function App() {
           </p>
           <p>
             Дальше: задеплойте бэкенд (Docker / Render — см. <code>docs/QUICKSTART_ONE_CLICK.md</code>),
-            вставьте переменные ниже, затем проверьте{' '}
-            <code>{derivedMetadataUrl || `${backendUrl}/jetton-metadata.json`}</code>.
+            вставьте переменные ниже (сначала <code>JETTON_MASTER_ADDRESS</code>), затем проверьте{' '}
+            <code style={{ wordBreak: 'break-all' }}>
+              {deployedMetadataUrl ||
+                jettonMetadataHostedUrl(backendOrigin, Address.parse(deployedMaster), testnet)}
+            </code>
+            .
           </p>
           <h3>Переменные окружения</h3>
           <pre
@@ -417,7 +471,7 @@ export function App() {
                   image: imageUrl,
                   backendBaseUrl: backendUrl,
                   jettonMasterAddress: deployedMaster,
-                }),
+                }), // same JSON as step 2 preview
               )
             }
           >
@@ -437,7 +491,7 @@ export function App() {
             · Бот: <code>examples/telegram-bot</code> — только <code>RMJ_BACKEND_URL</code> и токен Telegram.<br />
             · TMA / вкладка Claim в этом минтере: <code>VITE_RMJ_BACKEND_URL</code>; master в TMA опционален (jetton-wallet берётся с API).
           </p>
-          <button type="button" onClick={() => { setStep(1); setDeployedMaster(''); }}>
+          <button type="button" onClick={() => { setStep(1); setDeployedMaster(''); setDeployedMetadataUrl(''); }}>
             Начать новый проект
           </button>
         </section>

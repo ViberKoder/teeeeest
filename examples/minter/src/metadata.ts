@@ -1,7 +1,32 @@
 import { Address } from '@ton/core';
 import { NETWORK } from './constants';
+import { customPayloadApiRoot } from './buildMaster';
 
-/** Same shape as backend GET /jetton-metadata.json for manual hosting (Gist, R2, …). */
+/**
+ * TEP-64 JSON served at `…/api/v1/jettons/{master}/metadata.json`.
+ * Call with **planned master** from `computePlannedDeploy` (before on-chain deploy).
+ */
+export function buildJettonMetadataJson(opts: {
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+  backendBaseUrl: string;
+  master: Address;
+}): Record<string, string> {
+  const testnet = NETWORK === 'testnet';
+  const o: Record<string, string> = {
+    name: opts.name.trim(),
+    symbol: opts.symbol.trim(),
+    description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
+    decimals: '0',
+    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master, testnet),
+  };
+  const img = opts.image.trim();
+  if (img) o.image = img;
+  return o;
+}
+
 export function buildStandaloneJettonMetadataJson(opts: {
   name: string;
   symbol: string;
@@ -10,20 +35,17 @@ export function buildStandaloneJettonMetadataJson(opts: {
   backendBaseUrl: string;
   jettonMasterAddress: string;
 }): string {
-  const base = opts.backendBaseUrl.trim().replace(/\/$/, '');
-  const masterSeg = Address.parse(opts.jettonMasterAddress.trim()).toString({
-    urlSafe: true,
-    bounceable: true,
-    testOnly: NETWORK === 'testnet',
-  });
-  const o: Record<string, string> = {
-    name: opts.name.trim(),
-    symbol: opts.symbol.trim(),
-    description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
-    decimals: '0',
-    custom_payload_api_uri: `${base}/api/v1/jettons/${masterSeg}`,
-  };
-  const img = opts.image.trim();
-  if (img) o.image = img;
-  return JSON.stringify(o, null, 2);
+  const master = Address.parse(opts.jettonMasterAddress.trim());
+  return JSON.stringify(
+    buildJettonMetadataJson({
+      name: opts.name,
+      symbol: opts.symbol,
+      description: opts.description,
+      image: opts.image,
+      backendBaseUrl: opts.backendBaseUrl,
+      master,
+    }),
+    null,
+    2,
+  );
 }

@@ -12,7 +12,7 @@ import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
 import { config } from '../config';
 import { createTonClient } from '../tonClient';
-import { configuredJettonMaster, parseJettonMasterParam } from '../jettonMaster';
+import { configuredJettonMaster, jettonMasterUrlSegment, parseJettonMasterParam } from '../jettonMaster';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -205,6 +205,29 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     async (req, reply) => serveMintlessWallet(req.params.master, req.params.owner, reply),
   );
 
+  /** Legacy URI still returned by TonAPI cache for some jettons */
+  const serveLegacyMintlessWallet = async (
+    ownerParam: string,
+    reply: { code: (n: number) => void },
+  ) => {
+    const seg = jettonMasterUrlSegment();
+    if (!seg) {
+      reply.code(503);
+      return { error: 'jetton-master-not-configured' };
+    }
+    return serveMintlessWallet(seg, ownerParam, reply);
+  };
+
+  app.get<{ Params: { owner: string } }>(
+    '/api/v1/custom-payload/wallet/:owner',
+    async (req, reply) => serveLegacyMintlessWallet(req.params.owner, reply),
+  );
+
+  app.get<{ Params: { owner: string } }>(
+    '/api/v1/custom-payload/:owner',
+    async (req, reply) => serveLegacyMintlessWallet(req.params.owner, reply),
+  );
+
   app.get<{ Params: { master: string } }>('/api/v1/jettons/:master/state', async (req, reply) => {
     const master = parseJettonMasterParam(req.params.master);
     if (!master) {
@@ -214,6 +237,8 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     return {
       total_wallets: deps.state.tree.size,
       master_address: master.toRawString(),
+      /** TEP offchain-payloads `/state` — same master as in metadata `custom_payload_api_uri`. */
+      address: master.toRawString(),
     };
   });
 
@@ -245,6 +270,6 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
   }));
 
   logger.info(
-    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, GET /api/v1/jettons/:master/state',
+    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, legacy GET /api/v1/custom-payload/wallet/:owner',
   );
 }
