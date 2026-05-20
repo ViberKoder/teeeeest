@@ -1,68 +1,57 @@
 import { FastifyInstance } from 'fastify';
 import { config } from '../config';
 import { configuredJettonMaster } from '../jettonMaster';
-import {
-  buildJettonMetadataJson,
-  jettonMetadataHostedUrl,
-  parseMasterAddressParam,
-} from '../jettonMetadata';
+import { buildJettonMetadataJson, parseMasterAddressParam } from '../jettonMetadata';
 
 /**
- * TEP-64 jetton metadata (off-chain JSON).
- *
- * **Canonical on-chain URL** (set at deploy time, before TonAPI indexes):
- * `{PUBLIC_APP_URL}/api/v1/jettons/{master}/metadata.json`
- *
- * Legacy `/jetton-metadata.json` only works when `JETTON_MASTER_ADDRESS` is set and
- * redirects to the canonical URL — never serves a master-less `custom_payload_api_uri`.
+ * On-chain TEP-64 content URL: `{PUBLIC_APP_URL}/jetton-metadata.json` only.
+ * Master address must NOT appear in that URL (it would change the contract address).
+ * `custom_payload_api_uri` uses friendly EQ… from `JETTON_MASTER_ADDRESS`.
  */
 export function registerPublicJettonMetadata(app: FastifyInstance): void {
+  app.get('/jetton-metadata.json', async (_req, reply) => {
+    const master = configuredJettonMaster();
+    if (!master) {
+      reply.code(503);
+      return {
+        error: 'jetton-master-not-configured',
+        hint:
+          'Set JETTON_MASTER_ADDRESS on the backend to your deployed master (EQ… from minter step 2) BEFORE TonAPI/wallets fetch this URL.',
+      };
+    }
+
+    const body = buildJettonMetadataJson(master);
+    if (!body) {
+      reply.code(503);
+      return {
+        error: 'jetton-metadata-not-configured',
+        hint: 'Set PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL',
+      };
+    }
+
+    reply.type('application/json; charset=utf-8');
+    return body;
+  });
+
+  /** Same JSON as /jetton-metadata.json when master in path matches env. */
   app.get<{ Params: { master: string } }>(
     '/api/v1/jettons/:master/metadata.json',
     async (req, reply) => {
-      const master = parseMasterAddressParam(req.params.master);
-      if (!master) {
-        reply.code(400);
-        return { error: 'invalid-jetton-master' };
+      const fromPath = parseMasterAddressParam(req.params.master);
+      const configured = configuredJettonMaster();
+      if (!fromPath || !configured || !fromPath.equals(configured)) {
+        reply.code(404);
+        return { error: 'unknown-jetton-master' };
       }
 
-      const body = buildJettonMetadataJson(master);
+      const body = buildJettonMetadataJson(configured);
       if (!body) {
         reply.code(503);
-        return {
-          error: 'jetton-metadata-not-configured',
-          hint:
-            'Set PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL on the backend (see docs/QUICKSTART_ONE_CLICK.md)',
-        };
+        return { error: 'jetton-metadata-not-configured' };
       }
 
       reply.type('application/json; charset=utf-8');
       return body;
     },
   );
-
-  app.get('/jetton-metadata.json', async (_req, reply) => {
-    const master = configuredJettonMaster();
-    const base = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');
-
-    if (!master) {
-      reply.code(503);
-      return {
-        error: 'jetton-master-not-configured',
-        hint:
-          'Point on-chain content at {PUBLIC_APP_URL}/api/v1/jettons/{master}/metadata.json (master known at deploy). Or set JETTON_MASTER_ADDRESS for this legacy path.',
-      };
-    }
-
-    if (!base) {
-      reply.code(404);
-      return {
-        error: 'jetton-metadata-not-configured',
-        hint: 'Set PUBLIC_APP_URL (https URL of this service)',
-      };
-    }
-
-    const canonical = jettonMetadataHostedUrl(base, master);
-    reply.redirect(307, canonical);
-  });
 }

@@ -2,7 +2,10 @@ import { Address } from '@ton/core';
 import { config } from './config';
 import {
   customPayloadApiRoot,
+  fixedJettonMetadataUrl,
   jettonMetadataHostedUrl,
+  jettonMasterFriendly,
+  jettonMasterRaw,
   masterFromJettonApiUrl,
   parseJettonMasterPathSegment,
 } from './jettonAddressPath';
@@ -16,7 +19,14 @@ export type JettonMetadataJson = Record<string, string>;
 /** Parse master from URL path (`0:…` preferred; `EQ…` / `UQ…` accepted). */
 export const parseMasterAddressParam = parseJettonMasterPathSegment;
 
-export { jettonMetadataHostedUrl, customPayloadApiRoot, masterFromJettonApiUrl };
+export {
+  jettonMetadataHostedUrl,
+  customPayloadApiRoot,
+  masterFromJettonApiUrl,
+  fixedJettonMetadataUrl,
+  jettonMasterFriendly,
+  jettonMasterRaw,
+};
 
 /**
  * Build TEP-64 metadata body. `custom_payload_api_uri` is the **final** API root

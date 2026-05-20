@@ -143,7 +143,7 @@ export async function runWalletDisplayAudit(params: {
 
   // --- Backend mirror ---
   if (backendBase) {
-    const canonicalMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterRaw)}/metadata.json`;
+    const canonicalMetaUrl = `${backendBase}/jetton-metadata.json`;
     const mirror = await fetchJson(canonicalMetaUrl);
     if (mirror.ok && mirror.body && typeof mirror.body === 'object') {
       const m = mirror.body as JsonRecord;

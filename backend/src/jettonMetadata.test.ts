@@ -28,24 +28,16 @@ describe('jettonMetadata', () => {
     expect(parseMasterAddressParam(master.toRawString())?.equals(master)).toBe(true);
   });
 
-  test('jettonMetadataHostedUrl embeds raw master segment', () => {
-    const url = jettonMetadataHostedUrl('https://example.com', master);
-    expect(url).toBe(
-      `https://example.com/api/v1/jettons/${encodeURIComponent(master.toRawString())}/metadata.json`,
-    );
-  });
-
-  test('buildJettonMetadataJson sets custom_payload_api_uri without trailing slash', () => {
+  test('custom_payload_api_uri uses friendly EQ master', () => {
     const body = buildJettonMetadataJson(master, {
       publicAppUrl: 'https://example.com',
       name: 'Egg',
       symbol: 'EGG',
       decimals: '0',
     });
-    expect(body?.custom_payload_api_uri).toBe(
-      `https://example.com/api/v1/jettons/${encodeURIComponent(master.toRawString())}`,
-    );
-    expect(body?.custom_payload_api_uri).not.toMatch(/\/$/);
+    const eq = master.toString({ urlSafe: true, bounceable: true });
+    expect(body?.custom_payload_api_uri).toBe(`https://example.com/api/v1/jettons/${eq}`);
+    expect(body?.custom_payload_api_uri).not.toContain('%3A');
     expect(body?.custom_payload_api_uri).not.toContain('/custom-payload');
     expect(body?.decimals).toBe('0');
   });
