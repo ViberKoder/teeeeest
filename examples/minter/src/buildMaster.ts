@@ -76,3 +76,44 @@ export function buildDeploy(params: BuildMasterParams) {
   return { address, stateInit };
 }
 
+/** Placeholder EQ… for the metadata URL → address fixed-point (URL embeds final master). */
+const METADATA_URL_PLACEHOLDER =
+  'EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c';
+
+/**
+ * TEP-64 off-chain content URL must include the jetton master so the first fetch
+ * already exposes the correct `custom_payload_api_uri` (…/api/v1/jettons/{master}).
+ */
+export function jettonMetadataHostedUrl(publicBaseUrl: string, master: Address, testnet: boolean): string {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  const seg = master.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
+  return `${base}/api/v1/jettons/${seg}/metadata.json`;
+}
+
+/**
+ * Resolve metadata URL and deploy address together (content URL affects contract address).
+ */
+export function resolveDeployWithMetadataUrl(
+  params: Omit<BuildMasterParams, 'metadataUrl'>,
+  publicBaseUrl: string,
+  testnet: boolean,
+): { metadataUrl: string; address: Address; stateInit: Cell } {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  let metadataUrl = `${base}/api/v1/jettons/${METADATA_URL_PLACEHOLDER}/metadata.json`;
+  let prevAddress: Address | null = null;
+
+  for (let i = 0; i < 6; i++) {
+    const built = buildDeploy({ ...params, metadataUrl });
+    const seg = built.address.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
+    const nextUrl = `${base}/api/v1/jettons/${seg}/metadata.json`;
+    if (prevAddress?.equals(built.address) && metadataUrl === nextUrl) {
+      return { metadataUrl: nextUrl, address: built.address, stateInit: built.stateInit };
+    }
+    prevAddress = built.address;
+    metadataUrl = nextUrl;
+  }
+
+  const built = buildDeploy({ ...params, metadataUrl });
+  return { metadataUrl, address: built.address, stateInit: built.stateInit };
+}
+

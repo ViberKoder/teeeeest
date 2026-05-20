@@ -1,7 +1,10 @@
 import { Address } from '@ton/core';
 import { NETWORK } from './constants';
 
-/** Same shape as backend GET /jetton-metadata.json for manual hosting (Gist, R2, …). */
+/**
+ * Same shape as backend `GET /api/v1/jettons/{master}/metadata.json`.
+ * `custom_payload_api_uri` must be the final API root (…/api/v1/jettons/{master}), no trailing slash.
+ */
 export function buildStandaloneJettonMetadataJson(opts: {
   name: string;
   symbol: string;

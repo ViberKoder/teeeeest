@@ -107,12 +107,21 @@ export async function runWalletDisplayAudit(params: {
       hostedMeta = hosted.body as JsonRecord;
       const uri = String(hostedMeta.custom_payload_api_uri ?? '');
       const dec = String(hostedMeta.decimals ?? '');
+      const uriOk =
+        uri &&
+        dec !== '' &&
+        uri.includes('/api/v1/jettons/') &&
+        !uri.endsWith('/custom-payload') &&
+        !uri.endsWith('/api/v1/custom-payload');
       checks.push(
         check(
           'hosted_metadata',
-          uri && dec !== '' ? 'ok' : 'fail',
+          uriOk ? 'ok' : 'fail',
           'Hosted jetton metadata (on-chain URL)',
           `decimals=${dec}, custom_payload_api_uri=${uri || '(missing)'}`,
+          uriOk
+            ? undefined
+            : 'TEP: URI must be final API root …/api/v1/jettons/{master} (see jetton-offchain-payloads)',
         ),
       );
       if (uri) walletFetchUrls.push(`${uri.replace(/\/$/, '')}/wallet/${ownerRaw ?? '{owner_raw}'}`);
@@ -125,7 +134,8 @@ export async function runWalletDisplayAudit(params: {
 
   // --- Backend mirror ---
   if (backendBase) {
-    const mirror = await fetchJson(`${backendBase}/jetton-metadata.json`);
+    const canonicalMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
+    const mirror = await fetchJson(canonicalMetaUrl);
     if (mirror.ok && mirror.body && typeof mirror.body === 'object') {
       const m = mirror.body as JsonRecord;
       const uri = String(m.custom_payload_api_uri ?? '');
@@ -133,7 +143,7 @@ export async function runWalletDisplayAudit(params: {
         check(
           'backend_jetton_metadata',
           'ok',
-          'GET /jetton-metadata.json',
+          'GET /api/v1/jettons/{master}/metadata.json',
           `decimals=${m.decimals}, custom_payload_api_uri=${uri}`,
         ),
       );
@@ -144,14 +154,19 @@ export async function runWalletDisplayAudit(params: {
           check(
             'metadata_host_vs_backend',
             mismatch ? 'warn' : 'ok',
-            'On-chain URL vs backend route',
+            'On-chain URL vs backend canonical metadata',
             mismatch ? `chain URL returns ${hostedUri}, backend serves ${uri}` : 'URIs match',
           ),
         );
       }
     } else {
       checks.push(
-        check('backend_jetton_metadata', 'fail', 'GET /jetton-metadata.json', `HTTP ${mirror.status}`),
+        check(
+          'backend_jetton_metadata',
+          'fail',
+          'GET /api/v1/jettons/{master}/metadata.json',
+          `HTTP ${mirror.status}`,
+        ),
       );
     }
   }

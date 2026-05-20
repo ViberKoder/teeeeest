@@ -138,7 +138,13 @@ RMJ backend (with `JETTON_MASTER_ADDRESS` set) serves:
 | Wallet proof | `GET /api/v1/jettons/{master}/wallet/{owner}` |
 | API state | `GET /api/v1/jettons/{master}/state` |
 
-Hosted metadata: `GET /jetton-metadata.json` sets `custom_payload_api_uri` to `{PUBLIC_APP_URL}/api/v1/jettons/{master}` automatically.
+**Canonical hosted metadata** (set this URL in on-chain `content` at deploy):
+
+`GET {PUBLIC_APP_URL}/api/v1/jettons/{master}/metadata.json`
+
+It returns TEP-64 JSON with `custom_payload_api_uri` = `{PUBLIC_APP_URL}/api/v1/jettons/{master}` (final API root, no trailing slash).
+
+Legacy `GET /jetton-metadata.json` redirects to the canonical URL when `JETTON_MASTER_ADDRESS` is configured — it never emits `/api/v1/custom-payload` without the master segment.
 
 Response includes TEP-required fields `owner`, `jetton_wallet`, `custom_payload`, plus `compressed_info`, optional `state_init`.
 

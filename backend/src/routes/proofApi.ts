@@ -237,6 +237,8 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     return {
       total_wallets: deps.state.tree.size,
       master_address: master.toRawString(),
+      /** TEP offchain-payloads `/state` — same master as in metadata `custom_payload_api_uri`. */
+      address: master.toRawString(),
     };
   });
 

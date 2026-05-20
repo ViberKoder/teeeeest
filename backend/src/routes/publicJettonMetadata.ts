@@ -1,53 +1,68 @@
 import { FastifyInstance } from 'fastify';
 import { config } from '../config';
-import { buildCustomPayloadApiUri } from '../jettonMaster';
+import { configuredJettonMaster } from '../jettonMaster';
+import {
+  buildJettonMetadataJson,
+  jettonMetadataHostedUrl,
+  parseMasterAddressParam,
+} from '../jettonMetadata';
 
 /**
- * Serves TEP-64-compatible jetton metadata JSON so creators can point the master
- * `content` URL at `{PUBLIC_APP_URL}/jetton-metadata.json` without a separate host.
+ * TEP-64 jetton metadata (off-chain JSON).
  *
- * Requires: PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL.
- * TEP-64 `decimals` follows `PUBLIC_BALANCE_DISPLAY` (`integer` → `"0"`, `jetton_nano` → `"9"`).
+ * **Canonical on-chain URL** (set at deploy time, before TonAPI indexes):
+ * `{PUBLIC_APP_URL}/api/v1/jettons/{master}/metadata.json`
+ *
+ * Legacy `/jetton-metadata.json` only works when `JETTON_MASTER_ADDRESS` is set and
+ * redirects to the canonical URL — never serves a master-less `custom_payload_api_uri`.
  */
 export function registerPublicJettonMetadata(app: FastifyInstance): void {
-  app.get('/jetton-metadata.json', async (_req, reply) => {
-    const base = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');
-    const name = config.PUBLIC_JETTON_NAME.trim();
-    const symbol = config.PUBLIC_JETTON_SYMBOL.trim();
-    if (!base || !name || !symbol) {
-      reply.code(404);
-      return {
-        error: 'jetton-metadata-not-configured',
-        hint:
-          'Set PUBLIC_APP_URL (https URL of this service), PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL — see docs/QUICKSTART_ONE_CLICK.md',
-      };
-    }
+  app.get<{ Params: { master: string } }>(
+    '/api/v1/jettons/:master/metadata.json',
+    async (req, reply) => {
+      const master = parseMasterAddressParam(req.params.master);
+      if (!master) {
+        reply.code(400);
+        return { error: 'invalid-jetton-master' };
+      }
 
-    const image = config.PUBLIC_JETTON_IMAGE_URL.trim();
-    /** Wallets divide on-chain balance by 10^decimals. Use `0` so 1 DB / 1 chain unit = 1 shown token (see PUBLIC_BALANCE_DISPLAY=integer). */
-    const decimals = config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '0' : '9';
-    const body: Record<string, string> = {
-      name,
-      symbol,
-      description:
-        config.PUBLIC_JETTON_DESCRIPTION.trim() ||
-        `${symbol} — Rolling Mintless Jetton rewards.`,
-      decimals,
-    };
-    const customPayloadApiUri = buildCustomPayloadApiUri(base);
-    if (!customPayloadApiUri) {
+      const body = buildJettonMetadataJson(master);
+      if (!body) {
+        reply.code(503);
+        return {
+          error: 'jetton-metadata-not-configured',
+          hint:
+            'Set PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL on the backend (see docs/QUICKSTART_ONE_CLICK.md)',
+        };
+      }
+
+      reply.type('application/json; charset=utf-8');
+      return body;
+    },
+  );
+
+  app.get('/jetton-metadata.json', async (_req, reply) => {
+    const master = configuredJettonMaster();
+    const base = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');
+
+    if (!master) {
       reply.code(503);
       return {
         error: 'jetton-master-not-configured',
-        hint: 'Set JETTON_MASTER_ADDRESS on the backend so custom_payload_api_uri can be …/api/v1/jettons/{master}',
+        hint:
+          'Point on-chain content at {PUBLIC_APP_URL}/api/v1/jettons/{master}/metadata.json (master known at deploy). Or set JETTON_MASTER_ADDRESS for this legacy path.',
       };
     }
-    body.custom_payload_api_uri = customPayloadApiUri;
-    /** TonAPI may still index the pre-/jettons/{master} URI — keep routes alive (see wallet-display-audit). */
-    body.legacy_custom_payload_api_uri = `${base}/api/v1/custom-payload`;
-    if (image) body.image = image;
 
-    reply.type('application/json; charset=utf-8');
-    return body;
+    if (!base) {
+      reply.code(404);
+      return {
+        error: 'jetton-metadata-not-configured',
+        hint: 'Set PUBLIC_APP_URL (https URL of this service)',
+      };
+    }
+
+    const canonical = jettonMetadataHostedUrl(base, master);
+    reply.redirect(307, canonical);
   });
 }
