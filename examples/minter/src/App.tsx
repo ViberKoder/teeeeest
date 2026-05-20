@@ -1,11 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Address } from '@ton/core';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import {
-  computePlannedDeploy,
-  jettonMasterDisplay,
-  jettonMetadataHostedUrl,
-} from './buildMaster';
+import { computePlannedDeploy, fixedJettonMetadataUrl, jettonMasterDisplay } from './buildMaster';
 import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
 import { generateSignerSecrets } from './signer';
 import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson } from './metadata';
@@ -84,6 +80,7 @@ export function App() {
           maxSupplyNano,
         },
         backendOrigin,
+        testnet,
       );
     } catch (e) {
       console.warn('computePlannedDeploy', e);
@@ -108,7 +105,8 @@ export function App() {
     if (!backendOrigin.startsWith('http')) return 'Нужен https URL бэкенда';
     if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex))
       return 'Сгенерируйте ключ signer';
-    if (!plannedDeploy) return 'Не удалось вычислить адрес master — проверьте поля';
+    if (!plannedDeploy)
+      return 'Не удалось вычислить master (metadata URL не сошёлся с адресом контракта) — проверьте URL бэкенда и поля токена';
     return null;
   }, [walletAddress, backendOrigin, signerPubkeyHex, plannedDeploy]);
 
@@ -278,10 +276,14 @@ export function App() {
         <section>
           <h2>2. Токен, бэкенд и адрес master (до деплоя)</h2>
           <p>
-            Минтер <b>сначала вычисляет адрес Jetton Master</b> из admin + signer + параметров, подставляет
-            его в <code>custom_payload_api_uri</code> и в on-chain URL метаданных. TonAPI увидит правильные
-            данные с первого запроса. На бэкенде должны быть <code>PUBLIC_APP_URL</code>,{' '}
-            <code>PUBLIC_JETTON_NAME</code>, <code>PUBLIC_JETTON_SYMBOL</code>.
+            Минтер считает адрес master заранее. В контракт кладётся фиксированный URL{' '}
+            <code>{backendOrigin ? `${backendOrigin}/jetton-metadata.json` : '…/jetton-metadata.json'}</code>{' '}
+            (без master в пути — иначе адрес «плывёт»). В JSON на бэкенде{' '}
+            <code>custom_payload_api_uri</code> будет <b>EQ…</b> этого master.
+          </p>
+          <p style={{ fontSize: 14, color: '#b45309' }}>
+            <b>До деплоя</b> на Railway: <code>JETTON_MASTER_ADDRESS</code> = адрес ниже, плюс{' '}
+            <code>PUBLIC_*</code>. Иначе TonAPI получит неверный <code>custom_payload_api_uri</code>.
           </p>
           <div style={{ display: 'grid', gap: 10 }}>
             <label>
@@ -388,6 +390,17 @@ export function App() {
               >
                 Скачать jetton-metadata.json (с master)
               </button>
+              <pre
+                style={{
+                  marginTop: 12,
+                  background: '#fef3c7',
+                  padding: 10,
+                  borderRadius: 6,
+                  fontSize: 12,
+                }}
+              >
+                {`JETTON_MASTER_ADDRESS=${jettonMasterDisplay(plannedDeploy.address, testnet)}`}
+              </pre>
             </div>
           )}
 
@@ -406,10 +419,8 @@ export function App() {
         <section>
           <h2>3. Деплой Jetton Master</h2>
           <p>
-            В state init уже записан URL метаданных с master{' '}
-            <code>{jettonMasterDisplay(plannedDeploy.address, testnet)}</code> и{' '}
-            <code>custom_payload_api_uri</code> с тем же master. После деплоя пропишите адрес в{' '}
-            <code>JETTON_MASTER_ADDRESS</code> на бэкенде.
+            On-chain metadata: <code>{plannedDeploy.metadataUrl}</code>. Убедитесь, что на бэкенде уже стоит{' '}
+            <code>JETTON_MASTER_ADDRESS={jettonMasterDisplay(plannedDeploy.address, testnet)}</code>.
           </p>
           <label style={{ display: 'block', marginTop: 12 }}>
             TON на деплой master
@@ -439,8 +450,7 @@ export function App() {
             Дальше: задеплойте бэкенд (Docker / Render — см. <code>docs/QUICKSTART_ONE_CLICK.md</code>),
             вставьте переменные ниже (сначала <code>JETTON_MASTER_ADDRESS</code>), затем проверьте{' '}
             <code style={{ wordBreak: 'break-all' }}>
-              {deployedMetadataUrl ||
-                jettonMetadataHostedUrl(backendOrigin, Address.parse(deployedMaster))}
+              {deployedMetadataUrl || fixedJettonMetadataUrl(backendOrigin)}
             </code>
             .
           </p>

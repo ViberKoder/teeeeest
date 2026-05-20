@@ -6,13 +6,10 @@ export interface BuildMasterParams {
   metadataUrl: string;
   walletCodeBase64: string;
   masterCodeBase64: string;
-  /** 0n = unlimited admin mint on-chain; otherwise master rejects mints above this cap. */
   maxSupplyNano?: bigint;
 }
 
-/** Макс. байт UTF-8, которые помещаются в одну ячейку после префикса 0x01 (1023−8 бит). */
 const OFFCHAIN_INLINE_URI_MAX = 126;
-/** Макс. байт данных в одном звене snake (без префикса 0x01 в этом звене). */
 const SNAKE_CHUNK = 127;
 
 function buildSnakeFromBuffer(data: Buffer): Cell {
@@ -72,98 +69,43 @@ export function buildDeploy(params: BuildMasterParams) {
   return { address, stateInit };
 }
 
-/** Canonical `0:…` in URL paths (TEP offchain-payloads). */
-export function jettonMasterPathSegment(master: Address): string {
-  return encodeURIComponent(master.toRawString());
+export function fixedJettonMetadataUrl(publicBaseUrl: string): string {
+  return `${publicBaseUrl.trim().replace(/\/$/, '')}/jetton-metadata.json`;
 }
 
-export function parseJettonMasterPathSegment(param: string): Address | null {
-  try {
-    return Address.parse(decodeURIComponent(param.trim()));
-  } catch {
-    return null;
-  }
-}
-
-const PLACEHOLDER_RAW = encodeURIComponent(
-  '0:0000000000000000000000000000000000000000000000000000000000000000',
-);
-
-export function jettonMetadataHostedUrl(publicBaseUrl: string, master: Address): string {
-  const base = publicBaseUrl.trim().replace(/\/$/, '');
-  return `${base}/api/v1/jettons/${jettonMasterPathSegment(master)}/metadata.json`;
-}
-
-export function customPayloadApiRoot(publicBaseUrl: string, master: Address): string {
-  const base = publicBaseUrl.trim().replace(/\/$/, '');
-  return `${base}/api/v1/jettons/${jettonMasterPathSegment(master)}`;
-}
-
-/** EQ/UQ display for Tonkeeper / explorers */
 export function jettonMasterDisplay(master: Address, testnet: boolean): string {
   return master.toString({ urlSafe: true, bounceable: true, testOnly: testnet });
 }
 
+export function customPayloadApiRoot(publicBaseUrl: string, master: Address, testnet: boolean): string {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  const seg = jettonMasterDisplay(master, testnet);
+  return `${base}/api/v1/jettons/${seg}`;
+}
+
 export type PlannedDeploy = {
+  /** Always `{backend}/jetton-metadata.json` — master is NOT in this URL. */
   metadataUrl: string;
   customPayloadApiUri: string;
   address: Address;
   stateInit: Cell;
-  converged: boolean;
 };
 
 /**
- * Fixed-point: on-chain metadata URL must reference the same master address as the contract.
- * Uses raw `0:…` in the path so URI and deploy address cannot drift across EQ variants.
+ * Master address is known before deploy because on-chain content uses a fixed metadata URL.
+ * Set `JETTON_MASTER_ADDRESS` on the backend to this address before TonAPI indexes the jetton.
  */
 export function computePlannedDeploy(
   params: Omit<BuildMasterParams, 'metadataUrl'>,
   publicBaseUrl: string,
+  testnet: boolean,
 ): PlannedDeploy {
-  const base = publicBaseUrl.trim().replace(/\/$/, '');
-  let metadataUrl = `${base}/api/v1/jettons/${PLACEHOLDER_RAW}/metadata.json`;
-
-  for (let i = 0; i < 24; i++) {
-    const built = buildDeploy({ ...params, metadataUrl });
-    const nextUrl = jettonMetadataHostedUrl(base, built.address);
-    const apiRoot = customPayloadApiRoot(base, built.address);
-
-    if (metadataUrl === nextUrl) {
-      const fromUrl = parseJettonMasterPathSegment(
-        nextUrl.replace(/.*\/jettons\//, '').replace(/\/metadata\.json$/, ''),
-      );
-      if (!fromUrl?.equals(built.address)) {
-        throw new Error('internal: metadata URL master mismatch after convergence');
-      }
-      return {
-        metadataUrl: nextUrl,
-        customPayloadApiUri: apiRoot,
-        address: built.address,
-        stateInit: built.stateInit,
-        converged: true,
-      };
-    }
-    metadataUrl = nextUrl;
-  }
-
+  const metadataUrl = fixedJettonMetadataUrl(publicBaseUrl);
   const built = buildDeploy({ ...params, metadataUrl });
-  const fixedUrl = jettonMetadataHostedUrl(base, built.address);
-  const fixedRoot = customPayloadApiRoot(base, built.address);
-  const converged = fixedUrl === metadataUrl;
-
-  if (!converged) {
-    throw new Error(
-      `metadata URL did not converge for this master (on-chain content would not match deploy address). ` +
-        `Try slightly different token name/symbol or backend URL. ` +
-        `Deploy address ${built.address.toRawString()}, URL would need ${fixedUrl}`,
-    );
-  }
-
   return {
-    metadataUrl: fixedUrl,
-    customPayloadApiUri: fixedRoot,
+    metadataUrl,
+    customPayloadApiUri: customPayloadApiRoot(publicBaseUrl, built.address, testnet),
     address: built.address,
-    stateInit: buildDeploy({ ...params, metadataUrl: fixedUrl }).stateInit,
-    converged: true,
+    stateInit: built.stateInit,
   };
 }

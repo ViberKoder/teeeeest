@@ -1,5 +1,6 @@
 import { Address } from '@ton/core';
 import { customPayloadApiRoot } from './buildMaster';
+import { NETWORK } from './constants';
 
 /**
  * TEP-64 JSON served at `…/api/v1/jettons/{master}/metadata.json`.
@@ -18,7 +19,7 @@ export function buildJettonMetadataJson(opts: {
     symbol: opts.symbol.trim(),
     description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
     decimals: '0',
-    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master),
+    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master, NETWORK === 'testnet'),
   };
   const img = opts.image.trim();
   if (img) o.image = img;

@@ -100,6 +100,45 @@ export async function runWalletDisplayAudit(params: {
     );
   }
 
+  if (contentUrl) {
+    const fixedMetaSuffix = '/jetton-metadata.json';
+    const usesFixedMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(fixedMetaSuffix);
+    const perMasterInContent = /\/api\/v1\/jettons\/[^/]+\/metadata\.json/i.test(contentUrl);
+    checks.push(
+      check(
+        'onchain_content_url_pattern',
+        usesFixedMetadataUrl ? 'ok' : 'fail',
+        'On-chain metadata URL pattern',
+        usesFixedMetadataUrl
+          ? `fixed URL: ${contentUrl}`
+          : perMasterInContent
+            ? `per-master URL (breaks address): ${contentUrl}`
+            : `unexpected content URL: ${contentUrl}`,
+        usesFixedMetadataUrl
+          ? undefined
+          : `Run change_content (op 4) with off-chain URI: {PUBLIC_APP_URL}/jetton-metadata.json and set JETTON_MASTER_ADDRESS=${masterEq} on the backend before wallets re-fetch.`,
+      ),
+    );
+    if (perMasterInContent) {
+      try {
+        const embedded = masterFromJettonApiUrl(contentUrl.replace(/\/metadata\.json\/?$/i, ''));
+        if (embedded && !embedded.equals(master)) {
+          checks.push(
+            check(
+              'onchain_phantom_master',
+              'fail',
+              'On-chain URL embeds wrong jetton master',
+              `URL points to ${embedded.toRawString()}, deployed master is ${masterRaw}`,
+              'This is the classic “master in metadata URL” bug: the address in the URL is not your contract.',
+            ),
+          );
+        }
+      } catch {
+        /* parse failed */
+      }
+    }
+  }
+
   // --- Hosted metadata (wallets fetch this URL from chain) ---
   let hostedMeta: JsonRecord | null = null;
   if (contentUrl) {
@@ -141,19 +180,24 @@ export async function runWalletDisplayAudit(params: {
     }
   }
 
-  // --- Backend mirror ---
+  // --- Backend mirror (per-master path + env-backed /jetton-metadata.json) ---
   if (backendBase) {
-    const canonicalMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterRaw)}/metadata.json`;
-    const mirror = await fetchJson(canonicalMetaUrl);
-    if (mirror.ok && mirror.body && typeof mirror.body === 'object') {
-      const m = mirror.body as JsonRecord;
+    const perMasterMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
+    const envMetaUrl = `${backendBase}/jetton-metadata.json`;
+    const [perMaster, envMeta] = await Promise.all([fetchJson(perMasterMetaUrl), fetchJson(envMetaUrl)]);
+
+    if (perMaster.ok && perMaster.body && typeof perMaster.body === 'object') {
+      const m = perMaster.body as JsonRecord;
       const uri = String(m.custom_payload_api_uri ?? '');
+      const uriMaster = uri ? masterFromJettonApiUrl(uri) : null;
+      const uriOk = uriMaster != null && uriMaster.equals(master);
       checks.push(
         check(
-          'backend_jetton_metadata',
-          'ok',
+          'backend_per_master_metadata',
+          uriOk ? 'ok' : 'fail',
           'GET /api/v1/jettons/{master}/metadata.json',
-          `decimals=${m.decimals}, custom_payload_api_uri=${uri}`,
+          `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
+          uriOk ? undefined : `URI must reference this master (${masterEq} or ${masterRaw})`,
         ),
       );
       if (hostedMeta) {
@@ -161,9 +205,9 @@ export async function runWalletDisplayAudit(params: {
         const mismatch = hostedUri !== uri;
         checks.push(
           check(
-            'metadata_host_vs_backend',
+            'metadata_chain_vs_backend_per_master',
             mismatch ? 'warn' : 'ok',
-            'On-chain URL vs backend canonical metadata',
+            'On-chain URL JSON vs backend per-master metadata',
             mismatch ? `chain URL returns ${hostedUri}, backend serves ${uri}` : 'URIs match',
           ),
         );
@@ -171,10 +215,37 @@ export async function runWalletDisplayAudit(params: {
     } else {
       checks.push(
         check(
-          'backend_jetton_metadata',
+          'backend_per_master_metadata',
           'fail',
           'GET /api/v1/jettons/{master}/metadata.json',
-          `HTTP ${mirror.status}`,
+          `HTTP ${perMaster.status}`,
+        ),
+      );
+    }
+
+    if (envMeta.ok && envMeta.body && typeof envMeta.body === 'object') {
+      const m = envMeta.body as JsonRecord;
+      const uri = String(m.custom_payload_api_uri ?? '');
+      const uriMaster = uri ? masterFromJettonApiUrl(uri) : null;
+      const envMatchesQuery = uriMaster != null && uriMaster.equals(master);
+      checks.push(
+        check(
+          'backend_jetton_metadata_json',
+          envMatchesQuery ? 'ok' : 'warn',
+          'GET /jetton-metadata.json (JETTON_MASTER_ADDRESS)',
+          `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
+          envMatchesQuery
+            ? undefined
+            : `Railway env master ≠ audited master. Set JETTON_MASTER_ADDRESS=${masterEq}`,
+        ),
+      );
+    } else {
+      checks.push(
+        check(
+          'backend_jetton_metadata_json',
+          'fail',
+          'GET /jetton-metadata.json',
+          `HTTP ${envMeta.status}`,
         ),
       );
     }
