@@ -28,10 +28,10 @@ describe('jettonMetadata', () => {
     expect(parseMasterAddressParam(master.toRawString())?.equals(master)).toBe(true);
   });
 
-  test('jettonMetadataHostedUrl embeds master segment', () => {
+  test('jettonMetadataHostedUrl embeds raw master segment', () => {
     const url = jettonMetadataHostedUrl('https://example.com', master);
     expect(url).toBe(
-      `https://example.com/api/v1/jettons/${master.toString({ urlSafe: true, bounceable: true })}/metadata.json`,
+      `https://example.com/api/v1/jettons/${encodeURIComponent(master.toRawString())}/metadata.json`,
     );
   });
 
@@ -43,7 +43,7 @@ describe('jettonMetadata', () => {
       decimals: '0',
     });
     expect(body?.custom_payload_api_uri).toBe(
-      `https://example.com/api/v1/jettons/${master.toString({ urlSafe: true, bounceable: true })}`,
+      `https://example.com/api/v1/jettons/${encodeURIComponent(master.toRawString())}`,
     );
     expect(body?.custom_payload_api_uri).not.toMatch(/\/$/);
     expect(body?.custom_payload_api_uri).not.toContain('/custom-payload');
