@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import { Address } from '@ton/core';
 import { z } from 'zod';
@@ -17,7 +18,9 @@ function requireAdmin(req: FastifyRequest) {
     return false;
   }
   const token = auth.slice(7);
-  return token === config.ADMIN_JWT_SECRET;
+  const a = Buffer.from(token);
+  const b = Buffer.from(config.ADMIN_JWT_SECRET);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps): void {

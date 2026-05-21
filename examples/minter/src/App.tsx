@@ -48,7 +48,11 @@ export function App() {
   const [signerPubkeyHex, setSignerPubkeyHex] = useState('');
 
   const [deployValueTon, setDeployValueTon] = useState('0.15');
-  /** Empty = unlimited; whole jettons (×1e9 nano), same semantics as backend JETTON_MAX_SUPPLY_NANO. */
+  /**
+   * Max supply cap in on-chain units. With decimals="0" (default) 1 unit = 1 displayed token,
+   * so enter the number of tokens you want (e.g. 1000000 = 1 million tokens).
+   * Same value goes to backend JETTON_MAX_SUPPLY_NANO. Empty = unlimited.
+   */
   const [maxSupplyWholeJettons, setMaxSupplyWholeJettons] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -62,7 +66,7 @@ export function App() {
   const maxSupplyNano = useMemo(() => {
     const t = maxSupplyWholeJettons.trim();
     if (!t) return 0n;
-    return BigInt(t) * 1_000_000_000n;
+    return BigInt(t);
   }, [maxSupplyWholeJettons]);
 
   /** Master + metadata URLs computed from admin/signer/backend **before** deploy. */
@@ -115,7 +119,7 @@ export function App() {
     if (base) return base;
     if (!/^[0-9]+(\.[0-9]+)?$/.test(deployValueTon)) return 'Сумма деплоя — число TON';
     const ms = maxSupplyWholeJettons.trim();
-    if (ms && !/^[0-9]+$/.test(ms)) return 'Макс. выпуск — только целое число jetton (или пусто = без лимита)';
+    if (ms && !/^[0-9]+$/.test(ms)) return 'Макс. выпуск — целое число токенов (decimals=0: 1 ед. = 1 токен в кошельке), или пусто = без лимита';
     return null;
   }, [validationStep2, deployValueTon, maxSupplyWholeJettons]);
 
@@ -303,7 +307,7 @@ export function App() {
               <input style={{ width: '100%' }} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
             </label>
             <label>
-              Макс. выпуск (целых jetton, пусто = без лимита)
+              Макс. выпуск в единицах токена (decimals=0: 1 ед. = 1 токен; пусто = без лимита)
               <input
                 style={{ width: '100%' }}
                 value={maxSupplyWholeJettons}

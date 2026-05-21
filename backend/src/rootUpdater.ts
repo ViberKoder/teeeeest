@@ -55,6 +55,7 @@ export class RootUpdater {
   private keypair?: KeyPair;
   private ready = false;
   private running = false;
+  private pending: { epoch: number; rootHex: string } | null = null;
 
   constructor(readonly store: AppStore) {}
 
@@ -323,7 +324,11 @@ export class RootUpdater {
       return;
     }
     if (this.running) {
-      logger.debug({ epoch }, 'root updater already processing, will pick this up next tick');
+      // Keep only the newest pending epoch — older ones are superseded.
+      if (!this.pending || epoch > this.pending.epoch) {
+        this.pending = { epoch, rootHex };
+        logger.debug({ epoch }, 'root updater busy — epoch saved as pending');
+      }
       return;
     }
     this.running = true;
@@ -356,6 +361,12 @@ export class RootUpdater {
       );
     } finally {
       this.running = false;
+      // Drain any epoch that arrived while we were busy.
+      const next = this.pending;
+      if (next) {
+        this.pending = null;
+        void this.queue(next.epoch, next.rootHex);
+      }
     }
   }
 

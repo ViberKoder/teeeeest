@@ -133,14 +133,11 @@ export class SqliteStore implements AppStore {
   }
 
   async sumCumulativeNonBanned(): Promise<string> {
-    const rows = this.db
-      .prepare('SELECT cumulative_amount FROM users WHERE is_banned = 0')
-      .all() as Array<{ cumulative_amount: string }>;
-    let t = 0n;
-    for (const r of rows) {
-      t += BigInt(r.cumulative_amount || '0');
-    }
-    return t.toString();
+    const row = this.db
+      .prepare(`SELECT COALESCE(SUM(CAST(cumulative_amount AS INTEGER)), 0) AS total
+                FROM users WHERE is_banned = 0`)
+      .get() as { total: number | bigint };
+    return String(row?.total ?? 0);
   }
 
   async setBan(address: string, banned: boolean): Promise<void> {

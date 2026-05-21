@@ -111,6 +111,8 @@ whenever they next touch the jetton.
 
 ## Custom payload API URL
 
+> **⚠️ Without `custom_payload_api_uri` in your jetton metadata, unclaimed token balances will be completely invisible in wallets (Tonkeeper, MyTonWallet, etc.).** Wallets only call your backend's proof API when they see this field. Do not skip it.
+
 In your jetton metadata (TEP-64 / TEP-89), set:
 
 ```json
@@ -121,6 +123,14 @@ In your jetton metadata (TEP-64 / TEP-89), set:
   "custom_payload_api_uri": "https://your-backend.example.com/api/v1/jettons/EQ…your_jetton_master"
 }
 ```
+
+The easiest way to get a correct metadata file is to use the backend's built-in endpoint:
+
+```
+GET https://your-backend.example.com/jetton-metadata.json
+```
+
+This auto-fills `custom_payload_api_uri` from `PUBLIC_APP_URL` and `JETTON_MASTER_ADDRESS` env vars. Point your jetton master's on-chain `content` cell at this URL — do **not** use `contracts/jetton-metadata-example.json` as a static file; it contains a placeholder, not a live URL.
 
 Use **`"decimals": "0"`** when one off-chain / on-chain smallest unit should display as **one whole token** in wallets (RMJ default with `PUBLIC_BALANCE_DISPLAY=integer`). Use `"9"` only for fractional jettons (`PUBLIC_BALANCE_DISPLAY=jetton_nano` on the backend metadata route).
 
@@ -184,3 +194,19 @@ For production:
   plaintext.
 - Replace `ADMIN_MNEMONIC` with a multisig wallet integration.
 - Persist SQLite to durable storage, or swap `db.ts` for Postgres.
+
+## Troubleshooting: unclaimed tokens not appearing in wallets
+
+Work through this checklist top to bottom:
+
+| # | Check | How to verify |
+|---|-------|---------------|
+| 1 | **`custom_payload_api_uri` is in your jetton metadata** | `curl https://your-backend/jetton-metadata.json` — must contain `custom_payload_api_uri` |
+| 2 | **Jetton master on-chain content URL points to the backend** | Fetch the master's content cell; it must be `https://your-backend/jetton-metadata.json`, not a static Gist or IPFS link without `custom_payload_api_uri` |
+| 3 | **`PUBLIC_APP_URL` and `JETTON_MASTER_ADDRESS` are set on the backend** | `curl https://your-backend/health` — `jetton_master_configured` must be `true`; `/jetton-metadata.json` must not return 503 |
+| 4 | **Merkle root is being updated on-chain** | `curl https://your-backend/api/v1/diagnostics` — `root_updates_will_send_onchain` must be `true`; if not, check `ADMIN_MNEMONIC` / `ADMIN_PRIVATE_KEY_HEX` and that the admin wallet has TON for gas |
+| 5 | **User address is in the airdrop tree** | `curl https://your-backend/api/v1/jettons/{master}/wallet/{0:user_raw_address}` — 404 `address-not-in-tree` means the user has no recorded actions yet |
+| 6 | **`expired_at` is in the future** | Same endpoint — `compressed_info.expired_at` (Unix seconds) must be greater than `Date.now()/1000`; if it is in the past the wallet treats the payload as expired and shows nothing |
+| 7 | **User has added the token to their wallet** | Mintless display still requires the token to be imported. Share the jetton master address so users can add it manually, or surface the balance inside your TMA |
+
+Most common cause: step 1 or 2 — the metadata served to the wallet has no `custom_payload_api_uri` at all.

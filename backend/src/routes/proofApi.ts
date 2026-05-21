@@ -35,85 +35,58 @@ type MintlessWalletResponse = {
   root: string;
 };
 
-async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
-  const master = configuredJettonMaster();
-  if (!master) return null;
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
-    const st = await client.getContractState(jettonWalletAddr);
-    if (st.state !== 'active') {
-      return 0n;
-    }
-    const jw = client.open(RollingMintlessWallet.createFromAddress(jettonWalletAddr));
-    return await jw.getAlreadyClaimed();
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not read on-chain already_claimed');
-    return null;
-  }
-}
+type OnChainData = {
+  jettonWalletRaw: string;
+  already: bigint;
+  stateInit: string | null;
+};
 
-async function resolveJettonWalletRaw(owner: Address, signerPubkey: bigint): Promise<string> {
+/**
+ * Single RPC round-trip: resolves jetton-wallet address, already_claimed, and
+ * (when wallet is undeployed) the StateInit needed for the first transfer.
+ * Replaces three separate async helpers that each re-fetched the wallet address.
+ */
+async function resolveOnChainData(owner: Address, signerPubkey: bigint): Promise<OnChainData> {
   const master = configuredJettonMaster();
-  if (!master) {
-    throw new Error('JETTON_MASTER_ADDRESS not configured');
-  }
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    return (await masterContract.getWalletAddress(owner)).toRawString();
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: RPC jetton wallet address failed, using local derive');
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jd = await masterContract.getJettonData();
-    const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode: jd.walletCode, signerPubkey },
-      jd.walletCode,
-    );
-    return jw.address.toRawString();
-  }
-}
+  if (!master) throw new Error('JETTON_MASTER_ADDRESS not configured');
 
-async function maybeJettonWalletStateInitBase64(
-  owner: Address,
-  signerPubkey: bigint,
-): Promise<string | null> {
-  const master = configuredJettonMaster();
-  if (!master) return null;
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
-    const st = await client.getContractState(jettonWalletAddr);
-    if (st.state === 'active') {
-      return null;
+  const client = createTonClient();
+  const masterContract = client.open(JettonMaster.create(master));
+  const jettonWalletAddr = await masterContract.getWalletAddress(owner);
+  const jettonWalletRaw = jettonWalletAddr.toRawString();
+  const st = await client.getContractState(jettonWalletAddr);
+
+  if (st.state === 'active') {
+    let already = 0n;
+    try {
+      const jw = client.open(RollingMintlessWallet.createFromAddress(jettonWalletAddr));
+      already = await jw.getAlreadyClaimed();
+    } catch (e) {
+      logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not read already_claimed, defaulting to 0');
     }
-    const jd = await masterContract.getJettonData();
-    const walletCode = jd.walletCode;
-    const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode, signerPubkey },
-      walletCode,
-    );
-    if (!jw.init?.code || !jw.init?.data) {
-      return null;
-    }
-    const si = beginCell().store(storeStateInit({ code: jw.init.code, data: jw.init.data })).endCell();
+    return { jettonWalletRaw, already, stateInit: null };
+  }
+
+  // Wallet not yet deployed — build StateInit for first-transfer deploy.
+  const jd = await masterContract.getJettonData();
+  const walletCode = jd.walletCode;
+  const jw = RollingMintlessWallet.createFromConfig({ owner, master, walletCode, signerPubkey }, walletCode);
+
+  let stateInit: string | null = null;
+  if (jw.init?.code && jw.init?.data) {
     const resolved = jw.address.toString({ bounceable: false, urlSafe: true });
     const expected = jettonWalletAddr.toString({ bounceable: false, urlSafe: true });
-    if (resolved !== expected) {
+    if (resolved === expected) {
+      const si = beginCell().store(storeStateInit({ code: jw.init.code, data: jw.init.data })).endCell();
+      stateInit = si.toBoc().toString('base64');
+    } else {
       logger.error(
         { resolved, expected, owner: owner.toString() },
         'mintless: derived StateInit address mismatch — check SIGNER_SEED_HEX vs on-chain master',
       );
-      return null;
     }
-    return si.toBoc().toString('base64');
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not build jetton wallet state_init');
-    return null;
   }
+  return { jettonWalletRaw, already: 0n, stateInit };
 }
 
 async function buildMintlessWalletResponse(
@@ -126,10 +99,15 @@ async function buildMintlessWalletResponse(
   const leaf = deps.state.tree.get(owner)!;
   const treeAmt = leaf.cumulativeAmount;
 
-  const onChain = await readOnChainAlreadyClaimed(owner);
-  const already = onChain ?? 0n;
-  const delta = treeAmt > already ? treeAmt - already : 0n;
+  let onChain: OnChainData;
+  try {
+    onChain = await resolveOnChainData(owner, deps.signer.publicKeyBigint);
+  } catch (e) {
+    logger.warn({ err: e, owner: owner.toString() }, 'mintless: on-chain data unavailable, skipping response');
+    return null;
+  }
 
+  const delta = treeAmt > onChain.already ? treeAmt - onChain.already : 0n;
   if (delta === 0n) {
     return null;
   }
@@ -137,14 +115,12 @@ async function buildMintlessWalletResponse(
   const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
   const proof = deps.state.tree.generateProof(owner);
   const customPayload = buildRollingClaimPayload({ proof, voucher });
-  const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
-  const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
 
   return {
     owner: owner.toRawString(),
-    jetton_wallet: jettonWallet,
+    jetton_wallet: onChain.jettonWalletRaw,
     custom_payload: payloadToBase64(customPayload),
-    state_init: stateInit,
+    state_init: onChain.stateInit,
     compressed_info: {
       amount: delta.toString(),
       start_from: leaf.startFrom,
@@ -179,6 +155,14 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     } catch {
       reply.code(400);
       return { error: 'invalid-address' };
+    }
+
+    // Reject banned users immediately so they cannot claim even if still in the tree.
+    const ownerStr = owner.toString({ urlSafe: true, bounceable: false });
+    const userRow = await deps.gameServer.store.getUserRow(ownerStr);
+    if (userRow?.is_banned) {
+      reply.code(403);
+      return { error: 'user-banned' };
     }
 
     const body = await buildMintlessWalletResponse(owner, deps);
