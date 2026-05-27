@@ -38,8 +38,9 @@ day for root updates. Nothing else.
 ├── examples/
 │   ├── telegram-bot/         # Public-channel bot with inline TAP button
 │   ├── tma/                  # Telegram Mini App tap-to-earn
+│   ├── web-wallet/           # RMJ-first web wallet (TON Connect, phase 1)
 │   └── minter/               # Simple web minter for Rolling Mintless Jetton
-└── docs/                     # ARCHITECTURE / INTEGRATION / OPERATIONS / CONTRACTS
+└── docs/                     # ARCHITECTURE / INTEGRATION / OPERATIONS / CONTRACTS / WEB_WALLET
 ```
 
 ---

@@ -10,7 +10,8 @@
     "sdk",
     "examples/telegram-bot",
     "examples/tma",
-    "examples/minter"
+    "examples/minter",
+    "examples/web-wallet"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
