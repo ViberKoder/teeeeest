@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTonConnectUI } from '@tonconnect/ui-react';
+import { useWallet } from '../context/WalletContext';
 import type { JettonBalance } from '../types';
 import { Modal } from './Modal';
 import { colors, layout } from '../styles/theme';
@@ -22,27 +22,27 @@ interface Props {
 }
 
 export function SendJettonModal({ jetton, owner, onClose }: Props) {
-  const [tonConnectUI] = useTonConnectUI();
+  const { sendOutgoing, busy } = useWallet();
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   const isMintless = isMintlessJetton(jetton.customPayloadApiUri);
   const rmjBackend = resolveRmjBackendForJetton(jetton.jettonMaster, jetton.customPayloadApiUri);
 
   const send = async () => {
-    setBusy(true);
+    setSending(true);
     setError('');
     try {
       const recipient = parseRecipient(to);
       const nano = parseJettonAmount(amount, jetton.decimals);
-      if (nano === null || nano <= 0n) throw new Error('Invalid amount.');
-      if (nano > jetton.balanceNano) throw new Error('Insufficient jetton balance.');
+      if (nano === null || nano <= 0n) throw new Error('Некорректная сумма.');
+      if (nano > jetton.balanceNano) throw new Error('Недостаточно jetton.');
 
       let jettonWallet = jetton.jettonWallet;
       let payload: string;
-      let attached = defaultJettonAttachedTon();
+      let attached = BigInt(defaultJettonAttachedTon());
 
       if (isMintless && rmjBackend) {
         const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
@@ -53,7 +53,7 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
         });
         jettonWallet = tx.jettonWallet;
         payload = tx.payload;
-        attached = tx.amount;
+        attached = BigInt(tx.amount);
       } else {
         payload = buildStandardJettonTransfer({
           jettonAmountNano: nano,
@@ -62,57 +62,53 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
         });
       }
 
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [
-          {
-            address: jettonWallet,
-            amount: attached,
-            payload,
-          },
-        ],
-      });
+      await sendOutgoing([
+        {
+          to: jettonWallet,
+          amountNano: attached,
+          payloadB64: payload,
+        },
+      ]);
       onClose();
     } catch (e) {
-      const msg = (e as Error).message;
-      setError(msg.includes('reject') || msg.includes('Rejected') ? 'Cancelled in wallet.' : msg);
+      setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   };
 
   return (
-    <Modal title={`Send ${jetton.symbol}`} onClose={onClose}>
+    <Modal title={`Отправить ${jetton.symbol}`} onClose={onClose}>
       <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 14 }}>
-        Available: {formatJettonAmount(jetton.balanceNano, jetton.decimals)} {jetton.symbol}
+        Доступно: {formatJettonAmount(jetton.balanceNano, jetton.decimals)} {jetton.symbol}
         {isMintless && (
           <div style={{ marginTop: 6, color: colors.rmj, fontSize: 12 }}>
-            RMJ mintless: claim payload auto-attached (TEP-177).
+            RMJ mintless: custom_payload подставляется автоматически (TEP-177).
           </div>
         )}
       </div>
       <label style={{ display: 'block', marginBottom: 12, fontSize: 13, color: colors.textMuted }}>
-        Recipient
+        Получатель
         <input style={{ ...layout.input, marginTop: 6 }} value={to} onChange={(e) => setTo(e.target.value)} />
       </label>
       <label style={{ display: 'block', marginBottom: 16, fontSize: 13, color: colors.textMuted }}>
-        Amount
+        Сумма
         <input
           style={{ ...layout.input, marginTop: 6 }}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder={`0 — max ${formatJettonAmount(jetton.balanceNano, jetton.decimals)}`}
+          placeholder={`0 — макс. ${formatJettonAmount(jetton.balanceNano, jetton.decimals)}`}
           inputMode="decimal"
         />
       </label>
       {error && <div style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{error}</div>}
       <button
         type="button"
-        disabled={busy || !to.trim() || !amount.trim()}
+        disabled={sending || busy || !to.trim() || !amount.trim()}
         onClick={() => void send()}
-        style={{ ...layout.btn, ...layout.btnPrimary, width: '100%', opacity: busy ? 0.6 : 1 }}
+        style={{ ...layout.btn, ...layout.btnPrimary, width: '100%', opacity: sending || busy ? 0.6 : 1 }}
       >
-        {busy ? 'Confirm in wallet…' : 'Send jetton'}
+        {sending ? 'Отправка…' : 'Отправить jetton'}
       </button>
     </Modal>
   );

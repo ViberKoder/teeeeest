@@ -1,17 +1,13 @@
 import './bufferPolyfill';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { TonConnectUIProvider } from '@tonconnect/ui-react';
+import { WalletProvider } from './context/WalletContext';
 import { App } from './App';
-
-const manifestUrl =
-  (import.meta.env.VITE_TONCONNECT_MANIFEST_URL as string | undefined)?.trim() ||
-  `${window.location.origin}/tonconnect-manifest.json`;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <TonConnectUIProvider manifestUrl={manifestUrl}>
+    <WalletProvider>
       <App />
-    </TonConnectUIProvider>
+    </WalletProvider>
   </React.StrictMode>,
 );

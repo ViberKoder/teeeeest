@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useTonConnectUI } from '@tonconnect/ui-react';
+import { useWallet } from '../context/WalletContext';
 import type { JettonBalance } from '../types';
 import type { RmjOffchainBalance } from '../types';
 import { colors, layout } from '../styles/theme';
@@ -23,7 +23,7 @@ interface Props {
 }
 
 export function JettonRow({ jetton, owner, onSend }: Props) {
-  const [tonConnectUI] = useTonConnectUI();
+  const { sendOutgoing } = useWallet();
   const [rmjBalance, setRmjBalance] = useState<RmjOffchainBalance | null>(null);
   const [claimBusy, setClaimBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -56,22 +56,18 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
     try {
       const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
       const tx = await buildRmjClaimTransaction(rmjBackend, owner, master);
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [
-          {
-            address: tx.jettonWallet,
-            amount: tx.amount,
-            payload: tx.payload,
-            stateInit: tx.stateInit,
-          },
-        ],
-      });
-      setStatus('Claim sent — balance updates after confirmation.');
+      await sendOutgoing([
+        {
+          to: tx.jettonWallet,
+          amountNano: BigInt(tx.amount),
+          payloadB64: tx.payload,
+          stateInitB64: tx.stateInit,
+        },
+      ]);
+      setStatus('Клейм отправлен — баланс обновится после подтверждения.');
       await refreshRmj();
     } catch (e) {
-      const msg = (e as Error).message;
-      setStatus(msg.includes('reject') || msg.includes('Rejected') ? 'Cancelled.' : msg);
+      setStatus((e as Error).message);
     } finally {
       setClaimBusy(false);
     }
@@ -172,6 +168,7 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
           <button
             type="button"
             onClick={() => onSend(jetton)}
+            disabled={jetton.balanceNano === 0n && !isRmj}
             style={{ ...layout.btn, ...layout.btnGhost, padding: '7px 12px', fontSize: 13 }}
           >
             Send
@@ -189,7 +186,7 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
                 opacity: claimBusy ? 0.6 : 1,
               }}
             >
-              {claimBusy ? 'Claiming…' : 'Claim on-chain'}
+              {claimBusy ? 'Клейм…' : 'Claim on-chain'}
             </button>
           )}
         </div>

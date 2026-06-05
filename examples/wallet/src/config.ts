@@ -11,3 +11,14 @@ export const TONAPI_KEY = (import.meta.env.VITE_TONAPI_KEY as string | undefined
 
 export const TONAPI_BASE =
   TON_NETWORK === 'testnet' ? 'https://testnet.tonapi.io' : 'https://tonapi.io';
+
+export const TON_RPC_ENDPOINT =
+  (import.meta.env.VITE_TON_RPC_ENDPOINT as string | undefined)?.trim() ||
+  (TON_NETWORK === 'testnet'
+    ? 'https://testnet.toncenter.com/api/v2/jsonRPC'
+    : 'https://toncenter.com/api/v2/jsonRPC');
+
+export const TON_RPC_API_KEY = (import.meta.env.VITE_TON_RPC_API_KEY as string | undefined)?.trim() || '';
+
+/** Auto-lock after N minutes of inactivity. */
+export const AUTO_LOCK_MINUTES = 15;

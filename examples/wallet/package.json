@@ -1,8 +1,8 @@
 {
   "name": "@rmj/example-wallet",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "TON wallet with first-class Rolling Mintless Jetton (RMJ) support",
+  "description": "Self-custodial TON wallet with first-class Rolling Mintless Jetton (RMJ) support",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -11,7 +11,8 @@
   "dependencies": {
     "@rmj/sdk": "*",
     "@ton/core": "^0.62.0",
-    "@tonconnect/ui-react": "^2.0.11",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.2.1",
     "buffer": "^6.0.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

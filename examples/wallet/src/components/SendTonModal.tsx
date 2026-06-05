@@ -1,57 +1,52 @@
 import { useState } from 'react';
-import { useTonConnectUI } from '@tonconnect/ui-react';
+import { useWallet } from '../context/WalletContext';
 import { Modal } from './Modal';
 import { colors, layout } from '../styles/theme';
-import { buildTonTransferPayload, parseRecipient } from '../services/transactions';
+import { parseRecipient } from '../services/transactions';
+import { sendTonTransfer } from '../wallet/send';
 
 interface Props {
   onClose: () => void;
 }
 
 export function SendTonModal({ onClose }: Props) {
-  const [tonConnectUI] = useTonConnectUI();
+  const { session, busy } = useWallet();
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('0.1');
   const [comment, setComment] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   const send = async () => {
-    setBusy(true);
+    if (!session) return;
+    setSending(true);
     setError('');
     try {
       const recipient = parseRecipient(to);
       const nano = BigInt(Math.floor(parseFloat(amount) * 1e9));
-      if (nano <= 0n) throw new Error('Amount must be positive.');
+      if (nano <= 0n) throw new Error('Сумма должна быть больше нуля.');
 
-      const payload = buildTonTransferPayload(comment);
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [
-          {
-            address: recipient,
-            amount: nano.toString(),
-            payload: payload || undefined,
-          },
-        ],
+      await sendTonTransfer(session.contract, session.keyPair, {
+        to: recipient,
+        amountNano: nano,
+        comment: comment.trim() || undefined,
       });
       onClose();
     } catch (e) {
-      const msg = (e as Error).message;
-      setError(msg.includes('reject') || msg.includes('Rejected') ? 'Cancelled in wallet.' : msg);
+      setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setSending(false);
     }
   };
 
   return (
-    <Modal title="Send TON" onClose={onClose}>
+    <Modal title="Отправить TON" onClose={onClose}>
       <label style={{ display: 'block', marginBottom: 12, fontSize: 13, color: colors.textMuted }}>
-        Recipient (EQ… / UQ…)
+        Получатель (EQ… / UQ…)
         <input style={{ ...layout.input, marginTop: 6 }} value={to} onChange={(e) => setTo(e.target.value)} placeholder="UQ…" />
       </label>
       <label style={{ display: 'block', marginBottom: 12, fontSize: 13, color: colors.textMuted }}>
-        Amount (TON)
+        Сумма (TON)
         <input
           style={{ ...layout.input, marginTop: 6 }}
           value={amount}
@@ -60,17 +55,17 @@ export function SendTonModal({ onClose }: Props) {
         />
       </label>
       <label style={{ display: 'block', marginBottom: 16, fontSize: 13, color: colors.textMuted }}>
-        Comment (optional)
+        Комментарий (опционально)
         <input style={{ ...layout.input, marginTop: 6 }} value={comment} onChange={(e) => setComment(e.target.value)} />
       </label>
       {error && <div style={{ color: colors.danger, fontSize: 13, marginBottom: 12 }}>{error}</div>}
       <button
         type="button"
-        disabled={busy || !to.trim()}
+        disabled={sending || busy || !to.trim()}
         onClick={() => void send()}
-        style={{ ...layout.btn, ...layout.btnPrimary, width: '100%', opacity: busy ? 0.6 : 1 }}
+        style={{ ...layout.btn, ...layout.btnPrimary, width: '100%', opacity: sending || busy ? 0.6 : 1 }}
       >
-        {busy ? 'Confirm in wallet…' : `Send ${amount} TON`}
+        {sending ? 'Отправка…' : `Отправить ${amount} TON`}
       </button>
     </Modal>
   );
