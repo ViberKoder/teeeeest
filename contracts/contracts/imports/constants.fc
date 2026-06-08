@@ -31,6 +31,11 @@ int op::unpause()                   asm "0x9f3b8a5d PUSHINT";
 ;; triggers a rolling claim on the recipient jetton-wallet.
 int op::rolling_claim()             asm "0xc9e56df3 PUSHINT";
 
+;; TEP-177 / ton-community mintless-jetton standard claim opcode.
+;; Layout: op + ^merkle_proof (no voucher). Wallets (Tonkeeper, MyTonWallet)
+;; attach this format; RMJ accepts it alongside rolling_claim.
+int op::merkle_airdrop_claim()      asm "0x0df602d6 PUSHINT";
+
 ;; ---- Error codes ----
 int error::unauthorized()           asm "73 PUSHINT";
 int error::paused()                 asm "74 PUSHINT";

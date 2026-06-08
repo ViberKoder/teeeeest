@@ -147,6 +147,19 @@ export async function runWalletDisplayAudit(params: {
       hostedMeta = hosted.body as JsonRecord;
       const uri = String(hostedMeta.custom_payload_api_uri ?? '');
       const dec = String(hostedMeta.decimals ?? '');
+      const dumpUri = String(hostedMeta.mintless_merkle_dump_uri ?? '');
+      const dumpOk =
+        dumpUri &&
+        dumpUri.includes('/merkle-dump.boc') &&
+        dumpUri.includes('/api/v1/jettons/') &&
+        (() => {
+          try {
+            const m = masterFromJettonApiUrl(dumpUri.replace(/\/merkle-dump\.boc\/?$/i, ''));
+            return m != null && m.equals(master);
+          } catch {
+            return false;
+          }
+        })();
       const uriOk =
         uri &&
         dec !== '' &&
@@ -166,10 +179,21 @@ export async function runWalletDisplayAudit(params: {
           'hosted_metadata',
           uriOk ? 'ok' : 'fail',
           'Hosted jetton metadata (on-chain URL)',
-          `decimals=${dec}, custom_payload_api_uri=${uri || '(missing)'}`,
+          `decimals=${dec}, custom_payload_api_uri=${uri || '(missing)'}, mintless_merkle_dump_uri=${dumpUri || '(missing)'}`,
           uriOk
             ? undefined
             : 'TEP: URI must be final API root …/api/v1/jettons/{master} (see jetton-offchain-payloads)',
+        ),
+      );
+      checks.push(
+        check(
+          'hosted_merkle_dump_uri',
+          dumpOk ? 'ok' : 'warn',
+          'mintless_merkle_dump_uri (wallet tree indexing)',
+          dumpOk ? dumpUri : dumpUri || 'missing — wallets may not discover unclaimed balances',
+          dumpOk
+            ? undefined
+            : 'Serve GET …/api/v1/jettons/{master}/merkle-dump.boc and add mintless_merkle_dump_uri to metadata',
         ),
       );
       if (uri) walletFetchUrls.push(`${uri.replace(/\/$/, '')}/wallet/${ownerRaw ?? '{owner_raw}'}`);
@@ -338,19 +362,24 @@ export async function runWalletDisplayAudit(params: {
       const b64 = String(body.custom_payload ?? '');
       const op = b64 ? parseCustomPayloadOp(b64) : null;
       const opName =
-        op === OP_ROLLING_CLAIM
-          ? 'rolling_claim (RMJ)'
-          : op === OP_MERKLE_CLAIM
-            ? 'merkle_airdrop_claim (standard)'
+        op === OP_MERKLE_CLAIM
+          ? 'merkle_airdrop_claim (TEP-177)'
+          : op === OP_ROLLING_CLAIM
+            ? 'rolling_claim (RMJ legacy)'
             : op != null
               ? `unknown 0x${op.toString(16)}`
               : 'unparseable';
+      const opSeverity: AuditSeverity =
+        op === OP_MERKLE_CLAIM ? 'ok' : op === OP_ROLLING_CLAIM ? 'warn' : 'fail';
       checks.push(
         check(
           `wallet_api_${short}`,
-          'ok',
+          opSeverity,
           `Wallet API ${short}`,
           `amount=${(body.compressed_info as JsonRecord)?.amount ?? '?'}, custom_payload op=${opName}`,
+          op === OP_MERKLE_CLAIM
+            ? undefined
+            : 'Wallets expect TEP-177 op 0x0df602d6 — redeploy wallet code or upgrade Proof API',
         ),
       );
     }

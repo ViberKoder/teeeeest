@@ -76,12 +76,45 @@
   ));
 }
 
-;; ------------- Rolling claim handler -------------
-;;
-;; Given the parsed inner slice of the rolling-claim custom payload,
-;; mutates storage and returns the newly-materialized delta (amount of
-;; jettons that should be added to `balance`). Called at most once per
-;; transfer.
+;; ------------- Claim handlers -------------
+
+;; Shared claim logic for rolling + standard mintless custom payloads.
+int apply_merkle_claim(
+  cell proof,
+  int new_root,
+  int new_epoch,
+  slice owner_address,
+  int already_claimed,
+  int signer_pubkey
+) impure {
+  cell airdrop_dict = check_merkle_proof(proof, new_root);
+
+  (int cumulative_amount, int start_from, int expired_at) =
+    get_airdrop_entry(airdrop_dict, owner_address);
+
+  int now_ts = now();
+  throw_unless(error::proof_not_started(), now_ts >= start_from);
+  throw_unless(error::proof_expired(), now_ts <= expired_at);
+  throw_unless(error::proof_stale_amount(), cumulative_amount >= already_claimed);
+
+  int delta = cumulative_amount - already_claimed;
+
+  (int balance, slice _owner, slice master, cell wallet_code, _, _, _, int _signer) = load_data();
+  save_data(
+    balance + delta,
+    owner_address,
+    master,
+    wallet_code,
+    cumulative_amount,
+    new_root,
+    new_epoch,
+    signer_pubkey
+  );
+
+  return delta;
+}
+
+;; Rolling-claim custom payload (optional voucher + proof).
 int handle_rolling_claim(
   slice payload_cs,
   slice owner_address,
@@ -121,33 +154,36 @@ int handle_rolling_claim(
   }
 
   cell proof = payload_cs~load_ref();
-  cell airdrop_dict = check_merkle_proof(proof, new_root);
-
-  (int cumulative_amount, int start_from, int expired_at) =
-    get_airdrop_entry(airdrop_dict, owner_address);
-
-  int now_ts = now();
-  throw_unless(error::proof_not_started(), now_ts >= start_from);
-  throw_unless(error::proof_expired(), now_ts <= expired_at);
-  throw_unless(error::proof_stale_amount(), cumulative_amount >= already_claimed);
-
-  int delta = cumulative_amount - already_claimed;
-
-  ;; Persist the updated rolling state; caller combines with balance update.
-  ;; We store here to keep the handler self-contained, and pass back delta.
-  (int balance, slice _owner, slice master, cell wallet_code, _, _, _, int _signer) = load_data();
-  save_data(
-    balance + delta,
-    owner_address,
-    master,
-    wallet_code,
-    cumulative_amount,
+  return apply_merkle_claim(
+    proof,
     new_root,
     new_epoch,
+    owner_address,
+    already_claimed,
     signer_pubkey
   );
+}
 
-  return delta;
+;; TEP-177 mintless claim: op already consumed; body is `proof:^Cell` only.
+;; Root is taken from the proof exotic cell so rolling tree updates work
+;; without a signed voucher (the proof cryptographically commits to its root).
+int handle_merkle_airdrop_claim(
+  slice payload_cs,
+  slice owner_address,
+  int already_claimed,
+  int cached_epoch,
+  int signer_pubkey
+) impure {
+  cell proof = payload_cs~load_ref();
+  int proof_root = merkle_proof_root(proof);
+  return apply_merkle_claim(
+    proof,
+    proof_root,
+    cached_epoch,
+    owner_address,
+    already_claimed,
+    signer_pubkey
+  );
 }
 
 ;; ------------- Main entry -------------
@@ -177,7 +213,7 @@ int handle_rolling_claim(
     if (cp.slice_bits() >= 32) {
       int cp_op = cp~load_uint(32);
       if (cp_op == op::rolling_claim()) {
-        int delta = handle_rolling_claim(
+        handle_rolling_claim(
           cp,
           owner,
           already_claimed,
@@ -185,7 +221,15 @@ int handle_rolling_claim(
           cached_epoch,
           signer
         );
-        ;; reload updated state
+        (balance, _, _, _, already_claimed, cached_root, cached_epoch, _) = load_data();
+      } elseif (cp_op == op::merkle_airdrop_claim()) {
+        handle_merkle_airdrop_claim(
+          cp,
+          owner,
+          already_claimed,
+          cached_epoch,
+          signer
+        );
         (balance, _, _, _, already_claimed, cached_root, cached_epoch, _) = load_data();
       }
     }

@@ -36,6 +36,15 @@ const int AIRDROP_TIMESTAMP_SIZE = 48;
 
 const int cell_type::merkle_proof = 3;
 
+;; Read the committed root hash embedded in a merkle-proof exotic cell.
+int merkle_proof_root(cell proof) impure {
+  (slice s, int is_exotic) = proof.begin_parse_exotic();
+  throw_unless(102, is_exotic);
+  int ty = s~load_uint(8);
+  throw_unless(103, ty == cell_type::merkle_proof);
+  return s~load_uint(256);
+}
+
 ;; Verify a Merkle-proof exotic cell commits to the expected dict root hash
 ;; and return the virtualized inner cell (the Airdrop HashMap dict root).
 cell check_merkle_proof(cell proof, int expected_root) impure {

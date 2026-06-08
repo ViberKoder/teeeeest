@@ -2,6 +2,8 @@
 /**
  * npm run wallet-display-check -- --backend URL --master EQ… [--owner 0:…]
  */
+// Avoid `npm run build -w @rmj/backend` from package.json — it requires production env vars.
+// Build backend once (`npm run -w backend build`) or use the live /api/v1/wallet-display-audit API.
 const { runWalletDisplayAudit } = require('../backend/dist/walletDisplayAudit.js');
 
 function arg(name) {

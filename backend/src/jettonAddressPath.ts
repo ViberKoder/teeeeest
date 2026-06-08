@@ -52,6 +52,12 @@ export function jettonMetadataHostedUrl(publicAppUrl: string, master: Address): 
   return `${base}/api/v1/jettons/${jettonMasterPathSegment(master, 'friendly')}/metadata.json`;
 }
 
+/** TEP-177 `mintless_merkle_dump_uri` — full Airdrop HashMap BoC for wallet indexing. */
+export function mintlessMerkleDumpUrl(publicAppUrl: string, master: Address): string {
+  const base = publicAppUrl.trim().replace(/\/$/, '');
+  return `${base}/api/v1/jettons/${jettonMasterPathSegment(master, 'friendly')}/merkle-dump.boc`;
+}
+
 export function masterFromJettonApiUrl(url: string): Address | null {
   const m = url.trim().match(/\/api\/v1\/jettons\/([^/]+)(?:\/metadata\.json)?\/?$/i);
   if (!m) return null;

@@ -24,8 +24,11 @@ export const OpCodes = {
   pause: 0x3c14d9e1,
   unpause: 0x9f3b8a5d,
 
-  // Custom-payload opcode for rolling claim
+  // Custom-payload opcode for rolling claim (voucher + proof)
   rollingClaim: 0xc9e56df3,
+
+  /** TEP-177 / ton-community mintless standard claim (proof only). */
+  merkleAirdropClaim: 0x0df602d6,
 } as const;
 
 export const ErrorCodes = {

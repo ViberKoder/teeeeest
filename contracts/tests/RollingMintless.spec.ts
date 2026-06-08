@@ -20,6 +20,7 @@ import {
   RollingMintlessWallet,
   AirdropTree,
   buildRollingClaimPayload,
+  buildStandardMerkleClaimPayload,
   signVoucher,
   ErrorCodes,
 } from '../wrappers';
@@ -103,6 +104,22 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
     );
   }
 
+  async function performStandardClaim(
+    targetTreasury: SandboxContract<TreasuryContract>,
+    transferAmount: bigint,
+  ) {
+    const proof = tree.generateProof(user.address);
+    const customPayload = buildStandardMerkleClaimPayload(proof);
+    const userWallet = await openUserWalletWithInit();
+    return await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: transferAmount,
+      to: targetTreasury.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.3'),
+      customPayload,
+    });
+  }
+
   async function performClaim(
     targetTreasury: SandboxContract<TreasuryContract>,
     transferAmount: bigint,
@@ -125,6 +142,52 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
       customPayload,
     });
   }
+
+  it('TEP-177 standard opcode: earn 10 → transfer with merkle_airdrop_claim', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+
+    const recipient = await blockchain.treasury('recipient');
+    const claimRes = await performStandardClaim(recipient, toNano('10'));
+    const userWallet = await openUserWalletWithInit();
+
+    expect(claimRes.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: true,
+    });
+    expect(await userWallet.getAlreadyClaimed()).toBe(toNano('10'));
+  });
+
+  it('TEP-177 standard opcode: rolling delta on second epoch without voucher', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+    const recipient = await blockchain.treasury('recipient');
+    await performStandardClaim(recipient, toNano('10'));
+
+    tree.set(user.address, {
+      cumulativeAmount: toNano('15'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(2);
+
+    const claimRes2 = await performStandardClaim(recipient, toNano('5'));
+    expect(claimRes2.transactions).toHaveTransaction({
+      from: user.address,
+      to: (await openUserWalletWithInit()).address,
+      success: true,
+    });
+    expect(await (await openUserWalletWithInit()).getAlreadyClaimed()).toBe(toNano('15'));
+  });
 
   it('happy path: earn 10 → transfer → earn 5 → transfer', async () => {
     // ---- Epoch 1: user earns 10 jettons off-chain ----

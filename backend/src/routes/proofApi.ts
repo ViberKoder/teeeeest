@@ -3,7 +3,7 @@ import { Address, beginCell, storeStateInit } from '@ton/core';
 import { JettonMaster } from '@ton/ton';
 import {
   RollingMintlessWallet,
-  buildRollingClaimPayload,
+  buildStandardMerkleClaimPayload,
   payloadToBase64,
 } from '@rmj/contracts';
 import { AirdropState } from '../state';
@@ -134,9 +134,9 @@ async function buildMintlessWalletResponse(
     return null;
   }
 
-  const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
   const proof = deps.state.tree.generateProof(owner);
-  const customPayload = buildRollingClaimPayload({ proof, voucher });
+  // TEP-177 standard opcode (0x0df602d6) — Tonkeeper / MyTonWallet attach this format.
+  const customPayload = buildStandardMerkleClaimPayload(proof);
   const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
   const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
 
@@ -226,6 +226,21 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
   app.get<{ Params: { owner: string } }>(
     '/api/v1/custom-payload/:owner',
     async (req, reply) => serveLegacyMintlessWallet(req.params.owner, reply),
+  );
+
+  app.get<{ Params: { master: string } }>(
+    '/api/v1/jettons/:master/merkle-dump.boc',
+    async (req, reply) => {
+      const master = parseJettonMasterParam(req.params.master);
+      if (!master) {
+        reply.code(404);
+        return { error: 'unknown-jetton-master' };
+      }
+      const boc = deps.state.tree.toCell().toBoc();
+      reply.header('content-type', 'application/octet-stream');
+      reply.header('cache-control', 'public, max-age=60');
+      return Buffer.from(boc);
+    },
   );
 
   app.get<{ Params: { master: string } }>('/api/v1/jettons/:master/state', async (req, reply) => {
