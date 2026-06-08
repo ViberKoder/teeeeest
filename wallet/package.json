@@ -1,0 +1,28 @@
+{
+  "name": "@rmj/wallet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-custody TON wallet with first-class Rolling Mintless Jetton (RMJ) support. TMA-friendly, passcode-encrypted, no plaintext mnemonic stored.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --port 5190",
+    "lint": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@ton/core": "^0.62.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.4.0",
+    "buffer": "^6.0.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.4.5",
+    "vite": "^5.3.3"
+  }
+}
