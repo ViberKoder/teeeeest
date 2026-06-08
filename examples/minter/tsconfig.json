@@ -1,5 +1,5 @@
 {
-    "compilerOptions": {
+  "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "types": ["node"],
@@ -12,7 +12,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "noEmit": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "baseUrl": ".",
+    "paths": {
+      "@rmj/sdk": ["../../sdk/src/index.ts"],
+      "@rmj/sdk/*": ["../../sdk/src/*"]
+    }
   },
   "include": ["src/**/*"]
 }

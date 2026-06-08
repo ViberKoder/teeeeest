@@ -16,6 +16,7 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         buffer: 'buffer',
+        '@rmj/sdk': path.resolve(rootDir, '../../sdk/src/index.ts'),
       },
     },
     define: {
