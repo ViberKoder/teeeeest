@@ -1,5 +1,5 @@
 import { Address } from '@ton/core';
-import { customPayloadApiRoot } from './buildMaster';
+import { customPayloadApiRoot, mintlessMerkleDumpUrl } from './buildMaster';
 import { NETWORK } from './constants';
 
 /**
@@ -14,12 +14,14 @@ export function buildJettonMetadataJson(opts: {
   backendBaseUrl: string;
   master: Address;
 }): Record<string, string> {
+  const testnet = NETWORK === 'testnet';
   const o: Record<string, string> = {
     name: opts.name.trim(),
     symbol: opts.symbol.trim(),
     description: opts.description.trim() || `${opts.symbol.trim()} — Rolling Mintless Jetton.`,
     decimals: '0',
-    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master, NETWORK === 'testnet'),
+    custom_payload_api_uri: customPayloadApiRoot(opts.backendBaseUrl, opts.master, testnet),
+    mintless_merkle_dump_uri: mintlessMerkleDumpUrl(opts.backendBaseUrl, opts.master, testnet),
   };
   const img = opts.image.trim();
   if (img) o.image = img;

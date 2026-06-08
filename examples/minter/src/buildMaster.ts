@@ -83,6 +83,12 @@ export function customPayloadApiRoot(publicBaseUrl: string, master: Address, tes
   return `${base}/api/v1/jettons/${seg}`;
 }
 
+export function mintlessMerkleDumpUrl(publicBaseUrl: string, master: Address, testnet: boolean): string {
+  const base = publicBaseUrl.trim().replace(/\/$/, '');
+  const seg = jettonMasterDisplay(master, testnet);
+  return `${base}/api/v1/jettons/${seg}/merkle-dump.boc`;
+}
+
 export type PlannedDeploy = {
   /** Always `{backend}/jetton-metadata.json` — master is NOT in this URL. */
   metadataUrl: string;

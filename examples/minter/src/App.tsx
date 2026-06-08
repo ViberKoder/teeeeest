@@ -151,8 +151,31 @@ export function App() {
 
       setDeployedMaster(masterFriendly);
       setDeployedMetadataUrl(metadataUrl);
+
+      let registerNote = '';
+      try {
+        const regRes = await fetch(`${backendOrigin}/api/v1/jettons/register`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            master: masterFriendly,
+            name: name.trim(),
+            symbol: symbol.trim(),
+            description: description.trim(),
+            image: imageUrl.trim(),
+            decimals: '0',
+          }),
+        });
+        if (!regRes.ok) {
+          const err = await regRes.text();
+          registerNote = `Master задеплоен, но metadata на бэкенде не сохранилась (${regRes.status}): ${err.slice(0, 120)}. Вызовите POST /api/v1/jettons/register вручную.`;
+        }
+      } catch (e) {
+        registerNote = `Master задеплоен, но бэкенд недоступен для register: ${(e as Error).message}. Сохраните metadata через POST /api/v1/jettons/register.`;
+      }
+
       setStep(4);
-      setToast('');
+      setToast(registerNote);
     } catch (e) {
       setToast(`Ошибка: ${(e as Error).message}`);
     } finally {
@@ -447,12 +470,20 @@ export function App() {
             </button>
           </p>
           <p>
-            Дальше: задеплойте бэкенд (Docker / Render — см. <code>docs/QUICKSTART_ONE_CLICK.md</code>),
-            вставьте переменные ниже (сначала <code>JETTON_MASTER_ADDRESS</code>), затем проверьте{' '}
+            Дальше: на бэкенде выставьте <code>JETTON_MASTER_ADDRESS={deployedMaster}</code> и переменные ниже.
+            Minter уже вызвал <code>POST /api/v1/jettons/register</code> — имя/символ/kартинка берутся из реестра,
+            а не из старых <code>PUBLIC_JETTON_*</code>.
+          </p>
+          <p style={{ color: '#b45309', fontSize: 14 }}>
+            On-chain URL всегда <code>{deployedMetadataUrl || fixedJettonMetadataUrl(backendOrigin)}</code> (общий для
+            всех RMJ на этом бэкенде). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
+            живым JSON по этому URL. Tonscan часто показывает свежее.
+          </p>
+          <p>
+            Проверка:{' '}
             <code style={{ wordBreak: 'break-all' }}>
-              {deployedMetadataUrl || fixedJettonMetadataUrl(backendOrigin)}
+              {backendOrigin}/api/v1/wallet-display-audit?master={deployedMaster}
             </code>
-            .
           </p>
           <h3>Переменные окружения</h3>
           <pre
