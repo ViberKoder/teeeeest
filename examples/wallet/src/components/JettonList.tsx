@@ -19,8 +19,8 @@ export function JettonList({ jettons, owner, loading, onSend }: Props) {
     return (
       <div style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', padding: 24 }}>
         {isRmjConfigured()
-          ? 'Jettons появятся здесь. RMJ отображается всегда, когда настроен VITE_JETTON_MASTER_ADDRESS.'
-          : 'Нет jettons. Настройте VITE_RMJ_BACKEND_URL и VITE_JETTON_MASTER_ADDRESS для RMJ.'}
+          ? 'Jettons появятся здесь. RMJ отображается всегда, когда настроен NEXT_PUBLIC_JETTON_MASTER_ADDRESS.'
+          : 'Нет jettons. Настройте NEXT_PUBLIC_RMJ_BACKEND_URL и NEXT_PUBLIC_JETTON_MASTER_ADDRESS для RMJ.'}
       </div>
     );
   }

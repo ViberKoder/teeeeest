@@ -15,7 +15,8 @@ export function RmjBanner() {
         }}
       >
         <strong style={{ color: colors.rmj }}>RMJ</strong> — задайте{' '}
-        <code>VITE_RMJ_BACKEND_URL</code> и <code>VITE_JETTON_MASTER_ADDRESS</code> для отображения
+        <code>NEXT_PUBLIC_RMJ_BACKEND_URL</code> и <code>NEXT_PUBLIC_JETTON_MASTER_ADDRESS</code> для
+        отображения
         невостребованных наград и auto Merkle proof.
       </div>
     );

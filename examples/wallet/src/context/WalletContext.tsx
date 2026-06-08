@@ -1,3 +1,5 @@
+'use client';
+
 import {
   createContext,
   useCallback,
@@ -55,11 +57,17 @@ interface WalletContextValue {
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const [vault, setVault] = useState<EncryptedVault | null>(() => loadVault());
+  const [vault, setVault] = useState<EncryptedVault | null>(null);
+  const [vaultReady, setVaultReady] = useState(false);
   const [session, setSession] = useState<WalletSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastActivity = useRef(Date.now());
+
+  useEffect(() => {
+    setVault(loadVault());
+    setVaultReady(true);
+  }, []);
 
   const touchActivity = useCallback(() => {
     lastActivity.current = Date.now();
@@ -195,8 +203,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<WalletContextValue>(
     () => ({
-      vaultExists: vault !== null || hasVault(),
-      lockedAddress: vault?.address ?? loadVault()?.address ?? null,
+      vaultExists: vaultReady && (vault !== null || hasVault()),
+      lockedAddress: vaultReady ? (vault?.address ?? null) : null,
       session,
       busy,
       error,
@@ -213,6 +221,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }),
     [
       vault,
+      vaultReady,
       session,
       busy,
       error,

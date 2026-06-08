@@ -1,27 +1,30 @@
+'use client';
+
+import '@/bufferPolyfill';
 import { useEffect, useState } from 'react';
-import { useWallet } from './context/WalletContext';
-import { Header } from './components/Header';
-import { TabBar } from './components/TabBar';
-import { TonBalanceCard } from './components/TonBalanceCard';
-import { JettonList } from './components/JettonList';
-import { NftGrid } from './components/NftGrid';
-import { RmjBanner } from './components/RmjBanner';
-import { SendTonModal } from './components/SendTonModal';
-import { SendJettonModal } from './components/SendJettonModal';
-import { NftDetailModal } from './components/NftDetailModal';
-import { SettingsModal } from './components/SettingsModal';
-import { WelcomeScreen } from './components/onboarding/WelcomeScreen';
-import { CreateWalletFlow } from './components/onboarding/CreateWalletFlow';
-import { ImportWalletFlow } from './components/onboarding/ImportWalletFlow';
-import { UnlockScreen } from './components/onboarding/UnlockScreen';
-import { useWalletData } from './hooks/useWalletData';
-import { useRmjAssets } from './hooks/useRmjAssets';
-import type { JettonBalance, NftItem, WalletTab } from './types';
-import { colors, layout } from './styles/theme';
+import { WalletProvider, useWallet } from '@/context/WalletContext';
+import { Header } from '@/components/Header';
+import { TabBar } from '@/components/TabBar';
+import { TonBalanceCard } from '@/components/TonBalanceCard';
+import { JettonList } from '@/components/JettonList';
+import { NftGrid } from '@/components/NftGrid';
+import { RmjBanner } from '@/components/RmjBanner';
+import { SendTonModal } from '@/components/SendTonModal';
+import { SendJettonModal } from '@/components/SendJettonModal';
+import { NftDetailModal } from '@/components/NftDetailModal';
+import { SettingsModal } from '@/components/SettingsModal';
+import { WelcomeScreen } from '@/components/onboarding/WelcomeScreen';
+import { CreateWalletFlow } from '@/components/onboarding/CreateWalletFlow';
+import { ImportWalletFlow } from '@/components/onboarding/ImportWalletFlow';
+import { UnlockScreen } from '@/components/onboarding/UnlockScreen';
+import { useWalletData } from '@/hooks/useWalletData';
+import { useRmjAssets } from '@/hooks/useRmjAssets';
+import type { JettonBalance, NftItem, WalletTab } from '@/types';
+import { colors, layout } from '@/styles/theme';
 
 type Onboarding = 'welcome' | 'create' | 'import';
 
-export function App() {
+function WalletAppInner() {
   const { vaultExists, session, touchActivity } = useWallet();
   const address = session?.address ?? null;
 
@@ -54,9 +57,7 @@ export function App() {
   return (
     <div style={layout.page}>
       <div style={layout.shell}>
-        {showMain && (
-          <Header address={address} onSettings={() => setSettings(true)} />
-        )}
+        {showMain && <Header address={address} onSettings={() => setSettings(true)} />}
 
         {showWelcome && (
           <WelcomeScreen onCreate={() => setOnboarding('create')} onImport={() => setOnboarding('import')} />
@@ -133,5 +134,13 @@ export function App() {
       {selectedNft && <NftDetailModal nft={selectedNft} onClose={() => setSelectedNft(null)} />}
       {settings && address && <SettingsModal address={address} onClose={() => setSettings(false)} />}
     </div>
+  );
+}
+
+export function WalletApp() {
+  return (
+    <WalletProvider>
+      <WalletAppInner />
+    </WalletProvider>
   );
 }

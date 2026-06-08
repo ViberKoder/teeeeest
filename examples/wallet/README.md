@@ -1,62 +1,63 @@
-# RMJ Wallet
+# RMJ Wallet (Next.js)
 
-**Собственный (self-custodial) TON-кошелёк** с мнемоникой 24 слова, локальной подписью транзакций и первоклассной поддержкой **Rolling Mintless Jetton (RMJ)**.
+**Self-custodial TON-кошелёк** на Next.js App Router: мнемоника 24 слова, локальная подпись, RMJ с auto Merkle proof.
 
-Не TON Connect-обёртка над Tonkeeper — ключи ваши, хранятся зашифрованными в браузере.
+## Стек
 
-## Возможности
-
-| Компонент | Описание |
-|-----------|----------|
-| **Мнемоника** | Генерация 24 слов (`@ton/crypto`), импорт из Tonkeeper/MyTonWallet |
-| **Шифрование** | AES-GCM + PBKDF2 (310k итераций), пароль кошелька |
-| **Wallet V4** | Стандартный `WalletContractV4`, workchain 0 |
-| **Подпись** | Отправка TON и jetton через Toncenter RPC (`@ton/ton`) |
-| **RMJ** | Всегда в списке (даже невостребованный), Merkle proof auto при send (TEP-177) |
-| **Jettons / NFT** | Балансы через TonAPI |
+- **Next.js 15** (App Router)
+- **@ton/crypto / @ton/ton** — ключи и отправка tx
+- **TonAPI** — балансы, jettons, NFT
+- **@rmj/sdk** — Proof API, RMJ claim
 
 ## Быстрый старт
 
 ```bash
-cp examples/wallet/.env.example examples/wallet/.env
+cp examples/wallet/.env.example examples/wallet/.env.local
+# отредактируйте NEXT_PUBLIC_* переменные
+
 npm install
 npm run dev -w @rmj/example-wallet
 ```
 
-Откройте http://localhost:5190 → **Создать кошелёк** или **Импорт мнемоники**.
+→ http://localhost:5190
 
-## Переменные окружения
+## Переменные окружения (`NEXT_PUBLIC_*`)
 
 | Переменная | Назначение |
 |------------|------------|
-| `VITE_TON_NETWORK` | `mainnet` / `testnet` |
-| `VITE_RMJ_BACKEND_URL` | RMJ backend для claim |
-| `VITE_JETTON_MASTER_ADDRESS` | Master вашего RMJ jetton |
-| `VITE_TONAPI_KEY` | TonAPI (балансы, NFT) |
-| `VITE_TON_RPC_API_KEY` | Toncenter (отправка tx) |
+| `NEXT_PUBLIC_TON_NETWORK` | `mainnet` / `testnet` |
+| `NEXT_PUBLIC_RMJ_BACKEND_URL` | RMJ backend |
+| `NEXT_PUBLIC_JETTON_MASTER_ADDRESS` | Jetton master (RMJ всегда в списке) |
+| `NEXT_PUBLIC_TONAPI_KEY` | TonAPI (опционально) |
+| `NEXT_PUBLIC_TON_RPC_API_KEY` | Toncenter для отправки tx |
 
-## Безопасность
+Файл: `examples/wallet/.env.local` (не коммитить).
 
-- Мнемоника **никогда** не уходит на сервер — только в localStorage в зашифрованном виде.
-- Пароль кошелька ≠ пароль мнемоники Tonkeeper (опционально при импорте).
-- Автоблокировка через 15 минут неактивности.
-- Браузерный кошелёк подходит для dev/testnet и небольших сумм; для production с крупными балансами рассмотрите аппаратное хранение или аудит.
+## RMJ
 
-## RMJ (обязательное поведение)
+1. RMJ **всегда** в портфеле при настроенных `NEXT_PUBLIC_RMJ_BACKEND_URL` + `NEXT_PUBLIC_JETTON_MASTER_ADDRESS`
+2. Невостребованный off-chain / Merkle баланс виден сразу
+3. Любая отправка RMJ — Merkle `custom_payload` автоматически (TEP-177)
 
-При `VITE_JETTON_MASTER_ADDRESS` + `VITE_RMJ_BACKEND_URL`:
-
-1. **RMJ всегда в портфеле** — даже on-chain = 0, баланс только off-chain / в Merkle
-2. **Главная цифра** — cumulative off-chain (невостребованные награды)
-3. **Любая отправка RMJ** — Proof API → Merkle `custom_payload` прикрепляется автоматически
-4. **Sync + proof** — self-transfer 0 jettons + StateInit для первого деплоя jetton-wallet
-
-Тот же поток, что `examples/tma`, но подпись **локальная** (своя мнемоника).
-
-## Сборка
+## Сборка / деплой
 
 ```bash
 npm run build -w @rmj/example-wallet
+npm run start -w @rmj/example-wallet
 ```
 
-Статический `dist/` — любой static host.
+Vercel: root `examples/wallet`, framework Next.js.
+
+## Структура
+
+```
+examples/wallet/
+├── app/              # layout, page, globals.css
+├── src/
+│   ├── components/   # UI + WalletApp
+│   ├── context/      # WalletProvider
+│   ├── hooks/
+│   ├── wallet/       # vault, signing
+│   └── services/     # TonAPI, RMJ
+└── next.config.ts
+```

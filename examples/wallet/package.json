@@ -1,12 +1,13 @@
 {
   "name": "@rmj/example-wallet",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Self-custodial TON wallet with first-class Rolling Mintless Jetton (RMJ) support",
+  "description": "Self-custodial TON wallet (Next.js) with RMJ support",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "dev": "next dev --port 5190",
+    "build": "next build",
+    "start": "next start --port 5190",
+    "lint": "next lint"
   },
   "dependencies": {
     "@rmj/sdk": "*",
@@ -14,6 +15,7 @@
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^15.2.1",
     "buffer": "^6.0.3",
+    "next": "^15.3.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -21,8 +23,6 @@
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.4.5",
-    "vite": "^5.3.3"
+    "typescript": "^5.4.5"
   }
 }
