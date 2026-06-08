@@ -7,6 +7,7 @@ import {
   jettonMasterFriendly,
   jettonMasterRaw,
   masterFromJettonApiUrl,
+  mintlessMerkleDumpUrl,
   parseJettonMasterPathSegment,
 } from './jettonAddressPath';
 
@@ -26,6 +27,7 @@ export {
   fixedJettonMetadataUrl,
   jettonMasterFriendly,
   jettonMasterRaw,
+  mintlessMerkleDumpUrl,
 };
 
 /**
@@ -51,6 +53,7 @@ export function buildJettonMetadataJson(
   }
 
   const customPayloadApiUri = customPayloadApiRoot(base, master);
+  const merkleDumpUri = mintlessMerkleDumpUrl(base, master);
 
   const decimals =
     opts?.decimals ??
@@ -63,6 +66,7 @@ export function buildJettonMetadataJson(
       `${symbol} — Rolling Mintless Jetton rewards.`,
     decimals,
     custom_payload_api_uri: customPayloadApiUri,
+    mintless_merkle_dump_uri: merkleDumpUri,
   };
 
   const image = (opts?.image ?? config.PUBLIC_JETTON_IMAGE_URL).trim();

@@ -3,11 +3,20 @@ import { OpCodes } from './OpCodes';
 import { RootVoucher, voucherToCell } from './Voucher';
 
 /**
- * Build the custom-payload cell that Tonkeeper / MyTonWallet / any integration
- * attaches to a jetton `transfer` message to trigger a rolling claim on the
- * recipient jetton-wallet.
+ * TEP-177 standard mintless claim payload (Tonkeeper / MyTonWallet / HMSTR).
  *
- * Wire layout of the returned cell:
+ *     op    : uint32 = OpCodes.merkleAirdropClaim (0x0df602d6)
+ *     proof : ^Cell  merkle-proof exotic cell
+ *
+ * Prefer this for wallet-facing Proof API responses. The on-chain wallet
+ * reads the root hash from the proof and credits `cumulative - already_claimed`.
+ */
+export function buildStandardMerkleClaimPayload(proof: Cell): Cell {
+  return beginCell().storeUint(OpCodes.merkleAirdropClaim, 32).storeRef(proof).endCell();
+}
+
+/**
+ * RMJ rolling claim with optional signed root voucher (lazy epoch sync).
  *
  *     op         : uint32            = OpCodes.rollingClaim (0xc9e56df3)
  *     hasVoucher : uint1

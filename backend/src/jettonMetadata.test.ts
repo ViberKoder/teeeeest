@@ -40,5 +40,6 @@ describe('jettonMetadata', () => {
     expect(body?.custom_payload_api_uri).not.toContain('%3A');
     expect(body?.custom_payload_api_uri).not.toContain('/custom-payload');
     expect(body?.decimals).toBe('0');
+    expect(body?.mintless_merkle_dump_uri).toBe(`https://example.com/api/v1/jettons/${eq}/merkle-dump.boc`);
   });
 });

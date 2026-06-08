@@ -21,6 +21,6 @@
     "backend:build": "npm run build -w @rmj/backend",
     "backend:start": "npm run start -w @rmj/backend",
     "backend:start:tsx": "npm run start:tsx -w @rmj/backend",
-    "wallet-display-check": "npm run build -w @rmj/backend && node scripts/run-wallet-display-check.js"
+    "wallet-display-check": "node scripts/run-wallet-display-check.js"
   }
 }
