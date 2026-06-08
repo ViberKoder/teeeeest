@@ -1,19 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useWallet } from '../context/WalletContext';
-import type { JettonBalance } from '../types';
+import type { JettonBalance, RmjOffchainBalance } from '../types';
 import { Modal } from './Modal';
 import { colors, layout } from '../styles/theme';
 import { formatJettonAmount, parseJettonAmount } from '../utils/format';
-import { isMintlessJetton, resolveRmjBackendForJetton } from '../utils/rmjDetect';
+import { isConfiguredRmjMaster, isMintlessJetton, resolveRmjBackendForJetton } from '../utils/rmjDetect';
 import {
-  buildMintlessJettonTransfer,
+  buildRmjJettonInteraction,
+  fetchRmjOffchainBalance,
+  formatRmjAmount,
   resolveMasterForMintless,
 } from '../services/rmjService';
-import {
-  buildStandardJettonTransfer,
-  defaultJettonAttachedTon,
-  parseRecipient,
-} from '../services/transactions';
+import { buildStandardJettonTransfer, defaultJettonAttachedTon, parseRecipient } from '../services/transactions';
+import { rmjTotalNano } from '../utils/rmjBalance';
 
 interface Props {
   jetton: JettonBalance;
@@ -27,9 +26,21 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
   const [amount, setAmount] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  const [rmjBalance, setRmjBalance] = useState<RmjOffchainBalance | null>(null);
 
-  const isMintless = isMintlessJetton(jetton.customPayloadApiUri);
+  const isRmj =
+    jetton.isProjectRmj ||
+    isConfiguredRmjMaster(jetton.jettonMaster) ||
+    isMintlessJetton(jetton.customPayloadApiUri);
   const rmjBackend = resolveRmjBackendForJetton(jetton.jettonMaster, jetton.customPayloadApiUri);
+
+  useEffect(() => {
+    if (!isRmj || !rmjBackend) return;
+    const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
+    void fetchRmjOffchainBalance(rmjBackend, owner, master).then(setRmjBalance);
+  }, [isRmj, rmjBackend, jetton, owner]);
+
+  const effectiveMax = isRmj ? rmjTotalNano(rmjBalance, jetton.balanceNano) : jetton.balanceNano;
 
   const send = async () => {
     setSending(true);
@@ -38,22 +49,27 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
       const recipient = parseRecipient(to);
       const nano = parseJettonAmount(amount, jetton.decimals);
       if (nano === null || nano <= 0n) throw new Error('Некорректная сумма.');
-      if (nano > jetton.balanceNano) throw new Error('Недостаточно jetton.');
+      if (nano > effectiveMax) throw new Error('Недостаточно jetton (учитывая невостребованный RMJ).');
 
       let jettonWallet = jetton.jettonWallet;
       let payload: string;
       let attached = BigInt(defaultJettonAttachedTon());
+      let stateInit: string | undefined;
 
-      if (isMintless && rmjBackend) {
+      if (isRmj && rmjBackend) {
         const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
-        const tx = await buildMintlessJettonTransfer(rmjBackend, owner, master, {
+        const tx = await buildRmjJettonInteraction(rmjBackend, owner, master, {
           jettonAmountNano: nano,
           toOwner: recipient,
-          customPayloadApiUri: jetton.customPayloadApiUri,
+          requireProof: false,
         });
         jettonWallet = tx.jettonWallet;
         payload = tx.payload;
         attached = BigInt(tx.amount);
+        stateInit = tx.stateInit;
+        if (tx.proofAttached) {
+          /* Merkle proof piggy-backed — RMJ delta materializes in same tx */
+        }
       } else {
         payload = buildStandardJettonTransfer({
           jettonAmountNano: nano,
@@ -67,6 +83,7 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
           to: jettonWallet,
           amountNano: attached,
           payloadB64: payload,
+          stateInitB64: stateInit,
         },
       ]);
       onClose();
@@ -77,13 +94,22 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
     }
   };
 
+  const maxLabel = isRmj && rmjBalance
+    ? formatRmjAmount(rmjBalance.cumulativeOffchain, rmjBalance.balanceDisplay)
+    : formatJettonAmount(jetton.balanceNano, jetton.decimals);
+
   return (
     <Modal title={`Отправить ${jetton.symbol}`} onClose={onClose}>
       <div style={{ fontSize: 13, color: colors.textMuted, marginBottom: 14 }}>
-        Доступно: {formatJettonAmount(jetton.balanceNano, jetton.decimals)} {jetton.symbol}
-        {isMintless && (
+        Доступно: {maxLabel} {jetton.symbol}
+        {isRmj && jetton.balanceNano === 0n && rmjBalance && BigInt(rmjBalance.cumulativeOffchain) > 0n && (
           <div style={{ marginTop: 6, color: colors.rmj, fontSize: 12 }}>
-            RMJ mintless: custom_payload подставляется автоматически (TEP-177).
+            Невостребованный RMJ — Merkle proof подставится автоматически при отправке.
+          </div>
+        )}
+        {isRmj && rmjBalance?.claimable && (
+          <div style={{ marginTop: 6, color: colors.rmj, fontSize: 12 }}>
+            Proof API готов — delta заклеймится в этой же транзакции (TEP-177).
           </div>
         )}
       </div>
@@ -97,7 +123,7 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
           style={{ ...layout.input, marginTop: 6 }}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder={`0 — макс. ${formatJettonAmount(jetton.balanceNano, jetton.decimals)}`}
+          placeholder={`0 — макс. ${maxLabel}`}
           inputMode="decimal"
         />
       </label>
@@ -108,7 +134,7 @@ export function SendJettonModal({ jetton, owner, onClose }: Props) {
         onClick={() => void send()}
         style={{ ...layout.btn, ...layout.btnPrimary, width: '100%', opacity: sending || busy ? 0.6 : 1 }}
       >
-        {sending ? 'Отправка…' : 'Отправить jetton'}
+        {sending ? 'Отправка + proof…' : 'Отправить jetton'}
       </button>
     </Modal>
   );

@@ -15,7 +15,7 @@ import { CreateWalletFlow } from './components/onboarding/CreateWalletFlow';
 import { ImportWalletFlow } from './components/onboarding/ImportWalletFlow';
 import { UnlockScreen } from './components/onboarding/UnlockScreen';
 import { useWalletData } from './hooks/useWalletData';
-import { useRmjPendingJetton } from './hooks/useRmjPendingJetton';
+import { useRmjAssets } from './hooks/useRmjAssets';
 import type { JettonBalance, NftItem, WalletTab } from './types';
 import { colors, layout } from './styles/theme';
 
@@ -26,7 +26,7 @@ export function App() {
   const address = session?.address ?? null;
 
   const { account, jettons, nfts, loading, error, refresh } = useWalletData(address);
-  const pendingRmj = useRmjPendingJetton(address, jettons);
+  const allJettons = useRmjAssets(address, jettons);
 
   const [onboarding, setOnboarding] = useState<Onboarding | null>(null);
   const [tab, setTab] = useState<WalletTab>('assets');
@@ -34,8 +34,6 @@ export function App() {
   const [sendJetton, setSendJetton] = useState<JettonBalance | null>(null);
   const [selectedNft, setSelectedNft] = useState<NftItem | null>(null);
   const [settings, setSettings] = useState(false);
-
-  const allJettons = pendingRmj ? [pendingRmj, ...jettons] : jettons;
 
   useEffect(() => {
     if (!session) return;

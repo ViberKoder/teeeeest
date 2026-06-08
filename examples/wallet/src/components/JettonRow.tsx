@@ -11,10 +11,19 @@ import {
 } from '../utils/rmjDetect';
 import {
   buildRmjClaimTransaction,
+  buildRmjJettonInteraction,
   fetchRmjOffchainBalance,
   formatRmjAmount,
   resolveMasterForMintless,
 } from '../services/rmjService';
+import {
+  formatRmjTotalDisplay,
+  formatRmjUnclaimedDisplay,
+  rmjLifecycleStatus,
+  rmjStatusLabel,
+  rmjTotalNano,
+  rmjUnclaimedNano,
+} from '../utils/rmjBalance';
 
 interface Props {
   jetton: JettonBalance;
@@ -25,11 +34,13 @@ interface Props {
 export function JettonRow({ jetton, owner, onSend }: Props) {
   const { sendOutgoing } = useWallet();
   const [rmjBalance, setRmjBalance] = useState<RmjOffchainBalance | null>(null);
-  const [claimBusy, setClaimBusy] = useState(false);
+  const [interactBusy, setInteractBusy] = useState(false);
   const [status, setStatus] = useState('');
 
   const isRmj =
-    isConfiguredRmjMaster(jetton.jettonMaster) || isMintlessJetton(jetton.customPayloadApiUri);
+    jetton.isProjectRmj ||
+    isConfiguredRmjMaster(jetton.jettonMaster) ||
+    isMintlessJetton(jetton.customPayloadApiUri);
   const rmjBackend = resolveRmjBackendForJetton(jetton.jettonMaster, jetton.customPayloadApiUri);
 
   const refreshRmj = useCallback(async () => {
@@ -49,9 +60,10 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
     return () => clearInterval(id);
   }, [refreshRmj, isRmj, rmjBackend]);
 
-  const claim = async () => {
+  /** First on-chain touch: self-transfer 0 jettons + Merkle proof (deploys wallet if needed). */
+  const syncOnChain = async () => {
     if (!rmjBackend) return;
-    setClaimBusy(true);
+    setInteractBusy(true);
     setStatus('');
     try {
       const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
@@ -64,23 +76,57 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
           stateInitB64: tx.stateInit,
         },
       ]);
-      setStatus('Клейм отправлен — баланс обновится после подтверждения.');
+      setStatus('Merkle proof отправлен — баланс появится on-chain после подтверждения.');
       await refreshRmj();
     } catch (e) {
       setStatus((e as Error).message);
     } finally {
-      setClaimBusy(false);
+      setInteractBusy(false);
     }
   };
 
+  /** Any RMJ send piggy-backs Merkle proof when available (TEP-177). */
+  const interactWithProof = async () => {
+    if (!rmjBackend || !rmjBalance?.claimable) {
+      onSend(jetton);
+      return;
+    }
+    setInteractBusy(true);
+    setStatus('');
+    try {
+      const master = resolveMasterForMintless(jetton.jettonMaster, jetton.customPayloadApiUri);
+      const tx = await buildRmjJettonInteraction(rmjBackend, owner, master, {
+        jettonAmountNano: 0n,
+        toOwner: owner,
+        requireProof: true,
+      });
+      await sendOutgoing([
+        {
+          to: tx.jettonWallet,
+          amountNano: BigInt(tx.amount),
+          payloadB64: tx.payload,
+          stateInitB64: tx.stateInit,
+        },
+      ]);
+      setStatus('Первое взаимодействие с proof отправлено.');
+      await refreshRmj();
+    } catch (e) {
+      onSend(jetton);
+    } finally {
+      setInteractBusy(false);
+    }
+  };
+
+  const lifecycle = rmjLifecycleStatus(rmjBalance);
   const onChainDisplay = formatJettonAmount(jetton.balanceNano, jetton.decimals);
-  const pendingOffchain =
-    rmjBalance && BigInt(rmjBalance.cumulativeOffchain) > jetton.balanceNano
-      ? formatRmjAmount(
-          (BigInt(rmjBalance.cumulativeOffchain) - jetton.balanceNano).toString(),
-          rmjBalance.balanceDisplay,
-        )
-      : null;
+  const totalDisplay = isRmj
+    ? formatRmjTotalDisplay(rmjBalance, jetton.balanceNano, jetton.decimals)
+    : onChainDisplay;
+  const unclaimedLabel = isRmj
+    ? formatRmjUnclaimedDisplay(rmjBalance, jetton.balanceNano, rmjBalance?.balanceDisplay ?? 'integer')
+    : null;
+  const hasUnclaimed = isRmj && rmjUnclaimedNano(rmjBalance, jetton.balanceNano) > 0n;
+  const effectiveMax = isRmj ? rmjTotalNano(rmjBalance, jetton.balanceNano) : jetton.balanceNano;
 
   return (
     <article
@@ -91,6 +137,7 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
         gap: 12,
         alignItems: 'flex-start',
         borderColor: isRmj ? colors.rmjDim : colors.border,
+        boxShadow: jetton.isProjectRmj ? `0 0 0 1px rgba(232, 168, 56, 0.15)` : undefined,
       }}
     >
       <div
@@ -139,9 +186,16 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
             <div style={{ fontSize: 13, color: colors.textMuted }}>{jetton.symbol}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 600, fontSize: 16 }}>{onChainDisplay}</div>
-            {pendingOffchain && (
-              <div style={{ fontSize: 12, color: colors.rmj, marginTop: 2 }}>+{pendingOffchain} pending</div>
+            <div style={{ fontWeight: 600, fontSize: 16 }}>{totalDisplay}</div>
+            {isRmj && jetton.balanceNano > 0n && hasUnclaimed && (
+              <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                on-chain: {onChainDisplay}
+              </div>
+            )}
+            {unclaimedLabel && (
+              <div style={{ fontSize: 12, color: colors.rmj, marginTop: 2 }}>
+                {jetton.balanceNano === 0n ? 'невостребовано' : `+${unclaimedLabel} невостребовано`}
+              </div>
             )}
           </div>
         </div>
@@ -156,37 +210,42 @@ export function JettonRow({ jetton, owner, onSend }: Props) {
               border: `1px solid rgba(232, 168, 56, 0.25)`,
               fontSize: 12,
               color: colors.textMuted,
+              lineHeight: 1.45,
             }}
           >
+            <div style={{ color: colors.rmj, fontWeight: 600, marginBottom: 4 }}>
+              {rmjStatusLabel(lifecycle)}
+            </div>
             Off-chain: {formatRmjAmount(rmjBalance.cumulativeOffchain, rmjBalance.balanceDisplay)} · epoch{' '}
-            {rmjBalance.epoch} · in tree:{' '}
+            {rmjBalance.epoch} · Merkle:{' '}
             {formatRmjAmount(rmjBalance.cumulativeInTree, rmjBalance.balanceDisplay)}
+            {rmjBalance.claimable && ' · proof готов'}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <button
             type="button"
-            onClick={() => onSend(jetton)}
-            disabled={jetton.balanceNano === 0n && !isRmj}
+            onClick={() => (isRmj && hasUnclaimed && rmjBalance?.claimable ? void interactWithProof() : onSend(jetton))}
+            disabled={interactBusy || (!isRmj && effectiveMax === 0n)}
             style={{ ...layout.btn, ...layout.btnGhost, padding: '7px 12px', fontSize: 13 }}
           >
-            Send
+            {isRmj && hasUnclaimed ? 'Отправить' : 'Send'}
           </button>
           {isRmj && rmjBalance?.claimable && (
             <button
               type="button"
-              disabled={claimBusy}
-              onClick={() => void claim()}
+              disabled={interactBusy}
+              onClick={() => void syncOnChain()}
               style={{
                 ...layout.btn,
                 ...layout.btnRmj,
                 padding: '7px 12px',
                 fontSize: 13,
-                opacity: claimBusy ? 0.6 : 1,
+                opacity: interactBusy ? 0.6 : 1,
               }}
             >
-              {claimBusy ? 'Клейм…' : 'Claim on-chain'}
+              {interactBusy ? '…' : 'Sync + proof'}
             </button>
           )}
         </div>

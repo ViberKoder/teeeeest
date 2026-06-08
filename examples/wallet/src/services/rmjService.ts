@@ -11,6 +11,14 @@ import { masterFromCustomPayloadApi } from '../utils/rmjDetect';
 
 const clientCache = new Map<string, RMJClient>();
 
+const EMPTY_OFFCHAIN: RmjOffchainBalance = {
+  cumulativeOffchain: '0',
+  cumulativeInTree: '0',
+  epoch: 0,
+  balanceDisplay: 'integer',
+  claimable: false,
+};
+
 function cacheKey(baseUrl: string, master?: string): string {
   return `${baseUrl}|${master ?? ''}|${TON_NETWORK}`;
 }
@@ -29,11 +37,12 @@ export function getRmjClient(baseUrl: string, jettonMaster?: string): RMJClient 
   return client;
 }
 
+/** Never null — zeros when backend has no row for this address yet. */
 export async function fetchRmjOffchainBalance(
   baseUrl: string,
   owner: string,
   jettonMaster: string,
-): Promise<RmjOffchainBalance | null> {
+): Promise<RmjOffchainBalance> {
   const rmj = getRmjClient(baseUrl, jettonMaster);
   try {
     const b = await rmj.getBalance(owner);
@@ -53,10 +62,65 @@ export async function fetchRmjOffchainBalance(
       claimable,
     };
   } catch {
-    return null;
+    return { ...EMPTY_OFFCHAIN };
   }
 }
 
+/**
+ * Build any RMJ jetton interaction (send / self-sync / claim).
+ * TEP-177: Merkle proof (`custom_payload`) is fetched and attached whenever available.
+ */
+export async function buildRmjJettonInteraction(
+  baseUrl: string,
+  owner: string,
+  jettonMaster: string,
+  params: {
+    jettonAmountNano: bigint;
+    toOwner: string;
+    /** When true, fail if proof is missing but user has in-tree balance (first claim expected). */
+    requireProof?: boolean;
+  },
+): Promise<{
+  jettonWallet: string;
+  amount: string;
+  payload: string;
+  stateInit?: string;
+  proofAttached: boolean;
+}> {
+  const rmj = getRmjClient(baseUrl, jettonMaster);
+
+  let proof: CustomPayloadInfo | null = null;
+  try {
+    proof = await rmj.getCustomPayload(owner, jettonMaster);
+  } catch {
+    proof = null;
+  }
+
+  if (params.requireProof && !proof) {
+    throw new Error(
+      'Merkle proof ещё недоступен — баланс не в дереве текущей эпохи или ждите обновления root.',
+    );
+  }
+
+  const jw = await rmj.getJettonWallet(owner);
+  const transferPayload = buildJettonTransferPayloadBase64({
+    jettonAmountNano: params.jettonAmountNano,
+    toOwner: params.toOwner,
+    responseAddress: owner,
+    forwardTonAmountNano: 1n,
+    customPayload: proof?.customPayload ?? null,
+  });
+
+  return {
+    jettonWallet: jw.jettonWallet,
+    amount: DEFAULT_ATTACHED_TON_NANO.toString(),
+    payload: transferPayload,
+    stateInit: jw.walletStateInitBase64 ?? undefined,
+    proofAttached: proof !== null,
+  };
+}
+
+/** Zero jetton self-transfer + Merkle proof — materializes unclaimed RMJ on-chain. */
 export async function buildRmjClaimTransaction(
   baseUrl: string,
   owner: string,
@@ -67,33 +131,20 @@ export async function buildRmjClaimTransaction(
   payload: string;
   stateInit?: string;
 }> {
-  const rmj = getRmjClient(baseUrl, jettonMaster);
-  const proof = await rmj.getCustomPayload(owner, jettonMaster);
-  if (!proof) {
-    throw new Error('Nothing to claim — balance not in Merkle tree or epoch pending.');
-  }
-
-  const jw = await rmj.getJettonWallet(owner);
-  const transferPayload = buildJettonTransferPayloadBase64({
+  const tx = await buildRmjJettonInteraction(baseUrl, owner, jettonMaster, {
     jettonAmountNano: 0n,
     toOwner: owner,
-    responseAddress: owner,
-    forwardTonAmountNano: 1n,
-    customPayload: proof,
+    requireProof: true,
   });
-
   return {
-    jettonWallet: jw.jettonWallet,
-    amount: DEFAULT_ATTACHED_TON_NANO.toString(),
-    payload: transferPayload,
-    stateInit: jw.walletStateInitBase64 ?? undefined,
+    jettonWallet: tx.jettonWallet,
+    amount: tx.amount,
+    payload: tx.payload,
+    stateInit: tx.stateInit,
   };
 }
 
-/**
- * Build a jetton transfer with mintless custom_payload attached (TEP-177 behavior).
- * Wallets like Tonkeeper do this automatically; we replicate it for RMJ sends.
- */
+/** Send RMJ jettons — always tries to attach Merkle proof (piggy-back claim). */
 export async function buildMintlessJettonTransfer(
   baseUrl: string,
   owner: string,
@@ -101,31 +152,13 @@ export async function buildMintlessJettonTransfer(
   params: {
     jettonAmountNano: bigint;
     toOwner: string;
-    customPayloadApiUri?: string;
   },
-): Promise<{ jettonWallet: string; amount: string; payload: string }> {
-  const rmj = getRmjClient(baseUrl, jettonMaster);
-  let customPayload: CustomPayloadInfo | null = null;
-  try {
-    customPayload = await rmj.getCustomPayload(owner, jettonMaster);
-  } catch {
-    customPayload = null;
-  }
-
-  const jw = await rmj.getJettonWallet(owner);
-  const transferPayload = buildJettonTransferPayloadBase64({
+): Promise<{ jettonWallet: string; amount: string; payload: string; stateInit?: string; proofAttached: boolean }> {
+  return buildRmjJettonInteraction(baseUrl, owner, jettonMaster, {
     jettonAmountNano: params.jettonAmountNano,
     toOwner: params.toOwner,
-    responseAddress: owner,
-    forwardTonAmountNano: 1n,
-    customPayload: customPayload?.customPayload ?? null,
+    requireProof: false,
   });
-
-  return {
-    jettonWallet: jw.jettonWallet,
-    amount: DEFAULT_ATTACHED_TON_NANO.toString(),
-    payload: transferPayload,
-  };
 }
 
 export function formatRmjAmount(amount: string, mode: RmjOffchainBalance['balanceDisplay']): string {

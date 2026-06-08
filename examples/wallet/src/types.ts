@@ -16,6 +16,8 @@ export interface JettonBalance {
   image?: string;
   /** TEP offchain-payloads API root when present in metadata. */
   customPayloadApiUri?: string;
+  /** Pinned project RMJ from VITE_JETTON_MASTER_ADDRESS — always shown in portfolio. */
+  isProjectRmj?: boolean;
 }
 
 export interface NftItem {
