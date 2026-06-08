@@ -12,7 +12,7 @@
 | **Шифрование** | AES-GCM + PBKDF2 (310k итераций), пароль кошелька |
 | **Wallet V4** | Стандартный `WalletContractV4`, workchain 0 |
 | **Подпись** | Отправка TON и jetton через Toncenter RPC (`@ton/ton`) |
-| **RMJ** | Off-chain баланс, claim, auto `custom_payload` при send (TEP-177) |
+| **RMJ** | Всегда в списке (даже невостребованный), Merkle proof auto при send (TEP-177) |
 | **Jettons / NFT** | Балансы через TonAPI |
 
 ## Быстрый старт
@@ -42,9 +42,16 @@ npm run dev -w @rmj/example-wallet
 - Автоблокировка через 15 минут неактивности.
 - Браузерный кошелёк подходит для dev/testnet и небольших сумм; для production с крупными балансами рассмотрите аппаратное хранение или аудит.
 
-## RMJ claim
+## RMJ (обязательное поведение)
 
-Тот же поток, что `examples/tma`: self-transfer 0 jettons + `custom_payload` с Proof API, подписывается **локально** этим кошельком.
+При `VITE_JETTON_MASTER_ADDRESS` + `VITE_RMJ_BACKEND_URL`:
+
+1. **RMJ всегда в портфеле** — даже on-chain = 0, баланс только off-chain / в Merkle
+2. **Главная цифра** — cumulative off-chain (невостребованные награды)
+3. **Любая отправка RMJ** — Proof API → Merkle `custom_payload` прикрепляется автоматически
+4. **Sync + proof** — self-transfer 0 jettons + StateInit для первого деплоя jetton-wallet
+
+Тот же поток, что `examples/tma`, но подпись **локальная** (своя мнемоника).
 
 ## Сборка
 
