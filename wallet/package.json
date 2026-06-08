@@ -5,7 +5,7 @@
   "description": "Self-custody TON wallet with first-class Rolling Mintless Jetton (RMJ) support. TMA-friendly, passcode-encrypted, no plaintext mnemonic stored.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5190",
     "lint": "tsc -b --noEmit"
   },

@@ -66,6 +66,55 @@ npm run dev -w @rmj/wallet
 To preview as a TMA, expose the dev server over HTTPS (ngrok / cloudflared)
 and set the resulting URL as the Mini App URL in BotFather.
 
+## Deploy to Vercel
+
+Wallet and minter are **two separate static apps**. Use a **dedicated Vercel
+project** for the wallet — do not reuse the minter project (root `vercel.json`
+builds the minter by default).
+
+### Option A — Root Directory `wallet` (recommended)
+
+1. Vercel → **Add New Project** → import this repo.
+2. **Root Directory** → `wallet`
+3. Framework Preset → **Other** (Vite is detected automatically; `wallet/vercel.json`
+   already sets install/build/output).
+4. **Environment variables** (Project → Settings → Environment Variables):
+
+   | Name | Example | Notes |
+   |------|---------|-------|
+   | `VITE_TON_NETWORK` | `mainnet` or `testnet` | optional, default `mainnet` |
+   | `VITE_TONCENTER_API_KEY` | `…` | optional, lifts RPC rate limits |
+   | `VITE_TONAPI_TOKEN` | `…` | optional, lifts indexer limits |
+   | `VITE_DEFAULT_RMJ_MASTER` | `EQ…` | optional, pre-fills “Add jetton” |
+   | `VITE_APP_NAME` | `Tap Wallet` | optional UI title |
+
+5. Deploy. Output is `wallet/dist`.
+
+`wallet/vercel.json` runs `npm install` from the **monorepo root** (`cd ..`) so
+workspace hoisting works; the wallet has no dependency on `@rmj/sdk`.
+
+### Option B — Root Directory `.` (repo root)
+
+If you keep the repo root as Root Directory, **override** the values from root
+`vercel.json` in the Vercel dashboard for this project:
+
+| Setting | Value |
+|---------|-------|
+| Install Command | `npm install --no-audit --no-fund --include=dev` |
+| Build Command | `npm run build:vercel-wallet` |
+| Output Directory | `wallet/dist` |
+| Framework | Other |
+
+### Telegram Mini App after deploy
+
+1. Copy the production URL (`https://your-wallet.vercel.app`).
+2. BotFather → your bot → **Bot Settings → Menu Button / Mini App** → set that URL.
+3. Open the bot in Telegram — the wallet runs inside the WebView with theme +
+   CloudStorage backup.
+
+The app uses **HashRouter** (`/#/home`), so no extra SPA rewrite rules are
+required on Vercel.
+
 ## What is not included (yet)
 
 - DApp connector / TON Connect provider implementation (consumers only — the
