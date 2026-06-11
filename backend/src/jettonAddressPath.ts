@@ -33,13 +33,23 @@ export function parseJettonMasterPathSegment(param: string): Address | null {
 
 /**
  * On-chain TEP-64 off-chain URI filename (no master in path).
- * Bumped from `jetton-metadata.json` → `jetton-metadata2.json` so TonAPI re-fetches
- * after `JETTON_MASTER_ADDRESS` changes (shared URL was cached with stale master).
+ * Bump when TonAPI/Toncenter cache a stale master at a shared URL:
+ * `jetton-metadata.json` → `jetton-metadata2.json` → `jetton-metadata3.json`.
  */
-export const JETTON_METADATA_FILENAME = 'jetton-metadata2.json';
+export const JETTON_METADATA_FILENAME = 'jetton-metadata3.json';
 
-/** Legacy filename still seen on already-deployed masters before change_content. */
+/** Previous fixed URLs — still served (same JSON) for in-flight indexers. */
+export const JETTON_METADATA_FILENAME_LEGACY2 = 'jetton-metadata2.json';
+
+/** Oldest fixed URL — still served for masters deployed before metadata2 bump. */
 export const JETTON_METADATA_FILENAME_LEGACY = 'jetton-metadata.json';
+
+/** All RMJ fixed metadata paths (current first). */
+export const JETTON_METADATA_ALL_FILENAMES = [
+  JETTON_METADATA_FILENAME,
+  JETTON_METADATA_FILENAME_LEGACY2,
+  JETTON_METADATA_FILENAME_LEGACY,
+] as const;
 
 /** TEP-177 mintless — separate fixed URL so RMJ and mintless can share one backend. */
 export const MINTLESS_JETTON_METADATA_FILENAME = 'mintless-jetton-metadata.json';
@@ -59,16 +69,16 @@ export function fixedMintlessJettonMetadataUrl(publicAppUrl: string): string {
 export function isFixedJettonMetadataUrl(contentUrl: string): boolean {
   const u = contentUrl.replace(/\/$/, '');
   return (
-    u.endsWith(`/${JETTON_METADATA_FILENAME}`) ||
-    u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`) ||
+    JETTON_METADATA_ALL_FILENAMES.some((name) => u.endsWith(`/${name}`)) ||
     u.endsWith(`/${MINTLESS_JETTON_METADATA_FILENAME}`)
   );
 }
 
 export function fixedJettonMetadataFilenameFromUrl(contentUrl: string): string | null {
   const u = contentUrl.replace(/\/$/, '');
-  if (u.endsWith(`/${JETTON_METADATA_FILENAME}`)) return JETTON_METADATA_FILENAME;
-  if (u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`)) return JETTON_METADATA_FILENAME_LEGACY;
+  for (const name of JETTON_METADATA_ALL_FILENAMES) {
+    if (u.endsWith(`/${name}`)) return name;
+  }
   if (u.endsWith(`/${MINTLESS_JETTON_METADATA_FILENAME}`)) return MINTLESS_JETTON_METADATA_FILENAME;
   return null;
 }
