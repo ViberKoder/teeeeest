@@ -19,9 +19,10 @@ import {
 import { generateSignerSecrets } from './signer';
 import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson, type JettonKind } from './metadata';
 import { ClaimTab } from './ClaimTab';
+import { ComplianceTab } from './ComplianceTab';
 
 type Step = 1 | 2 | 3 | 4;
-type AppTab = 'minter' | 'claim';
+type AppTab = 'minter' | 'claim' | 'compliance';
 
 const JETTON_KIND_LABELS: Record<JettonKind, string> = {
   rmj: 'RMJ (rolling tap-to-earn)',
@@ -354,12 +355,34 @@ export function App() {
         >
           Забрать токены (claim)
         </button>
+        <button
+          type="button"
+          onClick={() => setAppTab('compliance')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: 8,
+            border: appTab === 'compliance' ? '2px solid #7c3aed' : '1px solid #ccc',
+            background: appTab === 'compliance' ? '#f5f3ff' : '#fff',
+            cursor: 'pointer',
+            fontWeight: appTab === 'compliance' ? 700 : 400,
+          }}
+        >
+          Compliance &amp; диагностика
+        </button>
       </div>
 
       {appTab === 'claim' ? (
         <>
           <h1 style={{ marginTop: 0 }}>RMJ — claim на цепь</h1>
           <ClaimTab />
+        </>
+      ) : appTab === 'compliance' ? (
+        <>
+          <h1 style={{ marginTop: 0 }}>RMJ — compliance</h1>
+          <ComplianceTab
+            defaultBackendUrl={backendOrigin.startsWith('http') ? backendOrigin : ''}
+            defaultMaster={deployedMaster}
+          />
         </>
       ) : (
         <>
