@@ -357,14 +357,33 @@ export async function runCompliance(params: {
     note: state?.epoch != null ? `epoch=${state.epoch}` : undefined,
   });
 
-  const sampleOwner =
+  const walletsBatch = await fetchJson(
+    `${appUrl}/api/v1/jettons/${path}/wallets?next_from=${encodeURIComponent(WALLET_BATCH_ZERO)}&count=5`,
+  );
+
+  let sampleOwner =
     params.sampleOwnerAddress?.trim() ||
     config.ADMIN_WALLET_ADDRESS?.trim() ||
     (params.state.tree.inner().keys()[0]?.toRawString() ?? '');
 
-  const walletClaim = sampleOwner
+  let walletClaim = sampleOwner
     ? await fetchJson(`${appUrl}/api/v1/jettons/${path}/wallet/${Address.parse(sampleOwner).toRawString()}`)
     : null;
+
+  if (!walletClaim?.custom_payload) {
+    const batchOwners = ((walletsBatch?.wallets as { owner?: string }[]) ?? [])
+      .map((w) => w.owner)
+      .filter((o): o is string => !!o);
+    for (const owner of batchOwners) {
+      const candidate = await fetchJson(`${appUrl}/api/v1/jettons/${path}/wallet/${owner}`);
+      if (candidate?.custom_payload) {
+        sampleOwner = owner;
+        walletClaim = candidate;
+        break;
+      }
+    }
+  }
+
   const claimOp = walletClaim?.custom_payload
     ? parseCustomPayloadOp(String(walletClaim.custom_payload))
     : null;
@@ -372,25 +391,26 @@ export async function runCompliance(params: {
     !!walletClaim?.custom_payload &&
     walletClaim?.state_init !== undefined &&
     !!walletClaim?.compressed_info;
+  const sampleOwnerNote = sampleOwner ? `owner ${Address.parse(sampleOwner).toRawString()}` : 'no pending claim in tree';
 
   push({
     id: 'api.wallet',
     group: 'our_api',
     label: '/wallet/{owner} TEP-176 payload',
     pass: ourClaimReady,
-    note: claimOp === OP_MERKLE_CLAIM ? 'op 0x0df602d6 (TEP-177)' : claimOp != null ? `op 0x${claimOp.toString(16)}` : 'no sample owner with pending claim',
+    note: claimOp === OP_MERKLE_CLAIM
+      ? `op 0x0df602d6 (TEP-177), ${sampleOwnerNote}`
+      : claimOp != null
+        ? `op 0x${claimOp.toString(16)}, ${sampleOwnerNote}`
+        : 'no sample owner with pending claim — tree empty or all claimed',
   });
   push({
     id: 'api.wallet_opcode',
     group: 'our_api',
     label: 'custom_payload op = merkle_airdrop_claim',
     pass: claimOp === OP_MERKLE_CLAIM,
-    note: 'Tonkeeper / MyTonWallet expect 0x0df602d6',
+    note: ourClaimReady ? sampleOwnerNote : 'Tonkeeper / MyTonWallet expect 0x0df602d6',
   });
-
-  const walletsBatch = await fetchJson(
-    `${appUrl}/api/v1/jettons/${path}/wallets?next_from=${encodeURIComponent(WALLET_BATCH_ZERO)}&count=2`,
-  );
   push({
     id: 'api.wallets_batch',
     group: 'our_api',
