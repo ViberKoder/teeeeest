@@ -52,7 +52,13 @@ export class TreeBuilder {
     }
   }
 
-  async tick(force = false): Promise<{ advanced: boolean; epoch: number; root: string }> {
+  async tick(force = false): Promise<{
+    advanced: boolean;
+    epoch: number;
+    root: string;
+    on_chain_synced?: boolean;
+    on_chain_sync_reason?: string;
+  }> {
     if (this.running) {
       return { advanced: false, epoch: this.state.epoch, root: this.state.rootHex() };
     }
@@ -94,6 +100,13 @@ export class TreeBuilder {
       }
 
       if (active.length === 0 && !force) {
+        if (await this.rootUpdater.needsOnChainSync(this.state)) {
+          const sync = await this.rootUpdater.syncWithState(this.state);
+          logger.warn(
+            { sync, epoch: this.state.epoch, root: this.state.rootHex() },
+            'tree tick: no new activity but on-chain merkle root lags — attempted sync',
+          );
+        }
         const tapStats = await this.store.getUserTapStats();
         logger.info(
           {
@@ -119,7 +132,8 @@ export class TreeBuilder {
       const rootHex = this.state.rootHex();
 
       const lastCommitted = await this.store.getKv('last_committed_root');
-      if (!force && rootHex === lastCommitted) {
+      const onChainLag = await this.rootUpdater.needsOnChainSync(this.state);
+      if (!force && rootHex === lastCommitted && !onChainLag) {
         logger.info(
           {
             epoch: this.state.epoch,
@@ -145,7 +159,6 @@ export class TreeBuilder {
       });
 
       await this.store.setKv('last_epoch_at', String(now));
-      await this.store.setKv('last_committed_root', rootHex);
 
       logger.info(
         {
@@ -155,12 +168,24 @@ export class TreeBuilder {
           treeSize: this.state.tree.size,
           prevRoot,
         },
-        'epoch advanced',
+        'epoch advanced (off-chain)',
       );
 
-      await this.rootUpdater.queue(newEpoch, rootHex);
+      const sync = await this.rootUpdater.syncWithState(this.state);
+      if (!sync.synced) {
+        logger.error(
+          { sync, epoch: newEpoch, root: rootHex },
+          'epoch advanced in DB but on-chain merkle root not confirmed — mintless indexers will fail until sync succeeds',
+        );
+      }
 
-      return { advanced: true, epoch: newEpoch, root: rootHex };
+      return {
+        advanced: true,
+        epoch: newEpoch,
+        root: rootHex,
+        on_chain_synced: sync.synced,
+        on_chain_sync_reason: sync.reason,
+      };
     } finally {
       this.running = false;
     }

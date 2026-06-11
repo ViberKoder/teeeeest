@@ -1,4 +1,4 @@
-import { TonClient, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
+import { TonClient, WalletContractV4, WalletContractV5R1, JettonMaster } from '@ton/ton';
 // Not exported from the @ton/ton barrel; needed to decode deployed Wallet V5 R1 wallet_id (incl. custom/backoffice context).
 import { loadWalletIdV5R1 } from '@ton/ton/dist/wallets/v5r1/WalletV5R1WalletId';
 import { Address, Cell, internal, toNano, beginCell, SendMode } from '@ton/core';
@@ -10,9 +10,17 @@ import {
 } from '@ton/crypto';
 import { OpCodes } from '@rmj/contracts';
 import type { AppStore } from './store/appStore';
+import type { AirdropState } from './state';
 import { config } from './config';
 import { logger } from './logger';
 import { createTonClient } from './tonClient';
+import {
+  isZeroRoot,
+  readOnChainMerkle,
+  rootsMatch,
+  waitForOnChainMerkle,
+  type OnChainMerkle,
+} from './onChainMerkle';
 
 /** Standard Wallet V5 R1 code hash (@ton/ton WalletContractV5R1). */
 function normalizeAdminPrivateKeyHex(raw: string): string {
@@ -38,16 +46,21 @@ const WALLET_V5R1_CODE_HASH_HEX = Buffer.from(
   }).init.code.hash(),
 ).toString('hex');
 
+export type RootSyncReport = {
+  synced: boolean;
+  reason?: string;
+  target_root?: string;
+  target_epoch?: number;
+  on_chain?: OnChainMerkle | null;
+  broadcast_epoch?: number;
+};
+
 /**
  * Root Updater: pushes `op::update_merkle_root` transactions from the
  * admin wallet to the Jetton Master after each epoch.
  *
- * The admin wallet is derived from ADMIN_PRIVATE_KEY_HEX or ADMIN_MNEMONIC. In production this
- * should be replaced with a multisig wallet setup (ton-blockchain/multisig
- * v2) and the signer wrapped in the same HSM flow as VoucherSigner.
- *
- * Updates are queued one-at-a-time (TON seqno is serialized) with retry
- * on transient RPC failures. Already-committed epochs are idempotent.
+ * Verifies on-chain root after broadcast — DB epoch may run ahead of chain
+ * if earlier sends failed while rootUpdater was not ready.
  */
 export class RootUpdater {
   private client?: TonClient;
@@ -55,10 +68,10 @@ export class RootUpdater {
   private keypair?: KeyPair;
   private ready = false;
   private running = false;
+  private masterAdmin: Address | null = null;
 
   constructor(readonly store: AppStore) {}
 
-  /** True when admin credentials + jetton master are set and TonClient is wired — root txs will be broadcast. */
   isReady(): boolean {
     return this.ready;
   }
@@ -105,6 +118,23 @@ export class RootUpdater {
         }
         this.wallet = v5;
       }
+
+      const master = Address.parse(config.JETTON_MASTER_ADDRESS);
+      const masterJetton = this.client.open(JettonMaster.create(master));
+      const jettonData = await masterJetton.getJettonData();
+      this.masterAdmin = jettonData.adminAddress;
+
+      if (!this.masterAdmin!.equals(this.wallet!.address)) {
+        logger.error(
+          {
+            jetton_admin: this.masterAdmin!.toString({ urlSafe: true, bounceable: false }),
+            signer_wallet: this.wallet!.address.toString({ urlSafe: true, bounceable: false }),
+            hint: 'ADMIN_MNEMONIC / ADMIN_PRIVATE_KEY_HEX must control the jetton master admin address',
+          },
+          'root updater: signer wallet ≠ jetton master admin — update_merkle_root will bounce',
+        );
+        return;
+      }
     } catch (e) {
       logger.error(
         { err: e },
@@ -117,8 +147,9 @@ export class RootUpdater {
 
     logger.info(
       {
-        admin: this.wallet.address.toString(),
+        admin: this.wallet!.address.toString(),
         master: config.JETTON_MASTER_ADDRESS,
+        jetton_admin_matches_signer: true,
         admin_wallet_version: config.ADMIN_WALLET_VERSION,
         admin_signing: hasPrivateKey ? 'private_key_hex' : 'mnemonic',
         admin_mnemonic_password_configured: Boolean(config.ADMIN_MNEMONIC_PASSWORD.trim()),
@@ -136,10 +167,6 @@ export class RootUpdater {
     );
   }
 
-  /**
-   * Snapshot of the derived admin address on the configured RPC (for /diagnostics).
-   * Null when the updater never initialised a wallet (missing env or derivation error).
-   */
   async getAdminWalletOnChain(): Promise<null | {
     derived_address: string;
     contract_state: 'active' | 'uninitialized' | 'frozen';
@@ -169,10 +196,150 @@ export class RootUpdater {
     };
   }
 
+  async readOnChainMerkle(): Promise<OnChainMerkle | null> {
+    if (!this.client || !config.JETTON_MASTER_ADDRESS) return null;
+    return readOnChainMerkle(this.client, Address.parse(config.JETTON_MASTER_ADDRESS));
+  }
+
+  /** True when off-chain tree root ≠ on-chain root (indexers will reject merkle dump). */
+  async needsOnChainSync(state: AirdropState): Promise<boolean> {
+    if (state.tree.isEmpty()) return false;
+    const onChain = await this.readOnChainMerkle();
+    if (!onChain) return true;
+    return !rootsMatch(onChain.root, state.rootBigint());
+  }
+
   /**
-   * Derives Wallet V5 R1 using standard client context only (subwallet 0..32767).
-   * Returns null when ADMIN_WALLET_ADDRESS is set but no derivation matches — caller may fall back to on-chain wallet_id.
+   * Ensure on-chain merkle root matches the live tree. Uses on_chain_epoch + 1
+   * when catching up (DB epoch may be far ahead).
    */
+  async syncWithState(state: AirdropState, opts?: { force?: boolean }): Promise<RootSyncReport> {
+    if (!this.ready) {
+      return { synced: false, reason: 'root-updater-not-ready' };
+    }
+    if (state.tree.isEmpty()) {
+      return { synced: true, reason: 'empty-tree' };
+    }
+
+    if (this.running) {
+      return { synced: false, reason: 'root-updater-busy' };
+    }
+
+    const targetRoot = state.rootBigint();
+    const targetRootHex = state.rootHex();
+
+    const onChain = await this.readOnChainMerkle();
+    if (!onChain) {
+      return { synced: false, reason: 'on-chain-read-failed', target_root: targetRootHex };
+    }
+
+    if (!opts?.force && rootsMatch(onChain.root, targetRoot)) {
+      await this.store.setKv('last_onchain_merkle_root', targetRootHex);
+      await this.store.setKv('last_onchain_merkle_epoch', String(onChain.epoch));
+      return { synced: true, target_root: targetRootHex, on_chain: onChain };
+    }
+
+    if (isZeroRoot(onChain.root) && !isZeroRoot(targetRoot)) {
+      logger.warn(
+        {
+          on_chain_epoch: onChain.epoch,
+          off_chain_epoch: state.epoch,
+          target_root: targetRootHex,
+        },
+        'on-chain merkle root is zero — mintless indexers will reject dump until update_merkle_root lands',
+      );
+    }
+
+    this.running = true;
+    try {
+      const broadcastEpoch = onChain.epoch + 1;
+      const sent = await this.sendOnce(broadcastEpoch, targetRootHex);
+      if (!sent.ok) {
+        return {
+          synced: false,
+          reason: sent.reason ?? 'send-failed',
+          target_root: targetRootHex,
+          on_chain: onChain,
+          broadcast_epoch: broadcastEpoch,
+        };
+      }
+
+      const confirmed = await waitForOnChainMerkle(
+        this.client!,
+        Address.parse(config.JETTON_MASTER_ADDRESS),
+        targetRoot,
+        broadcastEpoch,
+        { attempts: 25, delayMs: 4000 },
+      );
+
+      if (!confirmed) {
+        logger.error(
+          {
+            broadcast_epoch: broadcastEpoch,
+            target_root: targetRootHex,
+            on_chain_before: onChain,
+          },
+          'update_merkle_root broadcast but on-chain root still mismatched after wait',
+        );
+        return {
+          synced: false,
+          reason: 'tx-not-confirmed-on-chain',
+          target_root: targetRootHex,
+          on_chain: onChain,
+          broadcast_epoch: broadcastEpoch,
+        };
+      }
+
+      await this.store.setKv('last_onchain_merkle_root', targetRootHex);
+      await this.store.setKv('last_onchain_merkle_epoch', String(confirmed.epoch));
+      await this.store.setKv('last_committed_root', targetRootHex);
+      await this.store.updateEpochCommitted(
+        broadcastEpoch,
+        `confirmed:${confirmed.epoch}`,
+        Math.floor(Date.now() / 1000),
+      );
+
+      logger.info(
+        {
+          broadcast_epoch: broadcastEpoch,
+          on_chain_epoch: confirmed.epoch,
+          root: targetRootHex,
+          off_chain_db_epoch: state.epoch,
+        },
+        'merkle root committed on-chain',
+      );
+
+      return {
+        synced: true,
+        target_root: targetRootHex,
+        target_epoch: broadcastEpoch,
+        on_chain: confirmed,
+        broadcast_epoch: broadcastEpoch,
+      };
+    } catch (e) {
+      const err = e as Error;
+      logger.error({ err, target_root: targetRootHex }, 'merkle root sync failed');
+      return { synced: false, reason: err.message, target_root: targetRootHex, on_chain: onChain };
+    } finally {
+      this.running = false;
+    }
+  }
+
+  /** @deprecated Use syncWithState — kept for treeBuilder hook. */
+  async queue(_epoch: number, _rootHex: string): Promise<void> {
+    logger.debug('rootUpdater.queue is deprecated — treeBuilder calls syncWithState');
+  }
+
+  scheduleInitialSync(state: AirdropState): void {
+    setTimeout(() => {
+      void this.syncWithState(state, { force: false }).then((report) => {
+        if (!report.synced && report.reason !== 'empty-tree') {
+          logger.warn({ report }, 'startup merkle root sync incomplete');
+        }
+      });
+    }, 5_000);
+  }
+
   private tryDeriveV5R1BySubwalletScan(publicKey: Buffer): WalletContractV5R1 | null {
     const networkGlobalId = config.TON_NETWORK === 'mainnet' ? -239 : -3;
     const makeV5 = (subwalletNumber: number) =>
@@ -231,10 +398,6 @@ export class RootUpdater {
     }
   }
 
-  /**
-   * Reads wallet_id + public key from deployed Wallet V5 R1 storage.
-   * Proves the configured key controls ADMIN_WALLET_ADDRESS even when Tonkeeper uses a non-standard wallet_id encoding (custom/backoffice context).
-   */
   private async tryDeriveV5R1FromOnChainAdmin(publicKey: Buffer): Promise<WalletContractV5R1> {
     const expectedRaw = config.ADMIN_WALLET_ADDRESS.trim();
     if (!expectedRaw || !this.client) {
@@ -311,56 +474,13 @@ export class RootUpdater {
     return wallet;
   }
 
-  async queue(epoch: number, rootHex: string): Promise<void> {
-    if (!this.ready) {
-      logger.warn(
-        {
-          epoch,
-          hint: 'Set JETTON_MASTER_ADDRESS and ADMIN_PRIVATE_KEY_HEX or ADMIN_MNEMONIC so epochs commit on-chain; until then proofs may disagree with chain.',
-        },
-        'root updater idle — Merkle epoch recorded in DB only',
-      );
-      return;
+  private async sendOnce(
+    epoch: number,
+    rootHex: string,
+  ): Promise<{ ok: boolean; reason?: string; seqno?: number }> {
+    if (!this.client || !this.wallet || !this.keypair) {
+      return { ok: false, reason: 'not-initialised' };
     }
-    if (this.running) {
-      logger.debug({ epoch }, 'root updater already processing, will pick this up next tick');
-      return;
-    }
-    this.running = true;
-    try {
-      await this.sendOnce(epoch, rootHex);
-    } catch (e) {
-      const err = e as any;
-      const rpcError = err?.response?.data?.error as string | undefined;
-      const rpcCode = err?.response?.data?.code as number | undefined;
-      const hint =
-        rpcError?.includes('Failed to unpack account state')
-          ? 'Lite server rejected the wallet external message: admin wallet may be uninitialized on this network, not standard Wallet V5R1/V4 (wrong ADMIN_WALLET_VERSION), wrong mnemonic vs ADMIN_WALLET_ADDRESS, or TON_NETWORK/RPC mismatch. Call GET /api/v1/diagnostics for admin contract_state and code hash.'
-          : rpcCode === 429
-            ? 'Toncenter rate limit: set TON_RPC_API_KEY and consider retry/backoff.'
-            : undefined;
-      logger.error(
-        {
-          err,
-          epoch,
-          rootHex,
-          rpc_error: rpcError,
-          rpc_code: rpcCode,
-          hint,
-          ton_network: config.TON_NETWORK,
-          ton_endpoint: config.TON_RPC_ENDPOINT || 'toncenter-default',
-          admin_wallet_version: config.ADMIN_WALLET_VERSION,
-          jetton_master_address: config.JETTON_MASTER_ADDRESS,
-        },
-        'root update send failed',
-      );
-    } finally {
-      this.running = false;
-    }
-  }
-
-  private async sendOnce(epoch: number, rootHex: string): Promise<void> {
-    if (!this.client || !this.wallet || !this.keypair) return;
 
     const master = Address.parse(config.JETTON_MASTER_ADDRESS);
     const masterState = await this.client.getContractState(master);
@@ -371,12 +491,11 @@ export class RootUpdater {
           master: master.toString({ urlSafe: true, bounceable: false }),
           master_state: masterState.state,
           ton_network: config.TON_NETWORK,
-          ton_endpoint: config.TON_RPC_ENDPOINT || 'toncenter-default',
           hint: 'Master must be deployed and active in this network before update_merkle_root.',
         },
         'root update aborted: jetton master is not active',
       );
-      return;
+      return { ok: false, reason: 'master-not-active' };
     }
 
     const adminAddr = this.wallet.address;
@@ -394,7 +513,7 @@ export class RootUpdater {
         },
         'root update aborted: admin wallet is not active',
       );
-      return;
+      return { ok: false, reason: 'admin-wallet-not-active' };
     }
 
     if (config.ADMIN_WALLET_VERSION === 'v5r1' && walletState.code) {
@@ -406,32 +525,34 @@ export class RootUpdater {
             admin_wallet: adminFriendly,
             on_chain_code_hash: onChainHash,
             expected_v5r1_code_hash: WALLET_V5R1_CODE_HASH_HEX,
-            hint: 'Chain code differs from standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4, or use the mnemonic for the wallet that owns this address.',
+            hint: 'Chain code differs from standard Wallet V5 R1 — set ADMIN_WALLET_VERSION=v4 if this address is Wallet V4.',
           },
           'root update aborted: admin wallet code is not Wallet V5 R1',
         );
-        return;
+        return { ok: false, reason: 'admin-wallet-not-v5r1' };
       }
     }
 
     const walletContract = this.client.open(this.wallet);
     const seqno = await walletContract.getSeqno();
 
+    const rootBigint = BigInt(rootHex);
     const body = beginCell()
       .storeUint(OpCodes.updateMerkleRoot, 32)
-      .storeUint(BigInt(epoch), 64) // query_id
-      .storeUint(BigInt(rootHex), 256)
+      .storeUint(BigInt(epoch), 64)
+      .storeUint(rootBigint, 256)
       .storeUint(epoch, 32)
       .endCell();
 
     const messages = [
       internal({
         to: master,
-        value: toNano('0.02'),
+        value: toNano('0.05'),
         body,
         bounce: true,
       }),
     ];
+
     if (config.ADMIN_WALLET_VERSION === 'v5r1') {
       await walletContract.sendTransfer({
         seqno,
@@ -449,12 +570,7 @@ export class RootUpdater {
       });
     }
 
-    await this.store.updateEpochCommitted(
-      epoch,
-      `seqno:${seqno}`,
-      Math.floor(Date.now() / 1000),
-    );
-
-    logger.info({ epoch, rootHex, seqno }, 'root update broadcast');
+    logger.info({ epoch, rootHex, seqno }, 'update_merkle_root broadcast');
+    return { ok: true, seqno };
   }
 }

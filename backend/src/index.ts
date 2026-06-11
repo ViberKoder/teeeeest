@@ -62,9 +62,10 @@ async function main() {
   registerPublicJettonMetadata(app, { store });
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
-  registerAdminApi(app, { gameServer, treeBuilder });
+  registerAdminApi(app, { gameServer, treeBuilder, rootUpdater, state });
 
   treeBuilder.start();
+  rootUpdater.scheduleInitialSync(state);
 
   const shutdown = async (code = 0) => {
     logger.info('shutting down');
