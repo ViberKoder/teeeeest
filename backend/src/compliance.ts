@@ -262,13 +262,18 @@ export async function runCompliance(params: {
   }
 
   const onChainMerkle = await fetchOnChainMerkleRoot(network, onChainRaw, tcHeaders);
-  let merkleOk = onChainMerkle.root === merkleRoot;
+  const onChainRootNorm = onChainMerkle.root.replace(/^0x/i, '').replace(/^0+/, '') || '0';
+  const offChainRootNorm = merkleRoot.replace(/^0x/i, '').replace(/^0+/, '') || '0';
+  let merkleOk = onChainRootNorm === offChainRootNorm && onChainRootNorm !== '0';
   let merkleNote = onChainMerkle.note;
-  if (!merkleOk && dumpOk) {
+  if (!merkleOk && onChainRootNorm === '0' && offChainRootNorm !== '0') {
+    merkleNote =
+      'on-chain root is 0 — update_merkle_root never confirmed; Toncenter rejects merkle dump vs chain';
+  } else if (!merkleOk && dumpOk && !onChainMerkle.root) {
     merkleOk = true;
-    merkleNote = onChainMerkle.root
-      ? `get-method mismatch (epoch lag?); backend dump hash = ${merkleRoot}`
-      : `verified via merkle-dump BOC (Toncenter get-method unavailable)`;
+    merkleNote = 'verified via merkle-dump BOC (Toncenter get-method unavailable)';
+  } else if (!merkleOk && dumpOk) {
+    merkleNote = `get-method ${onChainMerkle.note}; dump hash = ${merkleRoot}`;
   }
   push({
     id: 'onchain.merkle',
@@ -290,7 +295,16 @@ export async function runCompliance(params: {
     group: 'rolling',
     label: 'Rolling epoch > 0 or tree non-empty',
     pass: params.state.epoch > 0 || params.state.tree.size > 0,
-    note: `epoch=${params.state.epoch}, tree_size=${params.state.tree.size}`,
+    note: `db_epoch=${params.state.epoch}, tree_size=${params.state.tree.size}`,
+  });
+  push({
+    id: 'rolling.onchain_root',
+    group: 'rolling',
+    label: 'On-chain merkle root = live dump (mintless critical)',
+    pass: merkleOk,
+    note: merkleOk
+      ? `root ${merkleRoot}`
+      : `off-chain ${merkleRoot}, on-chain ${onChainMerkle.note || '0'}`,
   });
   push({
     id: 'rolling.not_airdrop',

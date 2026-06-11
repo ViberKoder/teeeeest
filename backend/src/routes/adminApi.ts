@@ -3,12 +3,16 @@ import { Address } from '@ton/core';
 import { z } from 'zod';
 import { GameServer } from '../gameServer';
 import { TreeBuilder } from '../treeBuilder';
+import { RootUpdater } from '../rootUpdater';
+import type { AirdropState } from '../state';
 import { config } from '../config';
 import { logger } from '../logger';
 
 export interface AdminApiDeps {
   gameServer: GameServer;
   treeBuilder: TreeBuilder;
+  rootUpdater: RootUpdater;
+  state: AirdropState;
 }
 
 function requireAdmin(req: FastifyRequest) {
@@ -26,6 +30,18 @@ export function registerAdminApi(app: FastifyInstance, deps: AdminApiDeps): void
    *
    * POST /api/v1/admin/advance-epoch
    */
+  app.post('/api/v1/admin/sync-merkle-root', async (req, reply) => {
+    if (!requireAdmin(req)) {
+      reply.code(401);
+      return { error: 'unauthorised' };
+    }
+    const report = await deps.rootUpdater.syncWithState(deps.state, { force: true });
+    if (!report.synced) {
+      reply.code(502);
+    }
+    return report;
+  });
+
   app.post('/api/v1/admin/advance-epoch', async (req, reply) => {
     if (!requireAdmin(req)) {
       reply.code(401);

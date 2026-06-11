@@ -30,6 +30,11 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
     );
     const rootUpdatesEnabled = deps.rootUpdater.isReady();
     const adminOnChain = await deps.rootUpdater.getAdminWalletOnChain();
+    const onChainMerkle = await deps.rootUpdater.readOnChainMerkle();
+    const offChainRoot = deps.state.rootHex();
+    const merkleSynced =
+      onChainMerkle != null &&
+      onChainMerkle.rootHex.toLowerCase() === offChainRoot.toLowerCase();
 
     return {
       service: 'rmj-backend',
@@ -49,7 +54,17 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       admin_mnemonic_or_private_key_configured: adminConfigured,
       root_updates_will_send_onchain: rootUpdatesEnabled,
       admin_wallet_onchain: adminOnChain,
+      on_chain_merkle_root: onChainMerkle?.rootHex ?? null,
+      on_chain_merkle_epoch: onChainMerkle?.epoch ?? null,
+      off_chain_merkle_root: offChainRoot,
+      off_chain_db_epoch: deps.state.epoch,
+      merkle_root_synced: merkleSynced,
       integration_warnings: [
+        ...(jettonConfigured && !merkleSynced && deps.state.tree.size > 0
+          ? [
+              `On-chain merkle root (${onChainMerkle?.rootHex ?? 'unreadable'}) ≠ off-chain tree (${offChainRoot}) — Toncenter mintless_info will stay empty until update_merkle_root confirms. POST /api/v1/admin/sync-merkle-root or wait for root updater.`,
+            ]
+          : []),
         ...(!jettonConfigured ? ['JETTON_MASTER_ADDRESS is empty'] : []),
         ...(!adminConfigured ? ['ADMIN_MNEMONIC or ADMIN_PRIVATE_KEY_HEX required — root updates cannot broadcast'] : []),
         ...(jettonConfigured && adminConfigured && !rootUpdatesEnabled

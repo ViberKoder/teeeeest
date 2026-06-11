@@ -49,6 +49,8 @@ npm run backend:dev
 - `GET /api/v1/jettons/{master}/sync-metadata` — `change_content` payload для bump metadata URI
 - `GET /api/v1/jettons/{master}/wallets?next_from=0:000…&count=100` — TEP-176 batch
 - `npm run compliance-check -- --backend URL [--owner 0:…]` из корня монорепо
+- `POST /api/v1/admin/sync-merkle-root` (Bearer `ADMIN_JWT_SECRET`) — принудительно отправить `update_merkle_root`, если on-chain root = 0
+- `GET /api/v1/diagnostics` — поля `merkle_root_synced`, `on_chain_merkle_root`, `off_chain_merkle_root`
 
 Логи: по умолчанию уровень `info` (`LOG_LEVEL`). В проде (`NODE_ENV=production`) строки — JSON; чтобы читать человеком в панели хостинга, задайте `LOG_PRETTY=true`. Успешные тапы и тики Merkle пишутся на уровне `info`.
 
