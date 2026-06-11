@@ -548,6 +548,13 @@ export async function runCompliance(params: {
   const taMeta = (taJetton?.metadata as Record<string, string>) ?? {};
   const taCustomUri = String(taMeta.custom_payload_api_uri ?? '');
   const taDumpUri = String(taMeta.mintless_merkle_dump_uri ?? '');
+  const liveMetaJson = tcJettonJsonUri ? await fetchJson(tcJettonJsonUri) : null;
+  const liveDumpUri =
+    String(jettonJson?.mintless_merkle_dump_uri ?? '') ||
+    String(liveMetaJson?.mintless_merkle_dump_uri ?? '') ||
+    tcDumpUri;
+  const liveDumpInMetadata =
+    !!liveDumpUri && includesOnChainMaster(liveDumpUri, onChainMaster);
   const taUriLiveOk = taCustomUri
     ? await validateJettonJsonUri(
         taCustomUri.includes('/jetton.json') || taCustomUri.includes('/metadata.json')
@@ -579,9 +586,15 @@ export async function runCompliance(params: {
   push({
     id: 'ta.dump_uri',
     group: 'tonapi',
-    label: 'mintless_merkle_dump_uri в TonAPI',
-    pass: !!taDumpUri || (dumpOk && tcDumpLiveOk),
-    note: taDumpUri || (dumpOk ? 'dump доступен через API/Toncenter' : 'TonAPI редко отдаёт поле'),
+    label: 'mintless_merkle_dump_uri (live JSON / TonAPI)',
+    pass: liveDumpInMetadata || !!taDumpUri || (dumpOk && tcDumpLiveOk),
+    note: taDumpUri
+      ? taDumpUri
+      : liveDumpInMetadata
+        ? `TonAPI=null (поле вне OpenAPI схемы); live metadata: ${liveDumpUri}`
+        : dumpOk && tcDumpLiveOk
+          ? 'TonAPI=null; dump OK у Toncenter/API'
+          : 'нет в TonAPI и в live metadata JSON',
   });
   push({
     id: 'ta.uri_onchain',
