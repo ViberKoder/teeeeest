@@ -3,6 +3,7 @@ import { config } from './config';
 import {
   customPayloadApiRoot,
   fixedJettonMetadataUrl,
+  fixedMintlessJettonMetadataUrl,
   jettonMetadataHostedUrl,
   jettonMasterFriendly,
   jettonMasterRaw,
@@ -25,6 +26,7 @@ export {
   customPayloadApiRoot,
   masterFromJettonApiUrl,
   fixedJettonMetadataUrl,
+  fixedMintlessJettonMetadataUrl,
   jettonMasterFriendly,
   jettonMasterRaw,
   mintlessMerkleDumpUrl,
@@ -34,6 +36,22 @@ export {
  * Build TEP-64 metadata body. `custom_payload_api_uri` is the **final** API root
  * (no trailing slash); wallets call `GET {custom_payload_api_uri}/wallet/{owner_raw}`.
  */
+export type JettonMetadataKind = 'rmj' | 'mintless';
+
+function envMintlessDisplayFields(): {
+  name: string;
+  symbol: string;
+  description: string;
+  image: string;
+} {
+  const name = config.PUBLIC_MINTLESS_JETTON_NAME.trim() || config.PUBLIC_JETTON_NAME.trim();
+  const symbol = config.PUBLIC_MINTLESS_JETTON_SYMBOL.trim() || config.PUBLIC_JETTON_SYMBOL.trim();
+  const description =
+    config.PUBLIC_MINTLESS_JETTON_DESCRIPTION.trim() || config.PUBLIC_JETTON_DESCRIPTION.trim();
+  const image = config.PUBLIC_MINTLESS_JETTON_IMAGE_URL.trim() || config.PUBLIC_JETTON_IMAGE_URL.trim();
+  return { name, symbol, description, image };
+}
+
 export function buildJettonMetadataJson(
   master: Address,
   opts?: {
@@ -43,11 +61,14 @@ export function buildJettonMetadataJson(
     description?: string;
     image?: string;
     decimals?: string;
+    kind?: JettonMetadataKind;
   },
 ): JettonMetadataJson | null {
   const base = (opts?.publicAppUrl ?? config.PUBLIC_APP_URL).trim().replace(/\/$/, '');
-  const name = (opts?.name ?? config.PUBLIC_JETTON_NAME).trim();
-  const symbol = (opts?.symbol ?? config.PUBLIC_JETTON_SYMBOL).trim();
+  const kind = opts?.kind ?? 'rmj';
+  const mintlessEnv = kind === 'mintless' ? envMintlessDisplayFields() : null;
+  const name = (opts?.name ?? mintlessEnv?.name ?? config.PUBLIC_JETTON_NAME).trim();
+  const symbol = (opts?.symbol ?? mintlessEnv?.symbol ?? config.PUBLIC_JETTON_SYMBOL).trim();
   if (!base || !name || !symbol) {
     return null;
   }
@@ -58,18 +79,22 @@ export function buildJettonMetadataJson(
   const decimals =
     opts?.decimals ??
     (config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '0' : '9');
+  const defaultDescription =
+    kind === 'mintless'
+      ? `${symbol} — TEP-177 Mintless Jetton.`
+      : `${symbol} — Rolling Mintless Jetton rewards.`;
   const body: JettonMetadataJson = {
     name,
     symbol,
     description:
-      (opts?.description ?? config.PUBLIC_JETTON_DESCRIPTION).trim() ||
-      `${symbol} — Rolling Mintless Jetton rewards.`,
+      (opts?.description ?? mintlessEnv?.description ?? config.PUBLIC_JETTON_DESCRIPTION).trim() ||
+      defaultDescription,
     decimals,
     custom_payload_api_uri: customPayloadApiUri,
     mintless_merkle_dump_uri: merkleDumpUri,
   };
 
-  const image = (opts?.image ?? config.PUBLIC_JETTON_IMAGE_URL).trim();
+  const image = (opts?.image ?? mintlessEnv?.image ?? config.PUBLIC_JETTON_IMAGE_URL).trim();
   if (image) body.image = image;
 
   return body;

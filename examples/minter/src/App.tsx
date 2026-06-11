@@ -5,6 +5,8 @@ import { computePlannedDeploy, fixedJettonMetadataUrl, jettonMasterDisplay, JETT
 import {
   computePlannedMintlessDeploy,
   EMPTY_AIRDROP_MERKLE_ROOT,
+  fixedMintlessJettonMetadataUrl,
+  MINTLESS_JETTON_METADATA_FILENAME,
   type PlannedMintlessDeploy,
 } from './buildMintlessMaster';
 import {
@@ -25,6 +27,14 @@ const JETTON_KIND_LABELS: Record<JettonKind, string> = {
   rmj: 'RMJ (rolling tap-to-earn)',
   mintless: 'Mintless Jetton (TEP-177)',
 };
+
+function metadataFilename(kind: JettonKind): string {
+  return kind === 'mintless' ? MINTLESS_JETTON_METADATA_FILENAME : JETTON_METADATA_FILENAME;
+}
+
+function fixedMetadataUrl(backend: string, kind: JettonKind): string {
+  return kind === 'mintless' ? fixedMintlessJettonMetadataUrl(backend) : fixedJettonMetadataUrl(backend);
+}
 
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -230,6 +240,7 @@ export function App() {
             description: description.trim(),
             image: imageUrl.trim(),
             decimals: '0',
+            kind: jettonKind,
           }),
         });
         if (!regRes.ok) {
@@ -271,7 +282,9 @@ export function App() {
             `# TEP-177: no on-chain merkle root updates — root is fixed at deploy`,
             `# ADMIN_MNEMONIC optional unless you use other admin features`,
           ]),
-      `JETTON_MASTER_ADDRESS=${deployedMaster}`,
+      ...(jettonKind === 'mintless'
+        ? [`MINTLESS_JETTON_MASTER_ADDRESS=${deployedMaster}`]
+        : [`JETTON_MASTER_ADDRESS=${deployedMaster}`]),
       `PUBLIC_APP_URL=${backendOrigin}`,
       `PUBLIC_JETTON_NAME=${name.trim()}`,
       `PUBLIC_JETTON_SYMBOL=${symbol.trim()}`,
@@ -434,13 +447,19 @@ export function App() {
           <h2>2. Токен, бэкенд и адрес master (до деплоя)</h2>
           <p>
             Минтер считает адрес master заранее. В контракт кладётся фиксированный URL{' '}
-            <code>{backendOrigin ? `${backendOrigin}/${JETTON_METADATA_FILENAME}` : `…/${JETTON_METADATA_FILENAME}`}</code>{' '}
+            <code>
+              {backendOrigin
+                ? `${backendOrigin}/${metadataFilename(jettonKind)}`
+                : `…/${metadataFilename(jettonKind)}`}
+            </code>{' '}
             (без master в пути — иначе адрес «плывёт»). В JSON на бэкенде{' '}
             <code>custom_payload_api_uri</code> будет <b>EQ…</b> этого master.
           </p>
           <p style={{ fontSize: 14, color: '#b45309' }}>
-            <b>До деплоя</b> на Railway: <code>JETTON_MASTER_ADDRESS</code> = адрес ниже, плюс{' '}
-            <code>PUBLIC_*</code>. Иначе TonAPI получит неверный <code>custom_payload_api_uri</code>.
+            <b>До деплоя</b> на Railway:{' '}
+            <code>{jettonKind === 'mintless' ? 'MINTLESS_JETTON_MASTER_ADDRESS' : 'JETTON_MASTER_ADDRESS'}</code> =
+            адрес ниже, плюс <code>PUBLIC_*</code> (или register). RMJ и mintless используют{' '}
+            <b>разные</b> metadata URL и могут работать параллельно на одном бэкенде.
           </p>
           <div style={{ display: 'grid', gap: 10 }}>
             <label>
@@ -621,7 +640,11 @@ export function App() {
           <h2>3. Деплой Jetton Master</h2>
           <p>
             On-chain metadata: <code>{plannedDeploy.metadataUrl}</code>. Убедитесь, что на бэкенде уже стоит{' '}
-            <code>JETTON_MASTER_ADDRESS={jettonMasterDisplay(plannedDeploy.address, testnet)}</code>.
+            <code>
+              {jettonKind === 'mintless' ? 'MINTLESS_JETTON_MASTER_ADDRESS' : 'JETTON_MASTER_ADDRESS'}=
+              {jettonMasterDisplay(plannedDeploy.address, testnet)}
+            </code>
+            .
           </p>
           <label style={{ display: 'block', marginTop: 12 }}>
             TON на деплой master
@@ -648,13 +671,21 @@ export function App() {
             </button>
           </p>
           <p>
-            Дальше: на бэкенде выставьте <code>JETTON_MASTER_ADDRESS={deployedMaster}</code> и переменные ниже.
+            Дальше: на бэкенде выставьте{' '}
+            <code>
+              {jettonKind === 'mintless' ? 'MINTLESS_JETTON_MASTER_ADDRESS' : 'JETTON_MASTER_ADDRESS'}=
+              {deployedMaster}
+            </code>{' '}
+            и переменные ниже.
             Minter уже вызвал <code>POST /api/v1/jettons/register</code> — имя/символ/kартинка берутся из реестра,
             а не из старых <code>PUBLIC_JETTON_*</code>.
           </p>
           <p style={{ color: '#b45309', fontSize: 14 }}>
-            On-chain URL всегда <code>{deployedMetadataUrl || fixedJettonMetadataUrl(backendOrigin)}</code> (общий для
-            всех jetton на этом бэкенде). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
+            On-chain URL: <code>{deployedMetadataUrl || fixedMetadataUrl(backendOrigin, jettonKind)}</code> (
+            {jettonKind === 'mintless'
+              ? 'отдельно от RMJ `jetton-metadata2.json`'
+              : 'отдельно от mintless `mintless-jetton-metadata.json`'}
+            ). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
             живым JSON по этому URL. Tonscan часто показывает свежее.
           </p>
           {jettonKind === 'mintless' && (

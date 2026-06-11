@@ -1,8 +1,10 @@
 import { Address, Cell } from '@ton/core';
 import {
+  fixedJettonMetadataFilenameFromUrl,
   isFixedJettonMetadataUrl,
   JETTON_METADATA_FILENAME,
   JETTON_METADATA_FILENAME_LEGACY,
+  MINTLESS_JETTON_METADATA_FILENAME,
   masterFromJettonApiUrl,
 } from './jettonAddressPath';
 
@@ -105,26 +107,36 @@ export async function runWalletDisplayAudit(params: {
     );
   }
 
+  const fixedFilename = contentUrl ? fixedJettonMetadataFilenameFromUrl(contentUrl) : null;
+  const usesLegacyMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME_LEGACY;
+  const usesRmjMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME;
+  const usesMintlessMetadataUrl = fixedFilename === MINTLESS_JETTON_METADATA_FILENAME;
+  const usesCurrentFixedUrl = usesRmjMetadataUrl || usesMintlessMetadataUrl;
+
   if (contentUrl) {
     const usesFixedMetadataUrl = isFixedJettonMetadataUrl(contentUrl);
-    const usesLegacyMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`);
-    const usesCurrentMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(`/${JETTON_METADATA_FILENAME}`);
     const perMasterInContent = /\/api\/v1\/jettons\/[^/]+\/metadata\.json/i.test(contentUrl);
+    const expectedEnvVar = usesMintlessMetadataUrl
+      ? 'MINTLESS_JETTON_MASTER_ADDRESS'
+      : 'JETTON_MASTER_ADDRESS';
+    const expectedFilename = usesMintlessMetadataUrl
+      ? MINTLESS_JETTON_METADATA_FILENAME
+      : JETTON_METADATA_FILENAME;
     checks.push(
       check(
         'onchain_content_url_pattern',
-        usesCurrentMetadataUrl ? 'ok' : usesFixedMetadataUrl ? 'warn' : 'fail',
+        usesCurrentFixedUrl ? 'ok' : usesFixedMetadataUrl ? 'warn' : 'fail',
         'On-chain metadata URL pattern',
-        usesCurrentMetadataUrl
-          ? `current fixed URL: ${contentUrl}`
+        usesCurrentFixedUrl
+          ? `fixed URL (${fixedFilename}): ${contentUrl}`
           : usesLegacyMetadataUrl
             ? `legacy URL (TonAPI may cache stale master): ${contentUrl}`
             : perMasterInContent
               ? `per-master URL (breaks address): ${contentUrl}`
               : `unexpected content URL: ${contentUrl}`,
-        usesCurrentMetadataUrl
+        usesCurrentFixedUrl
           ? undefined
-          : `Run change_content (op 4) with off-chain URI: {PUBLIC_APP_URL}/${JETTON_METADATA_FILENAME} and set JETTON_MASTER_ADDRESS=${masterEq}`,
+          : `Run change_content (op 4) with off-chain URI: {PUBLIC_APP_URL}/${expectedFilename} and set ${expectedEnvVar}=${masterEq}`,
       ),
     );
     if (perMasterInContent) {
@@ -217,10 +229,12 @@ export async function runWalletDisplayAudit(params: {
     const perMasterMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
     const envMetaUrl = `${backendBase}/${JETTON_METADATA_FILENAME}`;
     const envMetaLegacyUrl = `${backendBase}/${JETTON_METADATA_FILENAME_LEGACY}`;
-    const [perMaster, envMeta, envMetaLegacy] = await Promise.all([
+    const envMintlessMetaUrl = `${backendBase}/${MINTLESS_JETTON_METADATA_FILENAME}`;
+    const [perMaster, envMeta, envMetaLegacy, envMintlessMeta] = await Promise.all([
       fetchJson(perMasterMetaUrl),
       fetchJson(envMetaUrl),
       fetchJson(envMetaLegacyUrl),
+      fetchJson(envMintlessMetaUrl),
     ]);
 
     if (perMaster.ok && perMaster.body && typeof perMaster.body === 'object') {
@@ -260,8 +274,13 @@ export async function runWalletDisplayAudit(params: {
       );
     }
 
-    if (envMeta.ok && envMeta.body && typeof envMeta.body === 'object') {
-      const m = envMeta.body as JsonRecord;
+    const fixedMetaForMaster =
+      fixedFilename === MINTLESS_JETTON_METADATA_FILENAME
+        ? { url: envMintlessMetaUrl, res: envMintlessMeta, label: MINTLESS_JETTON_METADATA_FILENAME, env: 'MINTLESS_JETTON_MASTER_ADDRESS' }
+        : { url: envMetaUrl, res: envMeta, label: JETTON_METADATA_FILENAME, env: 'JETTON_MASTER_ADDRESS' };
+
+    if (fixedMetaForMaster.res.ok && fixedMetaForMaster.res.body && typeof fixedMetaForMaster.res.body === 'object') {
+      const m = fixedMetaForMaster.res.body as JsonRecord;
       const uri = String(m.custom_payload_api_uri ?? '');
       const uriMaster = uri ? masterFromJettonApiUrl(uri) : null;
       const envMatchesQuery = uriMaster != null && uriMaster.equals(master);
@@ -269,22 +288,59 @@ export async function runWalletDisplayAudit(params: {
         check(
           'backend_jetton_metadata_json',
           envMatchesQuery ? 'ok' : 'warn',
-          `GET /${JETTON_METADATA_FILENAME} (JETTON_MASTER_ADDRESS)`,
+          `GET /${fixedMetaForMaster.label} (${fixedMetaForMaster.env})`,
           `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
           envMatchesQuery
             ? undefined
-            : `Railway env master ≠ audited master. Set JETTON_MASTER_ADDRESS=${masterEq}`,
+            : `Backend env master ≠ audited master. Set ${fixedMetaForMaster.env}=${masterEq}`,
         ),
       );
-    } else {
+    } else if (usesCurrentFixedUrl || fixedFilename === JETTON_METADATA_FILENAME_LEGACY) {
       checks.push(
         check(
           'backend_jetton_metadata_json',
           'fail',
-          `GET /${JETTON_METADATA_FILENAME}`,
-          `HTTP ${envMeta.status}`,
+          `GET /${fixedMetaForMaster.label}`,
+          `HTTP ${fixedMetaForMaster.res.status}`,
         ),
       );
+    }
+
+    if (!usesCurrentFixedUrl && !usesLegacyMetadataUrl) {
+      if (envMeta.ok && envMeta.body && typeof envMeta.body === 'object') {
+        const m = envMeta.body as JsonRecord;
+        const uri = String(m.custom_payload_api_uri ?? '');
+        const uriMaster = uri ? masterFromJettonApiUrl(uri) : null;
+        const envMatchesQuery = uriMaster != null && uriMaster.equals(master);
+        checks.push(
+          check(
+            'backend_rmj_metadata_json',
+            envMatchesQuery ? 'ok' : 'warn',
+            `GET /${JETTON_METADATA_FILENAME} (JETTON_MASTER_ADDRESS)`,
+            `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
+            envMatchesQuery
+              ? undefined
+              : `Set JETTON_MASTER_ADDRESS=${masterEq} for RMJ fixed metadata`,
+          ),
+        );
+      }
+      if (envMintlessMeta.ok && envMintlessMeta.body && typeof envMintlessMeta.body === 'object') {
+        const m = envMintlessMeta.body as JsonRecord;
+        const uri = String(m.custom_payload_api_uri ?? '');
+        const uriMaster = uri ? masterFromJettonApiUrl(uri) : null;
+        const envMatchesQuery = uriMaster != null && uriMaster.equals(master);
+        checks.push(
+          check(
+            'backend_mintless_metadata_json',
+            envMatchesQuery ? 'ok' : 'warn',
+            `GET /${MINTLESS_JETTON_METADATA_FILENAME} (MINTLESS_JETTON_MASTER_ADDRESS)`,
+            `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
+            envMatchesQuery
+              ? undefined
+              : `Set MINTLESS_JETTON_MASTER_ADDRESS=${masterEq} for TEP-177 fixed metadata`,
+          ),
+        );
+      }
     }
   }
 

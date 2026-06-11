@@ -2,7 +2,11 @@ import { FastifyInstance } from 'fastify';
 import { Address } from '@ton/core';
 import { z } from 'zod';
 import type { AppStore } from '../store/appStore';
-import { JETTON_METADATA_FILENAME, parseJettonMasterPathSegment } from '../jettonAddressPath';
+import {
+  JETTON_METADATA_FILENAME,
+  MINTLESS_JETTON_METADATA_FILENAME,
+  parseJettonMasterPathSegment,
+} from '../jettonAddressPath';
 import { loadJettonRegistry, saveJettonRegistry } from '../jettonRegistry';
 import { logger } from '../logger';
 
@@ -13,6 +17,7 @@ const RegisterSchema = z.object({
   description: z.string().max(2048).optional().default(''),
   image: z.string().max(2048).optional(),
   decimals: z.enum(['0', '9']).optional().default('0'),
+  kind: z.enum(['rmj', 'mintless']).optional().default('rmj'),
 });
 
 export interface JettonRegistryApiDeps {
@@ -40,12 +45,18 @@ export function registerJettonRegistryApi(app: FastifyInstance, deps: JettonRegi
     }
 
     const image = parsed.data.image?.trim();
+    const kind = parsed.data.kind;
+    const defaultDescription =
+      kind === 'mintless'
+        ? `${parsed.data.symbol.trim()} — TEP-177 Mintless Jetton.`
+        : `${parsed.data.symbol.trim()} — Rolling Mintless Jetton.`;
     await saveJettonRegistry(deps.store, master, {
       name: parsed.data.name.trim(),
       symbol: parsed.data.symbol.trim(),
-      description: parsed.data.description?.trim() || `${parsed.data.symbol.trim()} — Rolling Mintless Jetton.`,
+      description: parsed.data.description?.trim() || defaultDescription,
       image: image || undefined,
       decimals: parsed.data.decimals,
+      kind,
     });
 
     logger.info(
@@ -57,7 +68,10 @@ export function registerJettonRegistryApi(app: FastifyInstance, deps: JettonRegi
       ok: true,
       master: master.toString({ urlSafe: true, bounceable: true }),
       metadata_url: `/api/v1/jettons/${master.toString({ urlSafe: true, bounceable: true })}/metadata.json`,
-      hint: `Set JETTON_MASTER_ADDRESS to this master on the backend so Proof API and /${JETTON_METADATA_FILENAME} use it.`,
+      hint:
+        kind === 'mintless'
+          ? `Set MINTLESS_JETTON_MASTER_ADDRESS to this master so /${MINTLESS_JETTON_METADATA_FILENAME} serves it (parallel to RMJ).`
+          : `Set JETTON_MASTER_ADDRESS to this master so Proof API and /${JETTON_METADATA_FILENAME} use it.`,
     };
   });
 

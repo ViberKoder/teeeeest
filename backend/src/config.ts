@@ -44,6 +44,8 @@ const schema = z.object({
   TON_RPC_ENDPOINT: z.string().default(''),
   TON_RPC_API_KEY: z.string().default(''),
   JETTON_MASTER_ADDRESS: z.string().default(''),
+  /** TEP-177 mintless master — separate from RMJ so both can run on one backend. */
+  MINTLESS_JETTON_MASTER_ADDRESS: z.string().default(''),
   /**
    * Optional global cap on the sum of all non-banned users' off-chain cumulative_amount (jetton nano).
    * When set (>0), POST /api/v1/action and admin grant reject if the new sum would exceed this value.
@@ -87,6 +89,11 @@ const schema = z.object({
   PUBLIC_JETTON_SYMBOL: z.string().default(''),
   PUBLIC_JETTON_DESCRIPTION: z.string().default(''),
   PUBLIC_JETTON_IMAGE_URL: z.string().default(''),
+  /** Optional display fields for `GET /mintless-jetton-metadata.json` (fallback when registry empty). */
+  PUBLIC_MINTLESS_JETTON_NAME: z.string().default(''),
+  PUBLIC_MINTLESS_JETTON_SYMBOL: z.string().default(''),
+  PUBLIC_MINTLESS_JETTON_DESCRIPTION: z.string().default(''),
+  PUBLIC_MINTLESS_JETTON_IMAGE_URL: z.string().default(''),
   /**
    * How clients should show cumulative amounts from the API (values are still stored on-chain as jetton nano).
    * - jetton_nano: divide by 1e9 for human jettons (e.g. 3e9 → "3").

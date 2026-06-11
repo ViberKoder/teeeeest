@@ -1,9 +1,12 @@
 import { beginCell, Cell, contractAddress, Address } from '@ton/core';
-import {
-  customPayloadApiRoot,
-  fixedJettonMetadataUrl,
-  type PlannedDeploy,
-} from './buildMaster';
+import { customPayloadApiRoot, type PlannedDeploy } from './buildMaster';
+
+/** Must match backend `MINTLESS_JETTON_METADATA_FILENAME`. */
+export const MINTLESS_JETTON_METADATA_FILENAME = 'mintless-jetton-metadata.json';
+
+export function fixedMintlessJettonMetadataUrl(publicBaseUrl: string): string {
+  return `${publicBaseUrl.trim().replace(/\/$/, '')}/${MINTLESS_JETTON_METADATA_FILENAME}`;
+}
 
 /**
  * Merkle root of an empty TEP-177 Airdrop HashMap — matches `AirdropTree` with no leaves
@@ -74,14 +77,15 @@ export type PlannedMintlessDeploy = PlannedDeploy & { merkleRoot: bigint };
 
 /**
  * Standard TEP-177 mintless master (ton-community/mintless-jetton).
- * Address is deterministic because on-chain metadata uses a fixed backend URL.
+ * Address is deterministic because on-chain metadata uses `{backend}/mintless-jetton-metadata.json`
+ * (separate from RMJ `jetton-metadata2.json`).
  */
 export function computePlannedMintlessDeploy(
   params: Omit<BuildMintlessMasterParams, 'metadataUrl'>,
   publicBaseUrl: string,
   testnet: boolean,
 ): PlannedMintlessDeploy {
-  const metadataUrl = fixedJettonMetadataUrl(publicBaseUrl);
+  const metadataUrl = fixedMintlessJettonMetadataUrl(publicBaseUrl);
   const built = buildMintlessDeploy({ ...params, metadataUrl });
   return {
     metadataUrl,

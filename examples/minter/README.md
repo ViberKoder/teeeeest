@@ -7,7 +7,12 @@
 | **RMJ** | `RollingMintlessMaster` | Tap-to-earn, rolling claims, обновление Merkle root на цепи |
 | **Mintless (TEP-177)** | [ton-community/mintless-jetton](https://github.com/ton-community/mintless-jetton) | Tonkeeper / MyTonWallet, один claim на адрес, фиксированный merkle root |
 
-**До отправки транзакции** минтер вычисляет адрес master и подставляет его в `custom_payload_api_uri` и on-chain URL `{backend}/jetton-metadata2.json`. Опциональный макс. выпуск (RMJ), деплой, готовый `.env`.
+**До отправки транзакции** минтер вычисляет адрес master и подставляет его в `custom_payload_api_uri` и on-chain metadata URL:
+
+- **RMJ:** `{backend}/jetton-metadata2.json` → `JETTON_MASTER_ADDRESS`
+- **TEP-177:** `{backend}/mintless-jetton-metadata.json` → `MINTLESS_JETTON_MASTER_ADDRESS`
+
+Оба типа могут работать **параллельно** на одном бэкенде. Опциональный макс. выпуск (RMJ), деплой, готовый `.env`.
 
 Отдельная вкладка **«Забрать токены (claim)»** — тот же поток, что в `examples/tma`: запрос proof у бэкенда и отправка jetton-transfer с `custom_payload` через TON Connect (удобно, если обычный кошелёк не подтягивает mintless API). Задайте `VITE_RMJ_BACKEND_URL` или введите URL бэкенда в поле на странице. На бэкенде нужны `GET /api/v1/balance`, `GET /api/v1/custom-payload/wallet/{0:…}`, `/api/v1/jetton-wallet`.
 

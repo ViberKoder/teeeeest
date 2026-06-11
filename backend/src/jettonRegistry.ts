@@ -8,6 +8,8 @@ export type JettonRegistryEntry = {
   description: string;
   image?: string;
   decimals?: string;
+  /** RMJ vs standard TEP-177 — selects fixed on-chain metadata URL on the backend. */
+  kind?: 'rmj' | 'mintless';
   registered_at: number;
 };
 
