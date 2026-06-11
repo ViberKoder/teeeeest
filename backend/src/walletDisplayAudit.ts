@@ -1,5 +1,10 @@
 import { Address, Cell } from '@ton/core';
-import { masterFromJettonApiUrl } from './jettonAddressPath';
+import {
+  isFixedJettonMetadataUrl,
+  JETTON_METADATA_FILENAME,
+  JETTON_METADATA_FILENAME_LEGACY,
+  masterFromJettonApiUrl,
+} from './jettonAddressPath';
 
 const OP_ROLLING_CLAIM = 0xc9e56df3;
 const OP_MERKLE_CLAIM = 0x0df602d6;
@@ -101,22 +106,25 @@ export async function runWalletDisplayAudit(params: {
   }
 
   if (contentUrl) {
-    const fixedMetaSuffix = '/jetton-metadata.json';
-    const usesFixedMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(fixedMetaSuffix);
+    const usesFixedMetadataUrl = isFixedJettonMetadataUrl(contentUrl);
+    const usesLegacyMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`);
+    const usesCurrentMetadataUrl = contentUrl.replace(/\/$/, '').endsWith(`/${JETTON_METADATA_FILENAME}`);
     const perMasterInContent = /\/api\/v1\/jettons\/[^/]+\/metadata\.json/i.test(contentUrl);
     checks.push(
       check(
         'onchain_content_url_pattern',
-        usesFixedMetadataUrl ? 'ok' : 'fail',
+        usesCurrentMetadataUrl ? 'ok' : usesFixedMetadataUrl ? 'warn' : 'fail',
         'On-chain metadata URL pattern',
-        usesFixedMetadataUrl
-          ? `fixed URL: ${contentUrl}`
-          : perMasterInContent
-            ? `per-master URL (breaks address): ${contentUrl}`
-            : `unexpected content URL: ${contentUrl}`,
-        usesFixedMetadataUrl
+        usesCurrentMetadataUrl
+          ? `current fixed URL: ${contentUrl}`
+          : usesLegacyMetadataUrl
+            ? `legacy URL (TonAPI may cache stale master): ${contentUrl}`
+            : perMasterInContent
+              ? `per-master URL (breaks address): ${contentUrl}`
+              : `unexpected content URL: ${contentUrl}`,
+        usesCurrentMetadataUrl
           ? undefined
-          : `Run change_content (op 4) with off-chain URI: {PUBLIC_APP_URL}/jetton-metadata.json and set JETTON_MASTER_ADDRESS=${masterEq} on the backend before wallets re-fetch.`,
+          : `Run change_content (op 4) with off-chain URI: {PUBLIC_APP_URL}/${JETTON_METADATA_FILENAME} and set JETTON_MASTER_ADDRESS=${masterEq}`,
       ),
     );
     if (perMasterInContent) {
@@ -207,8 +215,13 @@ export async function runWalletDisplayAudit(params: {
   // --- Backend mirror (per-master path + env-backed /jetton-metadata.json) ---
   if (backendBase) {
     const perMasterMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
-    const envMetaUrl = `${backendBase}/jetton-metadata.json`;
-    const [perMaster, envMeta] = await Promise.all([fetchJson(perMasterMetaUrl), fetchJson(envMetaUrl)]);
+    const envMetaUrl = `${backendBase}/${JETTON_METADATA_FILENAME}`;
+    const envMetaLegacyUrl = `${backendBase}/${JETTON_METADATA_FILENAME_LEGACY}`;
+    const [perMaster, envMeta, envMetaLegacy] = await Promise.all([
+      fetchJson(perMasterMetaUrl),
+      fetchJson(envMetaUrl),
+      fetchJson(envMetaLegacyUrl),
+    ]);
 
     if (perMaster.ok && perMaster.body && typeof perMaster.body === 'object') {
       const m = perMaster.body as JsonRecord;
@@ -256,7 +269,7 @@ export async function runWalletDisplayAudit(params: {
         check(
           'backend_jetton_metadata_json',
           envMatchesQuery ? 'ok' : 'warn',
-          'GET /jetton-metadata.json (JETTON_MASTER_ADDRESS)',
+          `GET /${JETTON_METADATA_FILENAME} (JETTON_MASTER_ADDRESS)`,
           `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
           envMatchesQuery
             ? undefined
@@ -268,7 +281,7 @@ export async function runWalletDisplayAudit(params: {
         check(
           'backend_jetton_metadata_json',
           'fail',
-          'GET /jetton-metadata.json',
+          `GET /${JETTON_METADATA_FILENAME}`,
           `HTTP ${envMeta.status}`,
         ),
       );

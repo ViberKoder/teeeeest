@@ -4,6 +4,10 @@ import { config } from '../config';
 import { configuredJettonMaster } from '../jettonMaster';
 import { buildJettonMetadataJson, parseMasterAddressParam } from '../jettonMetadata';
 import { loadJettonRegistry } from '../jettonRegistry';
+import {
+  JETTON_METADATA_FILENAME,
+  JETTON_METADATA_FILENAME_LEGACY,
+} from '../jettonAddressPath';
 import type { AppStore } from '../store/appStore';
 
 export interface PublicJettonMetadataDeps {
@@ -34,39 +38,46 @@ async function metadataForMaster(store: AppStore, master: Address) {
   return null;
 }
 
+async function serveEnvJettonMetadata(store: AppStore, reply: { code: (n: number) => void; header: (k: string, v: string) => void; type: (t: string) => void }) {
+  const master = configuredJettonMaster();
+  if (!master) {
+    reply.code(503);
+    return {
+      error: 'jetton-master-not-configured',
+      hint:
+        'Set JETTON_MASTER_ADDRESS on the backend to your deployed master (EQ… from minter step 4) BEFORE TonAPI/wallets fetch this URL.',
+    };
+  }
+
+  const body = await metadataForMaster(store, master);
+  if (!body) {
+    reply.code(503);
+    return {
+      error: 'jetton-metadata-not-configured',
+      hint:
+        'POST /api/v1/jettons/register from the minter after deploy, or set PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL',
+    };
+  }
+
+  reply.type('application/json; charset=utf-8');
+  reply.header('cache-control', 'public, max-age=30');
+  return body;
+}
+
 /**
- * On-chain TEP-64 content URL: `{PUBLIC_APP_URL}/jetton-metadata.json` only.
+ * On-chain TEP-64 content URL: `{PUBLIC_APP_URL}/jetton-metadata2.json`.
  * Master address must NOT appear in that URL (it would change the contract address).
- * Display fields come from minter registry (preferred) or `PUBLIC_JETTON_*` env.
  */
 export function registerPublicJettonMetadata(app: FastifyInstance, deps: PublicJettonMetadataDeps): void {
-  app.get('/jetton-metadata.json', async (_req, reply) => {
-    const master = configuredJettonMaster();
-    if (!master) {
-      reply.code(503);
-      return {
-        error: 'jetton-master-not-configured',
-        hint:
-          'Set JETTON_MASTER_ADDRESS on the backend to your deployed master (EQ… from minter step 4) BEFORE TonAPI/wallets fetch this URL.',
-      };
-    }
+  app.get(`/${JETTON_METADATA_FILENAME}`, async (_req, reply) =>
+    serveEnvJettonMetadata(deps.store, reply),
+  );
 
-    const body = await metadataForMaster(deps.store, master);
-    if (!body) {
-      reply.code(503);
-      return {
-        error: 'jetton-metadata-not-configured',
-        hint:
-          'POST /api/v1/jettons/register from the minter after deploy, or set PUBLIC_APP_URL, PUBLIC_JETTON_NAME, PUBLIC_JETTON_SYMBOL',
-      };
-    }
+  /** Legacy URL — same JSON; use change_content to point on-chain URI at metadata2 for TonAPI cache bust. */
+  app.get(`/${JETTON_METADATA_FILENAME_LEGACY}`, async (_req, reply) =>
+    serveEnvJettonMetadata(deps.store, reply),
+  );
 
-    reply.type('application/json; charset=utf-8');
-    reply.header('cache-control', 'public, max-age=30');
-    return body;
-  });
-
-  /** Per-master metadata mirror — works for any registered master or env-configured master. */
   app.get<{ Params: { master: string } }>(
     '/api/v1/jettons/:master/metadata.json',
     async (req, reply) => {

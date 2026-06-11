@@ -31,10 +31,25 @@ export function parseJettonMasterPathSegment(param: string): Address | null {
   }
 }
 
+/**
+ * On-chain TEP-64 off-chain URI filename (no master in path).
+ * Bumped from `jetton-metadata.json` → `jetton-metadata2.json` so TonAPI re-fetches
+ * after `JETTON_MASTER_ADDRESS` changes (shared URL was cached with stale master).
+ */
+export const JETTON_METADATA_FILENAME = 'jetton-metadata2.json';
+
+/** Legacy filename still seen on already-deployed masters before change_content. */
+export const JETTON_METADATA_FILENAME_LEGACY = 'jetton-metadata.json';
+
 /** Fixed TEP-64 URL — does not embed master (master must not be in on-chain content URL). */
 export function fixedJettonMetadataUrl(publicAppUrl: string): string {
   const base = publicAppUrl.trim().replace(/\/$/, '');
-  return `${base}/jetton-metadata.json`;
+  return `${base}/${JETTON_METADATA_FILENAME}`;
+}
+
+export function isFixedJettonMetadataUrl(contentUrl: string): boolean {
+  const u = contentUrl.replace(/\/$/, '');
+  return u.endsWith(`/${JETTON_METADATA_FILENAME}`) || u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`);
 }
 
 export function customPayloadApiRoot(
