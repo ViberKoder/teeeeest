@@ -2,13 +2,29 @@ import { useMemo, useState } from 'react';
 import { Address } from '@ton/core';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
 import { computePlannedDeploy, fixedJettonMetadataUrl, jettonMasterDisplay, JETTON_METADATA_FILENAME } from './buildMaster';
-import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
+import {
+  computePlannedMintlessDeploy,
+  EMPTY_AIRDROP_MERKLE_ROOT,
+  type PlannedMintlessDeploy,
+} from './buildMintlessMaster';
+import {
+  MASTER_BOC_BASE64,
+  MINTLESS_MASTER_BOC_BASE64,
+  MINTLESS_WALLET_RAW_BOC_BASE64,
+  NETWORK,
+  WALLET_BOC_BASE64,
+} from './constants';
 import { generateSignerSecrets } from './signer';
-import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson } from './metadata';
+import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson, type JettonKind } from './metadata';
 import { ClaimTab } from './ClaimTab';
 
 type Step = 1 | 2 | 3 | 4;
 type AppTab = 'minter' | 'claim';
+
+const JETTON_KIND_LABELS: Record<JettonKind, string> = {
+  rmj: 'RMJ (rolling tap-to-earn)',
+  mintless: 'Mintless Jetton (TEP-177)',
+};
 
 function downloadText(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -35,9 +51,10 @@ export function App() {
   const [tonConnectUI] = useTonConnectUI();
 
   const [step, setStep] = useState<Step>(1);
+  const [jettonKind, setJettonKind] = useState<JettonKind>('rmj');
   const [name, setName] = useState('TapCoin');
   const [symbol, setSymbol] = useState('TAP');
-  const [description, setDescription] = useState('Tap-to-earn Rolling Mintless Jetton');
+  const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState(
     'https://ton.org/download/ton_symbol.png',
   );
@@ -50,6 +67,8 @@ export function App() {
   const [deployValueTon, setDeployValueTon] = useState('0.15');
   /** Empty = unlimited; whole jettons (×1e9 nano), same semantics as backend JETTON_MAX_SUPPLY_NANO. */
   const [maxSupplyWholeJettons, setMaxSupplyWholeJettons] = useState('');
+  /** Optional fixed merkle root (hex, 64 chars) for TEP-177 — empty = empty-tree root at deploy. */
+  const [mintlessMerkleRootHex, setMintlessMerkleRootHex] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
   const [deployedMaster, setDeployedMaster] = useState('');
@@ -65,10 +84,37 @@ export function App() {
     return BigInt(t) * 1_000_000_000n;
   }, [maxSupplyWholeJettons]);
 
-  /** Master + metadata URLs computed from admin/signer/backend **before** deploy. */
-  const plannedDeploy = useMemo(() => {
-    if (!walletAddress || !signerPubkeyHex || !backendOrigin.startsWith('http')) return null;
-    if (!/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex)) return null;
+  const mintlessMerkleRoot = useMemo(() => {
+    const t = mintlessMerkleRootHex.trim().replace(/^0x/i, '');
+    if (!t) return EMPTY_AIRDROP_MERKLE_ROOT;
+    if (!/^[0-9a-fA-F]{64}$/.test(t)) return null;
+    return BigInt(`0x${t}`);
+  }, [mintlessMerkleRootHex]);
+
+  const plannedMintlessDeploy = useMemo((): PlannedMintlessDeploy | null => {
+    if (jettonKind !== 'mintless' || !walletAddress || !backendOrigin.startsWith('http')) return null;
+    if (mintlessMerkleRoot === null) return null;
+    try {
+      const admin = Address.parse(walletAddress);
+      return computePlannedMintlessDeploy(
+        {
+          admin,
+          walletCodeRawBase64: MINTLESS_WALLET_RAW_BOC_BASE64,
+          masterCodeBase64: MINTLESS_MASTER_BOC_BASE64,
+          merkleRoot: mintlessMerkleRoot,
+        },
+        backendOrigin,
+        testnet,
+      );
+    } catch (e) {
+      console.warn('computePlannedMintlessDeploy', e);
+      return null;
+    }
+  }, [walletAddress, backendOrigin, jettonKind, mintlessMerkleRoot, testnet]);
+
+  const plannedRmjDeploy = useMemo(() => {
+    if (jettonKind !== 'rmj' || !walletAddress || !backendOrigin.startsWith('http')) return null;
+    if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex)) return null;
     try {
       const admin = Address.parse(walletAddress);
       return computePlannedDeploy(
@@ -86,7 +132,9 @@ export function App() {
       console.warn('computePlannedDeploy', e);
       return null;
     }
-  }, [walletAddress, signerPubkeyHex, backendOrigin, maxSupplyNano]);
+  }, [walletAddress, signerPubkeyHex, backendOrigin, maxSupplyNano, jettonKind, testnet]);
+
+  const plannedDeploy = jettonKind === 'mintless' ? plannedMintlessDeploy : plannedRmjDeploy;
 
   const plannedMetadataJson = useMemo(() => {
     if (!plannedDeploy) return null;
@@ -97,27 +145,45 @@ export function App() {
       image: imageUrl,
       backendBaseUrl: backendOrigin,
       master: plannedDeploy.address,
+      kind: jettonKind,
     });
-  }, [plannedDeploy, name, symbol, description, imageUrl, backendOrigin]);
+  }, [plannedDeploy, name, symbol, description, imageUrl, backendOrigin, jettonKind]);
 
   const validationStep2 = useMemo(() => {
     if (!walletAddress) return 'Подключите кошелёк';
     if (!backendOrigin.startsWith('http')) return 'Нужен https URL бэкенда';
-    if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex))
-      return 'Сгенерируйте ключ signer';
+    if (jettonKind === 'rmj') {
+      if (!signerPubkeyHex || !/^[0-9a-fA-F]{64}$/.test(signerPubkeyHex))
+        return 'Сгенерируйте ключ signer';
+    } else {
+      const t = mintlessMerkleRootHex.trim().replace(/^0x/i, '');
+      if (t && !/^[0-9a-fA-F]{64}$/.test(t)) return 'Merkle root — 64 hex-символа или пусто';
+      if (mintlessMerkleRoot === null) return 'Некорректный merkle root';
+    }
     if (!plannedDeploy)
-      return 'Не удалось вычислить master (metadata URL не сошёлся с адресом контракта) — проверьте URL бэкенда и поля токена';
+      return 'Не удалось вычислить master — проверьте URL бэкенда и поля токена';
     return null;
-  }, [walletAddress, backendOrigin, signerPubkeyHex, plannedDeploy]);
+  }, [
+    walletAddress,
+    backendOrigin,
+    signerPubkeyHex,
+    plannedDeploy,
+    jettonKind,
+    mintlessMerkleRootHex,
+    mintlessMerkleRoot,
+  ]);
 
   const validationDeploy = useMemo(() => {
     const base = validationStep2;
     if (base) return base;
     if (!/^[0-9]+(\.[0-9]+)?$/.test(deployValueTon)) return 'Сумма деплоя — число TON';
-    const ms = maxSupplyWholeJettons.trim();
-    if (ms && !/^[0-9]+$/.test(ms)) return 'Макс. выпуск — только целое число jetton (или пусто = без лимита)';
+    if (jettonKind === 'rmj') {
+      const ms = maxSupplyWholeJettons.trim();
+      if (ms && !/^[0-9]+$/.test(ms))
+        return 'Макс. выпуск — только целое число jetton (или пусто = без лимита)';
+    }
     return null;
-  }, [validationStep2, deployValueTon, maxSupplyWholeJettons]);
+  }, [validationStep2, deployValueTon, maxSupplyWholeJettons, jettonKind]);
 
   function regenerateSigner() {
     const s = generateSignerSecrets();
@@ -184,13 +250,27 @@ export function App() {
   }
 
   const envSnippet = useMemo(() => {
-    if (!deployedMaster || !signerSeedHex) return '';
+    if (!deployedMaster) return '';
     const jwtHint = 'replace-with-random-32+-chars';
-    return [
+    const signerSeed =
+      signerSeedHex || '0000000000000000000000000000000000000000000000000000000000000001';
+    const signerLine =
+      jettonKind === 'rmj'
+        ? `SIGNER_SEED_HEX=${signerSeedHex || 'generate-in-step-2'}`
+        : `SIGNER_SEED_HEX=${signerSeed}  # backend only — not in TEP-177 contract`;
+    const lines = [
       `# Paste into backend/.env or Render environment`,
+      `# Jetton type: ${JETTON_KIND_LABELS[jettonKind]}`,
       `ADMIN_JWT_SECRET=${jwtHint}`,
-      `SIGNER_SEED_HEX=${signerSeedHex}`,
-      `ADMIN_MNEMONIC="same wallet seed as Tonkeeper — Settings → Show phrase (deploy wallet)"`,
+      signerLine,
+      ...(jettonKind === 'rmj'
+        ? [
+            `ADMIN_MNEMONIC="same wallet seed as Tonkeeper — Settings → Show phrase (deploy wallet)"`,
+          ]
+        : [
+            `# TEP-177: no on-chain merkle root updates — root is fixed at deploy`,
+            `# ADMIN_MNEMONIC optional unless you use other admin features`,
+          ]),
       `JETTON_MASTER_ADDRESS=${deployedMaster}`,
       `PUBLIC_APP_URL=${backendOrigin}`,
       `PUBLIC_JETTON_NAME=${name.trim()}`,
@@ -198,16 +278,29 @@ export function App() {
       `PUBLIC_JETTON_DESCRIPTION=${description.trim()}`,
       `PUBLIC_JETTON_IMAGE_URL=${imageUrl.trim()}`,
       `TON_NETWORK=${NETWORK === 'mainnet' ? 'mainnet' : 'testnet'}`,
-      ...(maxSupplyNano > 0n ? [`JETTON_MAX_SUPPLY_NANO=${maxSupplyNano.toString()}`] : []),
+      ...(jettonKind === 'rmj' && maxSupplyNano > 0n
+        ? [`JETTON_MAX_SUPPLY_NANO=${maxSupplyNano.toString()}`]
+        : []),
       ``,
       `# Bot (@rmj/example-telegram-bot)`,
       `RMJ_BACKEND_URL=${backendOrigin}`,
       ``,
-      `# Mini App + вкладка Claim (URL бэкенда + master для mintless API)`,
+      `# Mini App + вкладка Claim`,
       `VITE_RMJ_BACKEND_URL=${backendOrigin}`,
       `VITE_JETTON_MASTER_ADDRESS=${deployedMaster}`,
-    ].join('\n');
-  }, [deployedMaster, signerSeedHex, backendOrigin, name, symbol, description, imageUrl, maxSupplyNano]);
+    ];
+    return lines.join('\n');
+  }, [
+    deployedMaster,
+    signerSeedHex,
+    backendOrigin,
+    name,
+    symbol,
+    description,
+    imageUrl,
+    maxSupplyNano,
+    jettonKind,
+  ]);
 
   return (
     <div
@@ -257,11 +350,48 @@ export function App() {
         </>
       ) : (
         <>
-      <h1 style={{ marginTop: 0 }}>RMJ — мастер за пару кликов</h1>
+      <h1 style={{ marginTop: 0 }}>Jetton Minter</h1>
       <p style={{ opacity: 0.85 }}>
-        Rolling Mintless Jetton: деплой master через TON Connect + готовые строки для бэкенда,
-        бота и мини-приложения. Сеть: <b>{NETWORK}</b>
+        Деплой Jetton Master через TON Connect: <b>RMJ</b> (rolling tap-to-earn) или стандартный{' '}
+        <b>TEP-177 Mintless</b> (Tonkeeper / MyTonWallet). Сеть: <b>{NETWORK}</b>
       </p>
+
+      <div style={{ marginBottom: 20, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+        <h3 style={{ marginTop: 0, fontSize: 16 }}>Тип jetton</h3>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {(['rmj', 'mintless'] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => setJettonKind(kind)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 8,
+                border: jettonKind === kind ? '2px solid #2563eb' : '1px solid #ccc',
+                background: jettonKind === kind ? '#eff6ff' : '#fff',
+                cursor: 'pointer',
+                fontWeight: jettonKind === kind ? 700 : 400,
+                textAlign: 'left',
+              }}
+            >
+              {JETTON_KIND_LABELS[kind]}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 13, marginBottom: 0, marginTop: 10, opacity: 0.85 }}>
+          {jettonKind === 'rmj' ? (
+            <>
+              Rolling claims, обновление Merkle root на цепи, tap-to-earn. Нужен <code>signer</code> в
+              контракте.
+            </>
+          ) : (
+            <>
+              Контракты <code>ton-community/mintless-jetton</code>, op <code>0x0df602d6</code>, один claim
+              на адрес. Merkle root <b>фиксируется при деплое</b> — для rolling наград используйте RMJ.
+            </>
+          )}
+        </p>
+      </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
         {[1, 2, 3, 4].map((s) => (
@@ -285,8 +415,12 @@ export function App() {
       {step === 1 && (
         <section>
           <h2>1. Подключите админ-кошелёк</h2>
-          <p>Этот же кошелёк станет <b>admin</b> master-контракта. Его мнемоника понадобится бэкенду
-            для обновления Merkle root.</p>
+          <p>
+            Этот же кошелёк станет <b>admin</b> master-контракта.
+            {jettonKind === 'rmj'
+              ? ' Его мнемоника понадобится бэкенду для обновления Merkle root на цепи.'
+              : ' Для TEP-177 on-chain root updates нет — admin нужен для смены metadata URL при необходимости.'}
+          </p>
           <TonConnectButton />
           <p style={{ opacity: 0.8 }}>{walletAddress ? `Подключено: ${walletAddress}` : 'Не подключено'}</p>
           <button type="button" disabled={!walletAddress} onClick={() => setStep(2)}>
@@ -325,15 +459,28 @@ export function App() {
               Картинка (URL)
               <input style={{ width: '100%' }} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} />
             </label>
-            <label>
-              Макс. выпуск (целых jetton, пусто = без лимита)
-              <input
-                style={{ width: '100%' }}
-                value={maxSupplyWholeJettons}
-                onChange={(e) => setMaxSupplyWholeJettons(e.target.value)}
-                placeholder="например 1000000"
-              />
-            </label>
+            {jettonKind === 'rmj' && (
+              <label>
+                Макс. выпуск (целых jetton, пусто = без лимита)
+                <input
+                  style={{ width: '100%' }}
+                  value={maxSupplyWholeJettons}
+                  onChange={(e) => setMaxSupplyWholeJettons(e.target.value)}
+                  placeholder="например 1000000"
+                />
+              </label>
+            )}
+            {jettonKind === 'mintless' && (
+              <label>
+                Merkle root при деплое (hex, 64 символа — пусто = пустое дерево)
+                <input
+                  style={{ width: '100%' }}
+                  value={mintlessMerkleRootHex}
+                  onChange={(e) => setMintlessMerkleRootHex(e.target.value)}
+                  placeholder={EMPTY_AIRDROP_MERKLE_ROOT.toString(16)}
+                />
+              </label>
+            )}
             <label>
               URL бэкенда (без слэша в конце)
               <input
@@ -345,19 +492,50 @@ export function App() {
             </label>
           </div>
 
-          <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginTop: 0, fontSize: 16 }}>Signer (в контракт)</h3>
-            <button type="button" onClick={regenerateSigner} style={{ marginBottom: 12 }}>
-              Сгенерировать signer (seed + pubkey)
-            </button>
-            {signerPubkeyHex ? (
-              <pre style={{ background: '#fff', padding: 10, borderRadius: 6, fontSize: 12, overflow: 'auto' }}>
-                {`Pubkey: ${signerPubkeyHex}\nSeed → SIGNER_SEED_HEX на бэкенде`}
-              </pre>
-            ) : (
-              <p style={{ color: '#b45309', margin: 0 }}>Обязательно перед расчётом master.</p>
-            )}
-          </div>
+          {jettonKind === 'rmj' && (
+            <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <h3 style={{ marginTop: 0, fontSize: 16 }}>Signer (в контракт)</h3>
+              <button type="button" onClick={regenerateSigner} style={{ marginBottom: 12 }}>
+                Сгенерируйте signer (seed + pubkey)
+              </button>
+              {signerPubkeyHex ? (
+                <pre style={{ background: '#fff', padding: 10, borderRadius: 6, fontSize: 12, overflow: 'auto' }}>
+                  {`Pubkey: ${signerPubkeyHex}\nSeed → SIGNER_SEED_HEX на бэкенде`}
+                </pre>
+              ) : (
+                <p style={{ color: '#b45309', margin: 0 }}>Обязательно перед расчётом master.</p>
+              )}
+            </div>
+          )}
+
+          {jettonKind === 'mintless' && (
+            <div style={{ marginTop: 20, padding: 12, background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+              <h3 style={{ marginTop: 0, fontSize: 16 }}>Backend signer (не в контракте)</h3>
+              <p style={{ fontSize: 13, marginTop: 0 }}>
+                Бэкенд требует <code>SIGNER_SEED_HEX</code> при старте. Для TEP-177 он не попадает в master.
+              </p>
+              <button type="button" onClick={regenerateSigner} style={{ marginBottom: 12 }}>
+                Сгенерировать seed для бэкенда
+              </button>
+              {signerSeedHex ? (
+                <pre style={{ background: '#fff', padding: 10, borderRadius: 6, fontSize: 12, overflow: 'auto' }}>
+                  {`Seed → SIGNER_SEED_HEX`}
+                </pre>
+              ) : null}
+            </div>
+          )}
+
+          {plannedMintlessDeploy && (
+            <div style={{ marginTop: 16, padding: 12, background: '#f0fdf4', borderRadius: 8, border: '1px solid #86efac' }}>
+              <p style={{ margin: 0, fontSize: 13 }}>
+                On-chain <code>merkle_root</code>:{' '}
+                <code>{plannedMintlessDeploy.merkleRoot.toString(16)}</code>
+                <br />
+                Кошельки индексируют off-chain баланс через{' '}
+                <code>mintless_merkle_dump_uri</code> в metadata. Claim проверяет proof против этого root.
+              </p>
+            </div>
+          )}
 
           {plannedDeploy && plannedMetadataJson && (
             <div style={{ marginTop: 16, padding: 12, background: '#eff6ff', borderRadius: 8, border: '1px solid #93c5fd' }}>
@@ -476,9 +654,15 @@ export function App() {
           </p>
           <p style={{ color: '#b45309', fontSize: 14 }}>
             On-chain URL всегда <code>{deployedMetadataUrl || fixedJettonMetadataUrl(backendOrigin)}</code> (общий для
-            всех RMJ на этом бэкенде). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
+            всех jetton на этом бэкенде). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
             живым JSON по этому URL. Tonscan часто показывает свежее.
           </p>
+          {jettonKind === 'mintless' && (
+            <p style={{ fontSize: 14 }}>
+              <b>TEP-177:</b> Proof API отдаёт op <code>0x0df602d6</code>. Один claim на адрес. Для статического
+              airdrop задайте финальный merkle root до деплоя; для tap-to-earn с rolling root — переключитесь на RMJ.
+            </p>
+          )}
           <p>
             Проверка:{' '}
             <code style={{ wordBreak: 'break-all' }}>
@@ -515,7 +699,8 @@ export function App() {
                   image: imageUrl,
                   backendBaseUrl: backendUrl,
                   jettonMasterAddress: deployedMaster,
-                }), // same JSON as step 2 preview
+                  kind: jettonKind,
+                }),
               )
             }
           >
@@ -535,7 +720,14 @@ export function App() {
             · Бот: <code>examples/telegram-bot</code> — только <code>RMJ_BACKEND_URL</code> и токен Telegram.<br />
             · TMA / вкладка Claim в этом минтере: <code>VITE_RMJ_BACKEND_URL</code>; master в TMA опционален (jetton-wallet берётся с API).
           </p>
-          <button type="button" onClick={() => { setStep(1); setDeployedMaster(''); setDeployedMetadataUrl(''); }}>
+          <button
+            type="button"
+            onClick={() => {
+              setStep(1);
+              setDeployedMaster('');
+              setDeployedMetadataUrl('');
+            }}
+          >
             Начать новый проект
           </button>
         </section>
