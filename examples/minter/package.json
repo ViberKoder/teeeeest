@@ -2,7 +2,7 @@
   "name": "@rmj/example-minter",
   "version": "0.1.0",
   "private": true,
-  "description": "Simple web minter for Rolling Mintless Jetton",
+  "description": "Web minter for RMJ and standard TEP-177 Mintless Jetton",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

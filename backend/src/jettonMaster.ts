@@ -6,15 +6,24 @@ import {
   parseJettonMasterPathSegment,
 } from './jettonAddressPath';
 
-/** Parsed master from `JETTON_MASTER_ADDRESS`, if configured and valid. */
-export function configuredJettonMaster(): Address | null {
-  const raw = config.JETTON_MASTER_ADDRESS?.trim();
-  if (!raw) return null;
+function parseConfiguredMaster(raw: string | undefined): Address | null {
+  const t = raw?.trim();
+  if (!t) return null;
   try {
-    return Address.parse(raw);
+    return Address.parse(t);
   } catch {
     return null;
   }
+}
+
+/** Parsed master from `JETTON_MASTER_ADDRESS`, if configured and valid. */
+export function configuredJettonMaster(): Address | null {
+  return parseConfiguredMaster(config.JETTON_MASTER_ADDRESS);
+}
+
+/** Parsed master from `MINTLESS_JETTON_MASTER_ADDRESS` (TEP-177 fixed metadata URL). */
+export function configuredMintlessJettonMaster(): Address | null {
+  return parseConfiguredMaster(config.MINTLESS_JETTON_MASTER_ADDRESS);
 }
 
 /** Raw `0:…` path segment (canonical; also accepts EQ/UQ when parsing). */

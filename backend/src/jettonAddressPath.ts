@@ -41,15 +41,36 @@ export const JETTON_METADATA_FILENAME = 'jetton-metadata2.json';
 /** Legacy filename still seen on already-deployed masters before change_content. */
 export const JETTON_METADATA_FILENAME_LEGACY = 'jetton-metadata.json';
 
-/** Fixed TEP-64 URL — does not embed master (master must not be in on-chain content URL). */
+/** TEP-177 mintless — separate fixed URL so RMJ and mintless can share one backend. */
+export const MINTLESS_JETTON_METADATA_FILENAME = 'mintless-jetton-metadata.json';
+
+/** Fixed TEP-64 URL for RMJ — does not embed master (master must not be in on-chain content URL). */
 export function fixedJettonMetadataUrl(publicAppUrl: string): string {
   const base = publicAppUrl.trim().replace(/\/$/, '');
   return `${base}/${JETTON_METADATA_FILENAME}`;
 }
 
+/** Fixed TEP-64 URL for standard TEP-177 mintless jetton. */
+export function fixedMintlessJettonMetadataUrl(publicAppUrl: string): string {
+  const base = publicAppUrl.trim().replace(/\/$/, '');
+  return `${base}/${MINTLESS_JETTON_METADATA_FILENAME}`;
+}
+
 export function isFixedJettonMetadataUrl(contentUrl: string): boolean {
   const u = contentUrl.replace(/\/$/, '');
-  return u.endsWith(`/${JETTON_METADATA_FILENAME}`) || u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`);
+  return (
+    u.endsWith(`/${JETTON_METADATA_FILENAME}`) ||
+    u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`) ||
+    u.endsWith(`/${MINTLESS_JETTON_METADATA_FILENAME}`)
+  );
+}
+
+export function fixedJettonMetadataFilenameFromUrl(contentUrl: string): string | null {
+  const u = contentUrl.replace(/\/$/, '');
+  if (u.endsWith(`/${JETTON_METADATA_FILENAME}`)) return JETTON_METADATA_FILENAME;
+  if (u.endsWith(`/${JETTON_METADATA_FILENAME_LEGACY}`)) return JETTON_METADATA_FILENAME_LEGACY;
+  if (u.endsWith(`/${MINTLESS_JETTON_METADATA_FILENAME}`)) return MINTLESS_JETTON_METADATA_FILENAME;
+  return null;
 }
 
 export function customPayloadApiRoot(
