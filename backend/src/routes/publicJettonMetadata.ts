@@ -7,6 +7,7 @@ import { loadJettonRegistry } from '../jettonRegistry';
 import {
   JETTON_METADATA_FILENAME,
   JETTON_METADATA_FILENAME_LEGACY,
+  JETTON_METADATA_FILENAME_LEGACY2,
   MINTLESS_JETTON_METADATA_FILENAME,
 } from '../jettonAddressPath';
 import type { AppStore } from '../store/appStore';
@@ -78,7 +79,7 @@ async function serveFixedJettonMetadata(
 
 /**
  * On-chain TEP-64 content URLs (master address must NOT appear in the path):
- * - RMJ: `{PUBLIC_APP_URL}/jetton-metadata2.json` → `JETTON_MASTER_ADDRESS`
+ * - RMJ: `{PUBLIC_APP_URL}/jetton-metadata3.json` → `JETTON_MASTER_ADDRESS`
  * - TEP-177: `{PUBLIC_APP_URL}/mintless-jetton-metadata.json` → `MINTLESS_JETTON_MASTER_ADDRESS`
  */
 export function registerPublicJettonMetadata(app: FastifyInstance, deps: PublicJettonMetadataDeps): void {
@@ -86,7 +87,11 @@ export function registerPublicJettonMetadata(app: FastifyInstance, deps: PublicJ
     serveFixedJettonMetadata(deps.store, configuredJettonMaster(), 'JETTON_MASTER_ADDRESS', reply),
   );
 
-  /** Legacy RMJ URL — same JSON as metadata2. */
+  /** Legacy RMJ URLs — same JSON (TonAPI may cache stale master at old paths). */
+  app.get(`/${JETTON_METADATA_FILENAME_LEGACY2}`, async (_req, reply) =>
+    serveFixedJettonMetadata(deps.store, configuredJettonMaster(), 'JETTON_MASTER_ADDRESS', reply),
+  );
+
   app.get(`/${JETTON_METADATA_FILENAME_LEGACY}`, async (_req, reply) =>
     serveFixedJettonMetadata(deps.store, configuredJettonMaster(), 'JETTON_MASTER_ADDRESS', reply),
   );

@@ -4,6 +4,7 @@ import {
   isFixedJettonMetadataUrl,
   JETTON_METADATA_FILENAME,
   JETTON_METADATA_FILENAME_LEGACY,
+  JETTON_METADATA_FILENAME_LEGACY2,
   MINTLESS_JETTON_METADATA_FILENAME,
   masterFromJettonApiUrl,
 } from './jettonAddressPath';
@@ -109,9 +110,11 @@ export async function runWalletDisplayAudit(params: {
 
   const fixedFilename = contentUrl ? fixedJettonMetadataFilenameFromUrl(contentUrl) : null;
   const usesLegacyMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME_LEGACY;
+  const usesLegacyMetadataUrl2 = fixedFilename === JETTON_METADATA_FILENAME_LEGACY2;
   const usesRmjMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME;
   const usesMintlessMetadataUrl = fixedFilename === MINTLESS_JETTON_METADATA_FILENAME;
   const usesCurrentFixedUrl = usesRmjMetadataUrl || usesMintlessMetadataUrl;
+  const usesStaleRmjMetadataUrl = usesLegacyMetadataUrl || usesLegacyMetadataUrl2;
 
   if (contentUrl) {
     const usesFixedMetadataUrl = isFixedJettonMetadataUrl(contentUrl);
@@ -129,7 +132,7 @@ export async function runWalletDisplayAudit(params: {
         'On-chain metadata URL pattern',
         usesCurrentFixedUrl
           ? `fixed URL (${fixedFilename}): ${contentUrl}`
-          : usesLegacyMetadataUrl
+          : usesStaleRmjMetadataUrl
             ? `legacy URL (TonAPI may cache stale master): ${contentUrl}`
             : perMasterInContent
               ? `per-master URL (breaks address): ${contentUrl}`
@@ -228,11 +231,13 @@ export async function runWalletDisplayAudit(params: {
   if (backendBase) {
     const perMasterMetaUrl = `${backendBase}/api/v1/jettons/${encodeURIComponent(masterEq)}/metadata.json`;
     const envMetaUrl = `${backendBase}/${JETTON_METADATA_FILENAME}`;
+    const envMetaLegacy2Url = `${backendBase}/${JETTON_METADATA_FILENAME_LEGACY2}`;
     const envMetaLegacyUrl = `${backendBase}/${JETTON_METADATA_FILENAME_LEGACY}`;
     const envMintlessMetaUrl = `${backendBase}/${MINTLESS_JETTON_METADATA_FILENAME}`;
-    const [perMaster, envMeta, envMetaLegacy, envMintlessMeta] = await Promise.all([
+    const [perMaster, envMeta, , envMetaLegacy, envMintlessMeta] = await Promise.all([
       fetchJson(perMasterMetaUrl),
       fetchJson(envMetaUrl),
+      fetchJson(envMetaLegacy2Url),
       fetchJson(envMetaLegacyUrl),
       fetchJson(envMintlessMetaUrl),
     ]);
@@ -295,7 +300,11 @@ export async function runWalletDisplayAudit(params: {
             : `Backend env master ≠ audited master. Set ${fixedMetaForMaster.env}=${masterEq}`,
         ),
       );
-    } else if (usesCurrentFixedUrl || fixedFilename === JETTON_METADATA_FILENAME_LEGACY) {
+    } else if (
+      usesCurrentFixedUrl ||
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY ||
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY2
+    ) {
       checks.push(
         check(
           'backend_jetton_metadata_json',
@@ -306,7 +315,7 @@ export async function runWalletDisplayAudit(params: {
       );
     }
 
-    if (!usesCurrentFixedUrl && !usesLegacyMetadataUrl) {
+    if (!usesCurrentFixedUrl && !usesStaleRmjMetadataUrl) {
       if (envMeta.ok && envMeta.body && typeof envMeta.body === 'object') {
         const m = envMeta.body as JsonRecord;
         const uri = String(m.custom_payload_api_uri ?? '');
