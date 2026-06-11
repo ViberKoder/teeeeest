@@ -14,6 +14,7 @@ import { registerProofApi } from './routes/proofApi';
 import { registerGameApi } from './routes/gameApi';
 import { registerAdminApi } from './routes/adminApi';
 import { registerPublicJettonMetadata } from './routes/publicJettonMetadata';
+import { registerJettonRegistryApi } from './routes/jettonRegistryApi';
 import { registerDiagnostics } from './routes/diagnostics';
 import { registerJettonWalletApi } from './routes/jettonWalletApi';
 import { registerWalletDisplayAudit } from './routes/walletDisplayAudit';
@@ -55,7 +56,8 @@ async function main() {
   registerDiagnostics(app, { store, state, rootUpdater });
   registerWalletDisplayAudit(app);
   registerJettonWalletApi(app, { signer: voucherSigner });
-  registerPublicJettonMetadata(app);
+  registerJettonRegistryApi(app, { store });
+  registerPublicJettonMetadata(app, { store });
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
   registerAdminApi(app, { gameServer, treeBuilder });
