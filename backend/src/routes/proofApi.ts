@@ -1,18 +1,17 @@
 import { FastifyInstance } from 'fastify';
-import { Address, beginCell, storeStateInit } from '@ton/core';
-import { JettonMaster } from '@ton/ton';
-import {
-  RollingMintlessWallet,
-  buildStandardMerkleClaimPayload,
-  payloadToBase64,
-} from '@rmj/contracts';
+import { Address } from '@ton/core';
 import { AirdropState } from '../state';
 import { GameServer } from '../gameServer';
 import { VoucherSigner } from '../signer';
 import { logger } from '../logger';
 import { config } from '../config';
-import { createTonClient } from '../tonClient';
-import { configuredJettonMaster, jettonMasterUrlSegment, parseJettonMasterParam } from '../jettonMaster';
+import { jettonMasterUrlSegment, parseJettonMasterParam } from '../jettonMaster';
+import {
+  listWalletClaimBatch,
+  buildMintlessWalletResponse,
+  parseWalletBatchCount,
+  parseWalletBatchNextFrom,
+} from '../mintlessClaimHelpers';
 
 export interface ProofApiDeps {
   state: AirdropState;
@@ -20,140 +19,10 @@ export interface ProofApiDeps {
   signer: VoucherSigner;
 }
 
-/** TEP offchain-payloads / ton-community mintless-jetton wallet response (required fields + RMJ extras). */
-type MintlessWalletResponse = {
-  owner: string;
-  jetton_wallet: string;
-  custom_payload: string;
-  state_init: string | null;
-  compressed_info: {
-    amount: string;
-    start_from: number;
-    expired_at: number;
-  };
-  epoch: number;
-  root: string;
+const MINTLESS_CORS = {
+  'access-control-allow-origin': '*',
+  'cache-control': 'public, max-age=30',
 };
-
-async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
-  const master = configuredJettonMaster();
-  if (!master) return null;
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
-    const st = await client.getContractState(jettonWalletAddr);
-    if (st.state !== 'active') {
-      return 0n;
-    }
-    const jw = client.open(RollingMintlessWallet.createFromAddress(jettonWalletAddr));
-    return await jw.getAlreadyClaimed();
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not read on-chain already_claimed');
-    return null;
-  }
-}
-
-async function resolveJettonWalletRaw(owner: Address, signerPubkey: bigint): Promise<string> {
-  const master = configuredJettonMaster();
-  if (!master) {
-    throw new Error('JETTON_MASTER_ADDRESS not configured');
-  }
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    return (await masterContract.getWalletAddress(owner)).toRawString();
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: RPC jetton wallet address failed, using local derive');
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jd = await masterContract.getJettonData();
-    const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode: jd.walletCode, signerPubkey },
-      jd.walletCode,
-    );
-    return jw.address.toRawString();
-  }
-}
-
-async function maybeJettonWalletStateInitBase64(
-  owner: Address,
-  signerPubkey: bigint,
-): Promise<string | null> {
-  const master = configuredJettonMaster();
-  if (!master) return null;
-  try {
-    const client = createTonClient();
-    const masterContract = client.open(JettonMaster.create(master));
-    const jettonWalletAddr = await masterContract.getWalletAddress(owner);
-    const st = await client.getContractState(jettonWalletAddr);
-    if (st.state === 'active') {
-      return null;
-    }
-    const jd = await masterContract.getJettonData();
-    const walletCode = jd.walletCode;
-    const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode, signerPubkey },
-      walletCode,
-    );
-    if (!jw.init?.code || !jw.init?.data) {
-      return null;
-    }
-    const si = beginCell().store(storeStateInit({ code: jw.init.code, data: jw.init.data })).endCell();
-    const resolved = jw.address.toString({ bounceable: false, urlSafe: true });
-    const expected = jettonWalletAddr.toString({ bounceable: false, urlSafe: true });
-    if (resolved !== expected) {
-      logger.error(
-        { resolved, expected, owner: owner.toString() },
-        'mintless: derived StateInit address mismatch — check SIGNER_SEED_HEX vs on-chain master',
-      );
-      return null;
-    }
-    return si.toBoc().toString('base64');
-  } catch (e) {
-    logger.warn({ err: e, owner: owner.toString() }, 'mintless: could not build jetton wallet state_init');
-    return null;
-  }
-}
-
-async function buildMintlessWalletResponse(
-  owner: Address,
-  deps: ProofApiDeps,
-): Promise<MintlessWalletResponse | null> {
-  if (!deps.state.tree.has(owner)) {
-    return null;
-  }
-  const leaf = deps.state.tree.get(owner)!;
-  const treeAmt = leaf.cumulativeAmount;
-
-  const onChain = await readOnChainAlreadyClaimed(owner);
-  const already = onChain ?? 0n;
-  const delta = treeAmt > already ? treeAmt - already : 0n;
-
-  if (delta === 0n) {
-    return null;
-  }
-
-  const proof = deps.state.tree.generateProof(owner);
-  // TEP-177 standard opcode (0x0df602d6) — Tonkeeper / MyTonWallet attach this format.
-  const customPayload = buildStandardMerkleClaimPayload(proof);
-  const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
-  const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
-
-  return {
-    owner: owner.toRawString(),
-    jetton_wallet: jettonWallet,
-    custom_payload: payloadToBase64(customPayload),
-    state_init: stateInit,
-    compressed_info: {
-      amount: delta.toString(),
-      start_from: leaf.startFrom,
-      expired_at: leaf.expiredAt,
-    },
-    epoch: deps.state.epoch,
-    root: deps.state.rootHex(),
-  };
-}
 
 /**
  * Mintless proof API (Tonkeeper TEP offchain-payloads, HMSTR / tonapi style).
@@ -163,6 +32,21 @@ async function buildMintlessWalletResponse(
  * Wallets request `GET {custom_payload_api_uri}/wallet/{owner_raw}`.
  */
 export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void {
+  const claimDeps = { state: deps.state, signer: deps.signer };
+
+  const serveMerkleDump = async (masterParam: string, reply: { code: (n: number) => void; header: (k: string, v: string) => void }) => {
+    const master = parseJettonMasterParam(masterParam);
+    if (!master) {
+      reply.code(404);
+      return { error: 'unknown-jetton-master' };
+    }
+    const boc = deps.state.tree.toCell().toBoc();
+    reply.header('content-type', 'application/octet-stream');
+    reply.header('cache-control', 'public, max-age=60');
+    reply.header('access-control-allow-origin', '*');
+    return Buffer.from(boc);
+  };
+
   const serveMintlessWallet = async (
     masterParam: string,
     ownerParam: string,
@@ -181,7 +65,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
       return { error: 'invalid-address' };
     }
 
-    const body = await buildMintlessWalletResponse(owner, deps);
+    const body = await buildMintlessWalletResponse(owner, claimDeps);
     if (!body) {
       const inTree = deps.state.tree.has(owner);
       logger.debug(
@@ -202,7 +86,10 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
 
   app.get<{ Params: { master: string; owner: string } }>(
     '/api/v1/jettons/:master/wallet/:owner',
-    async (req, reply) => serveMintlessWallet(req.params.master, req.params.owner, reply),
+    async (req, reply) => {
+      reply.headers(MINTLESS_CORS);
+      return serveMintlessWallet(req.params.master, req.params.owner, reply);
+    },
   );
 
   /** Legacy URI still returned by TonAPI cache for some jettons */
@@ -220,30 +107,57 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
 
   app.get<{ Params: { owner: string } }>(
     '/api/v1/custom-payload/wallet/:owner',
-    async (req, reply) => serveLegacyMintlessWallet(req.params.owner, reply),
+    async (req, reply) => {
+      reply.headers(MINTLESS_CORS);
+      return serveLegacyMintlessWallet(req.params.owner, reply);
+    },
   );
 
   app.get<{ Params: { owner: string } }>(
     '/api/v1/custom-payload/:owner',
-    async (req, reply) => serveLegacyMintlessWallet(req.params.owner, reply),
-  );
-
-  app.get<{ Params: { master: string } }>(
-    '/api/v1/jettons/:master/merkle-dump.boc',
     async (req, reply) => {
-      const master = parseJettonMasterParam(req.params.master);
-      if (!master) {
-        reply.code(404);
-        return { error: 'unknown-jetton-master' };
-      }
-      const boc = deps.state.tree.toCell().toBoc();
-      reply.header('content-type', 'application/octet-stream');
-      reply.header('cache-control', 'public, max-age=60');
-      return Buffer.from(boc);
+      reply.headers(MINTLESS_CORS);
+      return serveLegacyMintlessWallet(req.params.owner, reply);
     },
   );
 
+  /** TEP-176 batch endpoint for Toncenter / MyTonWallet mintless_info indexing. */
+  app.get<{
+    Params: { master: string };
+    Querystring: { next_from?: string; count?: string };
+  }>('/api/v1/jettons/:master/wallets', async (req, reply) => {
+    reply.headers(MINTLESS_CORS);
+    const master = parseJettonMasterParam(req.params.master);
+    if (!master) {
+      reply.code(404);
+      return { error: 'unknown-jetton-master' };
+    }
+
+    let nextFrom: Address;
+    try {
+      nextFrom = parseWalletBatchNextFrom(req.query.next_from);
+    } catch {
+      reply.code(400);
+      return { error: 'invalid-next_from', hint: 'Use raw 0:… address' };
+    }
+
+    const count = parseWalletBatchCount(req.query.count);
+    return listWalletClaimBatch(claimDeps, nextFrom, count);
+  });
+
+  app.get<{ Params: { master: string } }>(
+    '/api/v1/jettons/:master/merkle-dump.boc',
+    async (req, reply) => serveMerkleDump(req.params.master, reply),
+  );
+
+  /** Alias without `.boc` suffix (mintless-jetton-test / Toncenter compatibility). */
+  app.get<{ Params: { master: string } }>(
+    '/api/v1/jettons/:master/merkle-dump',
+    async (req, reply) => serveMerkleDump(req.params.master, reply),
+  );
+
   app.get<{ Params: { master: string } }>('/api/v1/jettons/:master/state', async (req, reply) => {
+    reply.headers(MINTLESS_CORS);
     const master = parseJettonMasterParam(req.params.master);
     if (!master) {
       reply.code(404);
@@ -254,6 +168,9 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
       master_address: master.toRawString(),
       /** TEP offchain-payloads `/state` — same master as in metadata `custom_payload_api_uri`. */
       address: master.toRawString(),
+      /** RMJ rolling extension — current Merkle epoch (root updates on-chain). */
+      epoch: deps.state.epoch,
+      merkle_root: deps.state.rootHex(),
     };
   });
 
@@ -285,6 +202,6 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
   }));
 
   logger.info(
-    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, legacy GET /api/v1/custom-payload/wallet/:owner',
+    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, /wallets, /merkle-dump[.boc], legacy /api/v1/custom-payload/wallet/:owner',
   );
 }

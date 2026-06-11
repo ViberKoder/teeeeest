@@ -18,6 +18,7 @@ import { registerJettonRegistryApi } from './routes/jettonRegistryApi';
 import { registerDiagnostics } from './routes/diagnostics';
 import { registerJettonWalletApi } from './routes/jettonWalletApi';
 import { registerWalletDisplayAudit } from './routes/walletDisplayAudit';
+import { registerMintlessCompliance } from './routes/mintlessCompliance';
 
 async function main() {
   const store = await createAppStore();
@@ -55,6 +56,7 @@ async function main() {
 
   registerDiagnostics(app, { store, state, rootUpdater });
   registerWalletDisplayAudit(app);
+  registerMintlessCompliance(app, { store, state });
   registerJettonWalletApi(app, { signer: voucherSigner });
   registerJettonRegistryApi(app, { store });
   registerPublicJettonMetadata(app, { store });

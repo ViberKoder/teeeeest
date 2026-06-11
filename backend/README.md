@@ -42,6 +42,14 @@ npm run backend:dev
 Подробный снимок для отладки (цепочка jetton / Merkle / почему в кошельке 0):  
 `curl http://localhost:3000/api/v1/diagnostics`
 
+Совместимость с Toncenter / TonAPI (эталон [mintless-jetton-test](https://github.com/ViberKoder/mintless-jetton-test)):
+
+- `GET /api/v1/jettons/{master}/compliance` — score/checks (on-chain, our API, Toncenter, TonAPI, rolling)
+- `GET /api/v1/jettons/{master}/indexer-status` — кэш Toncenter, mintless_info
+- `GET /api/v1/jettons/{master}/sync-metadata` — `change_content` payload для bump metadata URI
+- `GET /api/v1/jettons/{master}/wallets?next_from=0:000…&count=100` — TEP-176 batch
+- `npm run compliance-check -- --backend URL [--owner 0:…]` из корня монорепо
+
 Логи: по умолчанию уровень `info` (`LOG_LEVEL`). В проде (`NODE_ENV=production`) строки — JSON; чтобы читать человеком в панели хостинга, задайте `LOG_PRETTY=true`. Успешные тапы и тики Merkle пишутся на уровне `info`.
 
 Почему в Tonkeeper «нет токенов»: у RMJ mintless баланс на цепи появляется **после первого перевода/swap jetton**, когда кошелёк подтягивает custom payload (TEP-177). До этого начисления только off-chain; смотрите `GET /api/v1/balance/<адрес>` (`cumulative_offchain` vs `cumulative_in_tree`).
