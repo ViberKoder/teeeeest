@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { Address } from '@ton/core';
 import { z } from 'zod';
 import type { AppStore } from '../store/appStore';
-import { parseJettonMasterPathSegment } from '../jettonAddressPath';
+import { JETTON_METADATA_FILENAME, parseJettonMasterPathSegment } from '../jettonAddressPath';
 import { loadJettonRegistry, saveJettonRegistry } from '../jettonRegistry';
 import { logger } from '../logger';
 
@@ -57,7 +57,7 @@ export function registerJettonRegistryApi(app: FastifyInstance, deps: JettonRegi
       ok: true,
       master: master.toString({ urlSafe: true, bounceable: true }),
       metadata_url: `/api/v1/jettons/${master.toString({ urlSafe: true, bounceable: true })}/metadata.json`,
-      hint: 'Set JETTON_MASTER_ADDRESS to this master on the backend so Proof API and /jetton-metadata.json use it.',
+      hint: `Set JETTON_MASTER_ADDRESS to this master on the backend so Proof API and /${JETTON_METADATA_FILENAME} use it.`,
     };
   });
 

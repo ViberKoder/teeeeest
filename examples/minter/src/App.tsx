@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Address } from '@ton/core';
 import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui-react';
-import { computePlannedDeploy, fixedJettonMetadataUrl, jettonMasterDisplay } from './buildMaster';
+import { computePlannedDeploy, fixedJettonMetadataUrl, jettonMasterDisplay, JETTON_METADATA_FILENAME } from './buildMaster';
 import { MASTER_BOC_BASE64, NETWORK, WALLET_BOC_BASE64 } from './constants';
 import { generateSignerSecrets } from './signer';
 import { buildJettonMetadataJson, buildStandaloneJettonMetadataJson } from './metadata';
@@ -300,7 +300,7 @@ export function App() {
           <h2>2. Токен, бэкенд и адрес master (до деплоя)</h2>
           <p>
             Минтер считает адрес master заранее. В контракт кладётся фиксированный URL{' '}
-            <code>{backendOrigin ? `${backendOrigin}/jetton-metadata.json` : '…/jetton-metadata.json'}</code>{' '}
+            <code>{backendOrigin ? `${backendOrigin}/${JETTON_METADATA_FILENAME}` : `…/${JETTON_METADATA_FILENAME}`}</code>{' '}
             (без master в пути — иначе адрес «плывёт»). В JSON на бэкенде{' '}
             <code>custom_payload_api_uri</code> будет <b>EQ…</b> этого master.
           </p>
