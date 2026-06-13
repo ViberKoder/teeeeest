@@ -5,6 +5,7 @@ import {
   JETTON_METADATA_FILENAME,
   JETTON_METADATA_FILENAME_LEGACY,
   JETTON_METADATA_FILENAME_LEGACY2,
+  JETTON_METADATA_FILENAME_LEGACY3,
   MINTLESS_JETTON_METADATA_FILENAME,
   masterFromJettonApiUrl,
 } from './jettonAddressPath';
@@ -111,10 +112,11 @@ export async function runWalletDisplayAudit(params: {
   const fixedFilename = contentUrl ? fixedJettonMetadataFilenameFromUrl(contentUrl) : null;
   const usesLegacyMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME_LEGACY;
   const usesLegacyMetadataUrl2 = fixedFilename === JETTON_METADATA_FILENAME_LEGACY2;
+  const usesLegacyMetadataUrl3 = fixedFilename === JETTON_METADATA_FILENAME_LEGACY3;
   const usesRmjMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME;
   const usesMintlessMetadataUrl = fixedFilename === MINTLESS_JETTON_METADATA_FILENAME;
   const usesCurrentFixedUrl = usesRmjMetadataUrl || usesMintlessMetadataUrl;
-  const usesStaleRmjMetadataUrl = usesLegacyMetadataUrl || usesLegacyMetadataUrl2;
+  const usesStaleRmjMetadataUrl = usesLegacyMetadataUrl || usesLegacyMetadataUrl2 || usesLegacyMetadataUrl3;
 
   if (contentUrl) {
     const usesFixedMetadataUrl = isFixedJettonMetadataUrl(contentUrl);
@@ -303,7 +305,8 @@ export async function runWalletDisplayAudit(params: {
     } else if (
       usesCurrentFixedUrl ||
       fixedFilename === JETTON_METADATA_FILENAME_LEGACY ||
-      fixedFilename === JETTON_METADATA_FILENAME_LEGACY2
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY2 ||
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY3
     ) {
       checks.push(
         check(

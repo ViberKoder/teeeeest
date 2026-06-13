@@ -78,7 +78,7 @@ export type PlannedMintlessDeploy = PlannedDeploy & { merkleRoot: bigint };
 /**
  * Standard TEP-177 mintless master (ton-community/mintless-jetton).
  * Address is deterministic because on-chain metadata uses `{backend}/mintless-jetton-metadata.json`
- * (separate from RMJ `jetton-metadata3.json`).
+ * (separate from RMJ `jetton-metadata4.json`).
  */
 export function computePlannedMintlessDeploy(
   params: Omit<BuildMintlessMasterParams, 'metadataUrl'>,
