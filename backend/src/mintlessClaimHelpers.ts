@@ -1,4 +1,4 @@
-import { Address, beginCell, storeStateInit } from '@ton/core';
+import { Address, beginCell, storeStateInit, toNano } from '@ton/core';
 import { JettonMaster } from '@ton/ton';
 import {
   RollingMintlessWallet,
@@ -36,6 +36,12 @@ export type MintlessWalletResponse = {
   compressed_info: MintlessCompressedInfo;
   epoch?: number;
   root?: string;
+  /** Hints for TEP-177 wallets / dApps building mintless transfers (claim + send in one tx). */
+  transfer_hints?: {
+    attach_ton: string;
+    attach_ton_deploy: string;
+    note: string;
+  };
 };
 
 export { formatCompressedInfo } from './mintlessWalletFormat';
@@ -165,6 +171,11 @@ export async function buildMintlessWalletResponse(
       startFrom: leaf.startFrom,
       expiredAt: leaf.expiredAt,
     }),
+    transfer_hints: {
+      attach_ton: toNano('0.3').toString(),
+      attach_ton_deploy: toNano('0.35').toString(),
+      note: 'TEP-177: attach custom_payload on transfer; claim and send happen in one jetton-wallet transaction',
+    },
   };
 
   if (opts?.includeRollingExtras !== false) {

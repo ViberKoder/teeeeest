@@ -6,7 +6,7 @@ import { Screen, Card, Button, Field, RmjBadge } from '../ui/components';
 import { loadVault } from '../state/vault';
 import { buildJettonList, type JettonEntry } from '../state/jettons';
 import { fetchRmjPending } from '../services/rmj';
-import { broadcastJettonTransfer, DEFAULT_JETTON_GAS_NANO, DEFAULT_RMJ_CLAIM_GAS_NANO } from '../services/tx';
+import { broadcastJettonTransfer, DEFAULT_JETTON_GAS_NANO, DEFAULT_RMJ_CLAIM_GAS_NANO, DEFAULT_RMJ_SEND_GAS_NANO } from '../services/tx';
 import { keyring } from '../state/keyring';
 import { decryptSeed } from '../crypto/passcode';
 import { formatBigUnits, parseUnitsToNano, shortAddress } from '../util/format';
@@ -95,13 +95,32 @@ export function SendJetton() {
        */
       let customPayload: string | null = null;
       let stateInit: string | null = null;
-      if (entry.isRmj && entry.customPayloadApiUri) {
+      const needsClaimPayload = pending > 0n || !entry.walletActive;
+      if (entry.isRmj && entry.customPayloadApiUri && needsClaimPayload) {
         const fresh = await fetchRmjPending(entry.customPayloadApiUri, vault.account.address).catch(() => null);
-        if (fresh) {
+        if (!fresh?.customPayload) {
+          throw new Error(
+            'Mintless proof unavailable — wait for the next epoch or try again in a minute',
+          );
+        }
+        customPayload = fresh.customPayload;
+        stateInit = fresh.stateInit;
+      } else if (entry.isRmj && entry.customPayloadApiUri) {
+        const fresh = await fetchRmjPending(entry.customPayloadApiUri, vault.account.address).catch(() => null);
+        if (fresh?.customPayload) {
           customPayload = fresh.customPayload;
           stateInit = fresh.stateInit;
         }
       }
+
+      const externalRecipient =
+        Address.parse(to.trim()).toRawString() !== Address.parse(vault.account.address).toRawString();
+      const attachedTon =
+        stateInit || customPayload
+          ? externalRecipient || stateInit
+            ? DEFAULT_RMJ_SEND_GAS_NANO
+            : DEFAULT_RMJ_CLAIM_GAS_NANO
+          : DEFAULT_JETTON_GAS_NANO;
 
       // Unlock fresh (allow user to use either an already-unlocked keyring or a one-shot passcode).
       if (keyring.isLocked()) {
@@ -125,7 +144,7 @@ export function SendJetton() {
         forwardTonAmountNano: comment.trim() ? 1n : 1n,
         customPayloadBase64: customPayload,
         jettonWalletStateInitBase64: stateInit,
-        attachedTonNano: stateInit || customPayload ? DEFAULT_RMJ_CLAIM_GAS_NANO : DEFAULT_JETTON_GAS_NANO,
+        attachedTonNano: attachedTon,
       });
       haptic('success');
       setStep('done');
@@ -237,7 +256,7 @@ export function SendJetton() {
           )}
           <Row
             label="Network fee"
-            value={`~${entry.isRmj || !entry.walletActive ? '0.1' : '0.05'} TON`}
+            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? '0.3–0.35' : '0.05'} TON`}
           />
           {keyring.isLocked() && (
             <Field label="Passcode">

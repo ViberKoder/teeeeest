@@ -7,8 +7,8 @@ import {
 import {
   type BalanceDisplayMode,
   RMJClient,
-  buildJettonTransferPayloadBase64,
-  DEFAULT_ATTACHED_TON_NANO,
+  buildMintlessTonConnectMessage,
+  prepareMintlessTransfer,
   formatBalanceDisplay,
 } from '@rmj/sdk';
 
@@ -81,36 +81,16 @@ export function App() {
     if (!address) return;
     setSyncStatus('Preparing claim transaction…');
     try {
-      const payload = await rmj.getCustomPayload(address);
-      if (!payload) {
-        setSyncStatus('Nothing to claim yet — earn some balance first (or wait for the next epoch).');
-        return;
-      }
-
-      const jw = await rmj.getJettonWallet(address);
-
-      const transferPayload = buildJettonTransferPayloadBase64({
-        jettonAmountNano: 0n,
+      const prepared = await prepareMintlessTransfer(rmj, {
+        owner: address,
         toOwner: address,
-        responseAddress: address,
-        forwardTonAmountNano: 1n,
-        customPayload: payload,
+        jettonAmountNano: 0n,
       });
 
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [
-          {
-            address: jw.jettonWallet,
-            amount: DEFAULT_ATTACHED_TON_NANO.toString(),
-            payload: transferPayload,
-            stateInit: jw.walletStateInitBase64 ?? undefined,
-          },
-        ],
-      });
+      await tonConnectUI.sendTransaction(buildMintlessTonConnectMessage(prepared));
 
       setSyncStatus(
-        jw.needsDeploy
+        prepared.stateInitBase64
           ? 'Transaction sent — first deployment + claim can take ~30s. Refresh your wallet.'
           : 'Transaction sent — balance should appear after confirmation.',
       );
@@ -167,9 +147,9 @@ export function App() {
           {syncStatus && <div style={styles.syncStatus}>{syncStatus}</div>}
 
           <p style={styles.foot}>
-            Works even when your wallet app ignores mintless APIs: we attach the Proof API{' '}
-            <code style={{ fontSize: 11 }}>custom_payload</code> ourselves via TON Connect
-            (self-transfer 0 jettons + claim). ~0.1 TON gas covers fees / wallet deploy.
+            Tonkeeper / MyTonWallet: use normal <b>Send</b> — the wallet attaches mintless{' '}
+            <code style={{ fontSize: 11 }}>custom_payload</code> automatically (claim + transfer in one tx).
+            Keep ~0.3 TON for gas. This button is a fallback via TON Connect.
           </p>
         </>
       )}
