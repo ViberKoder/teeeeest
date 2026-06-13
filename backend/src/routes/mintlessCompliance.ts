@@ -9,6 +9,7 @@ import {
   bumpMetadataUri,
   fixedRmjMetadataUri,
   getToncenterIndexerStatus,
+  metadataUriPathname,
 } from '../toncenterIndexer';
 import { configuredJettonMaster, parseJettonMasterParam } from '../jettonMaster';
 import { buildJettonMetadataJson } from '../jettonMetadata';
@@ -123,8 +124,12 @@ export function registerMintlessCompliance(app: FastifyInstance, deps: MintlessC
       });
       const currentUri = indexer.onChainMetadataUri;
       const targetUri = baseUri;
-      const needsSync = currentUri !== targetUri;
-      const needsBump = !needsSync && indexer.cacheStale && indexer.recommendedAction === 'bump_metadata_uri';
+      const needsSync =
+        !!currentUri && metadataUriPathname(currentUri) !== metadataUriPathname(targetUri);
+      const needsBump =
+        !needsSync &&
+        !!indexer.bumpTargetUri &&
+        (!indexer.mintlessInfoIndexed || indexer.recommendedAction === 'bump_metadata_uri');
 
       return {
         onChainMaster: master.toRawString(),

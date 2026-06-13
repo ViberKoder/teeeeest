@@ -1,7 +1,10 @@
 import { Address, beginCell } from '@ton/core';
 import { config } from './config';
 import { fixedJettonMetadataUrl, jettonMasterFriendly } from './jettonAddressPath';
+import { bumpMetadataUri, metadataUriPathname, metadataUriStale } from './metadataUriUtils';
 import { toOffchainContentCell } from './jettonContent';
+
+export { bumpMetadataUri, metadataUriPathname, metadataUriStale } from './metadataUriUtils';
 
 export type ToncenterIndexerStatus = {
   network: 'mainnet' | 'testnet';
@@ -67,13 +70,6 @@ async function fetchJson(url: string, init?: RequestInit): Promise<Record<string
   }
 }
 
-export function bumpMetadataUri(uri: string): string {
-  const url = new URL(uri);
-  const current = Number.parseInt(url.searchParams.get('v') ?? '1', 10);
-  url.searchParams.set('v', String(Number.isFinite(current) ? current + 1 : 2));
-  return url.toString();
-}
-
 export function fixedRmjMetadataUri(publicAppUrl?: string): string {
   const base = (publicAppUrl ?? config.PUBLIC_APP_URL).trim().replace(/\/$/, '');
   return fixedJettonMetadataUrl(base);
@@ -132,7 +128,7 @@ export async function getToncenterIndexerStatus(params: {
   const cacheStale =
     !includesMaster(toncenterCached.customPayloadApiUri, onChainMaster) ||
     !includesMaster(toncenterCached.mintlessMerkleDumpUri, onChainMaster) ||
-    !includesMaster(toncenterCached.metadataUri, onChainMaster);
+    metadataUriStale(toncenterCached.metadataUri, onChainMetadataUri, ourMetadataUri);
 
   let mintlessInfoSample: Record<string, unknown> | null = null;
   let walletsIndexed = 0;
@@ -164,15 +160,18 @@ export async function getToncenterIndexerStatus(params: {
   let recommendedAction: ToncenterIndexerStatus['recommendedAction'] = 'ready';
   let bumpTargetUri: string | null = null;
 
+  const bumpBase = onChainMetadataUri ?? ourMetadataUri;
   if (!mintlessInfoIndexed) {
     if (cacheStale) {
       recommendedAction = 'bump_metadata_uri';
-      bumpTargetUri = bumpMetadataUri(ourMetadataUri);
+      bumpTargetUri = bumpMetadataUri(bumpBase);
     } else {
       recommendedAction = 'request_toncenter_indexing';
+      bumpTargetUri = bumpMetadataUri(bumpBase);
     }
   } else if (cacheStale) {
     recommendedAction = 'wait';
+    bumpTargetUri = bumpMetadataUri(bumpBase);
   }
 
   const apiRoot = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');

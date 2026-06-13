@@ -296,18 +296,18 @@ export class RMJClient {
         jetton_wallet: string;
         custom_payload: string;
         state_init: string | null;
-        compressed_info: { amount: string; start_from: number; expired_at: number };
-        epoch: number;
-        root: string;
+        compressed_info: { amount: string; start_from: string; expired_at: string };
+        epoch?: number;
+        root?: string;
       }>(`/api/v1/jettons/${masterSeg}/wallet/${addressToApiPathSegment(address)}`);
       return {
         customPayload: r.custom_payload,
         stateInit: r.state_init,
         amount: r.compressed_info.amount,
-        startFrom: r.compressed_info.start_from,
-        expiredAt: r.compressed_info.expired_at,
-        epoch: r.epoch,
-        root: r.root,
+        startFrom: Number(r.compressed_info.start_from),
+        expiredAt: Number(r.compressed_info.expired_at),
+        epoch: r.epoch ?? 0,
+        root: r.root ?? '',
       };
     } catch (e) {
       if (e instanceof RMJError && e.status === 404) return null;

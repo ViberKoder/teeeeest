@@ -15,6 +15,7 @@ import {
   fetchOnChainMerkleRoot,
   fetchSyncMetadata,
   fetchWalletProofSample,
+  fetchWalletsBatch,
   postSyncMerkleRoot,
 } from './complianceApi';
 
@@ -157,28 +158,38 @@ export function ComplianceTab({ defaultBackendUrl = '', defaultMaster = '' }: Pr
     setRootSyncReport(null);
 
     const errors: string[] = [];
+    let resolvedOwner = owner;
 
     try {
+      if (!resolvedOwner) {
+        const batch = await fetchWalletsBatch(baseUrl, master, 3).catch(() => null);
+        const first = batch?.wallets?.[0]?.owner;
+        if (first) {
+          resolvedOwner = first;
+          setSampleOwner(first);
+        }
+      }
+
       const [diag, comp, idx, meta, chain, wallet] = await Promise.all([
         fetchDiagnostics(baseUrl).catch((e) => {
           errors.push(`diagnostics: ${(e as Error).message}`);
           return null;
         }),
-        fetchCompliance(baseUrl, master, owner || undefined).catch((e) => {
+        fetchCompliance(baseUrl, master, resolvedOwner || undefined).catch((e) => {
           errors.push(`compliance: ${(e as Error).message}`);
           return null;
         }),
-        fetchIndexerStatus(baseUrl, master, owner || undefined).catch((e) => {
+        fetchIndexerStatus(baseUrl, master, resolvedOwner || undefined).catch((e) => {
           errors.push(`indexer: ${(e as Error).message}`);
           return null;
         }),
-        fetchSyncMetadata(baseUrl, master, owner || undefined).catch((e) => {
+        fetchSyncMetadata(baseUrl, master, resolvedOwner || undefined).catch((e) => {
           errors.push(`sync-metadata: ${(e as Error).message}`);
           return null;
         }),
         fetchOnChainMerkleRoot(master).catch(() => null),
-        owner
-          ? fetchWalletProofSample(baseUrl, master, owner).catch(() => null)
+        resolvedOwner
+          ? fetchWalletProofSample(baseUrl, master, resolvedOwner).catch(() => null)
           : Promise.resolve(null),
       ]);
 
@@ -325,7 +336,7 @@ export function ComplianceTab({ defaultBackendUrl = '', defaultMaster = '' }: Pr
           disabled={busy || !syncMeta?.needsBump || !syncMeta.bumpMessage}
           onClick={() => void sendMetadataTx('bump')}
         >
-          change_content (bump cache)
+          change_content (bump ?v=)
         </button>
       </div>
 
@@ -513,6 +524,14 @@ export function ComplianceTab({ defaultBackendUrl = '', defaultMaster = '' }: Pr
                 <td style={{ padding: '4px 8px 4px 0', opacity: 0.75 }}>needsBump</td>
                 <td style={{ color: statusColor(!syncMeta.needsBump) }}>{syncMeta.needsBump ? 'да' : 'нет'}</td>
               </tr>
+              {syncMeta.bumpTargetUri && (
+                <tr>
+                  <td style={{ padding: '4px 8px 4px 0', opacity: 0.75 }}>bump target</td>
+                  <td style={{ wordBreak: 'break-all', fontFamily: 'monospace', fontSize: 12 }}>
+                    {syncMeta.bumpTargetUri}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           {syncMeta.rolling && (

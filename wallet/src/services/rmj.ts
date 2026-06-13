@@ -14,8 +14,8 @@
  *
  *   GET {custom_payload_api_uri}/wallet/{owner_raw}
  *      -> 200 { owner, jetton_wallet, custom_payload, state_init,
- *               compressed_info: { amount, start_from, expired_at },
- *               epoch, root }
+ *               compressed_info: { amount, start_from, expired_at } (all strings, TEP-176),
+ *               epoch?, root? (RMJ extras, omitted from /wallets batch)
  *      -> 404 nothing-to-claim / address-not-in-tree
  *
  *   GET {backendBase}/api/v1/balance/{owner}   (RMJ extension)
@@ -79,19 +79,19 @@ export async function fetchRmjPending(
     jetton_wallet: string;
     custom_payload: string;
     state_init: string | null;
-    compressed_info: { amount: string; start_from: number; expired_at: number };
-    epoch: number;
-    root: string;
+    compressed_info: { amount: string; start_from: string; expired_at: string };
+    epoch?: number;
+    root?: string;
   };
   return {
     amount: j.compressed_info.amount,
-    startFrom: j.compressed_info.start_from,
-    expiredAt: j.compressed_info.expired_at,
+    startFrom: Number(j.compressed_info.start_from),
+    expiredAt: Number(j.compressed_info.expired_at),
     jettonWallet: j.jetton_wallet,
     customPayload: j.custom_payload,
     stateInit: j.state_init,
-    epoch: j.epoch,
-    root: j.root,
+    epoch: j.epoch ?? 0,
+    root: j.root ?? '',
   };
 }
 

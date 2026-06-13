@@ -15,6 +15,7 @@ import {
   sortOwners,
   WALLET_BATCH_MAX,
 } from './mintlessBatchUtils';
+import { formatCompressedInfo, type MintlessCompressedInfo } from './mintlessWalletFormat';
 
 export {
   WALLET_BATCH_MAX,
@@ -32,14 +33,12 @@ export type MintlessWalletResponse = {
   jetton_wallet: string;
   custom_payload: string;
   state_init: string | null;
-  compressed_info: {
-    amount: string;
-    start_from: number;
-    expired_at: number;
-  };
+  compressed_info: MintlessCompressedInfo;
   epoch?: number;
   root?: string;
 };
+
+export { formatCompressedInfo } from './mintlessWalletFormat';
 
 async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
   const master = configuredJettonMaster();
@@ -161,11 +160,11 @@ export async function buildMintlessWalletResponse(
     jetton_wallet: jettonWallet,
     custom_payload: payloadToBase64(customPayload),
     state_init: stateInit,
-    compressed_info: {
-      amount: delta.toString(),
-      start_from: leaf.startFrom,
-      expired_at: leaf.expiredAt,
-    },
+    compressed_info: formatCompressedInfo({
+      amount: delta,
+      startFrom: leaf.startFrom,
+      expiredAt: leaf.expiredAt,
+    }),
   };
 
   if (opts?.includeRollingExtras !== false) {

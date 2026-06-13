@@ -167,6 +167,20 @@ export async function fetchOnChainMerkleRoot(master: string): Promise<{ root: st
   return { root, epoch };
 }
 
+export async function fetchWalletsBatch(
+  backendUrl: string,
+  master: string,
+  count = 3,
+): Promise<{ wallets: { owner: string }[]; next_from: string } | null> {
+  const seg = encodeURIComponent(masterPathSegment(master));
+  const zero = '0:0000000000000000000000000000000000000000000000000000000000000000';
+  const res = await fetch(
+    `${apiBase(backendUrl)}/api/v1/jettons/${seg}/wallets?next_from=${encodeURIComponent(zero)}&count=${count}`,
+  );
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function fetchWalletProofSample(
   backendUrl: string,
   master: string,
