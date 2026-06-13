@@ -66,8 +66,18 @@ export function fixedMintlessJettonMetadataUrl(publicAppUrl: string): string {
   return `${base}/${MINTLESS_JETTON_METADATA_FILENAME}`;
 }
 
+/** Strip `?v=` / hash — on-chain TEP-64 URLs often include epoch cache-bust query. */
+export function fixedMetadataUrlPathname(contentUrl: string): string {
+  try {
+    const url = new URL(contentUrl);
+    return `${url.origin}${url.pathname}`.replace(/\/$/, '');
+  } catch {
+    return contentUrl.split('?')[0].split('#')[0].replace(/\/$/, '');
+  }
+}
+
 export function isFixedJettonMetadataUrl(contentUrl: string): boolean {
-  const u = contentUrl.replace(/\/$/, '');
+  const u = fixedMetadataUrlPathname(contentUrl);
   return (
     JETTON_METADATA_ALL_FILENAMES.some((name) => u.endsWith(`/${name}`)) ||
     u.endsWith(`/${MINTLESS_JETTON_METADATA_FILENAME}`)
@@ -75,7 +85,7 @@ export function isFixedJettonMetadataUrl(contentUrl: string): boolean {
 }
 
 export function fixedJettonMetadataFilenameFromUrl(contentUrl: string): string | null {
-  const u = contentUrl.replace(/\/$/, '');
+  const u = fixedMetadataUrlPathname(contentUrl);
   for (const name of JETTON_METADATA_ALL_FILENAMES) {
     if (u.endsWith(`/${name}`)) return name;
   }

@@ -281,7 +281,7 @@ export async function runWalletDisplayAudit(params: {
 
     const fixedMetaForMaster =
       fixedFilename === MINTLESS_JETTON_METADATA_FILENAME
-        ? { url: envMintlessMetaUrl, res: envMintlessMeta, label: MINTLESS_JETTON_METADATA_FILENAME, env: 'MINTLESS_JETTON_MASTER_ADDRESS' }
+        ? { url: envMintlessMetaUrl, res: envMintlessMeta, label: MINTLESS_JETTON_METADATA_FILENAME, env: 'JETTON_MASTER_ADDRESS' }
         : { url: envMetaUrl, res: envMeta, label: JETTON_METADATA_FILENAME, env: 'JETTON_MASTER_ADDRESS' };
 
     if (fixedMetaForMaster.res.ok && fixedMetaForMaster.res.body && typeof fixedMetaForMaster.res.body === 'object') {
@@ -342,11 +342,11 @@ export async function runWalletDisplayAudit(params: {
           check(
             'backend_mintless_metadata_json',
             envMatchesQuery ? 'ok' : 'warn',
-            `GET /${MINTLESS_JETTON_METADATA_FILENAME} (MINTLESS_JETTON_MASTER_ADDRESS)`,
+            `GET /${MINTLESS_JETTON_METADATA_FILENAME} (JETTON_MASTER_ADDRESS)`,
             `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
             envMatchesQuery
               ? undefined
-              : `Set MINTLESS_JETTON_MASTER_ADDRESS=${masterEq} for TEP-177 fixed metadata`,
+              : `Set JETTON_MASTER_ADDRESS=${masterEq} — mintless-jetton-metadata.json mirrors RMJ master`,
           ),
         );
       }

@@ -21,9 +21,16 @@ describe('jettonAddressPath metadata filenames', () => {
 
   test('isFixedJettonMetadataUrl accepts current and legacy paths', () => {
     expect(isFixedJettonMetadataUrl('https://x/jetton-metadata3.json')).toBe(true);
+    expect(isFixedJettonMetadataUrl('https://x/jetton-metadata3.json?v=29')).toBe(true);
     expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY2}`)).toBe(true);
     expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY}`)).toBe(true);
     expect(isFixedJettonMetadataUrl('https://x/other.json')).toBe(false);
+  });
+
+  test('fixedJettonMetadataFilenameFromUrl strips ?v= query', () => {
+    expect(fixedJettonMetadataFilenameFromUrl('https://x/jetton-metadata3.json?v=30')).toBe(
+      JETTON_METADATA_FILENAME,
+    );
   });
 
   test('fixedJettonMetadataFilenameFromUrl resolves tier', () => {

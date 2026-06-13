@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { Address } from '@ton/core';
 import { config } from '../config';
-import { configuredJettonMaster, configuredMintlessJettonMaster } from '../jettonMaster';
+import { configuredJettonMaster, masterForHostedMintlessMetadata } from '../jettonMaster';
 import { buildJettonMetadataJson, parseMasterAddressParam } from '../jettonMetadata';
 import { loadJettonRegistry } from '../jettonRegistry';
 import {
@@ -142,13 +142,13 @@ export function registerPublicJettonMetadata(app: FastifyInstance, deps: PublicJ
     ),
   );
 
-  app.get(`/${MINTLESS_JETTON_METADATA_FILENAME}`, async (_req, reply) =>
+  app.get<{ Querystring: { v?: string } }>(`/${MINTLESS_JETTON_METADATA_FILENAME}`, async (req, reply) =>
     serveFixedJettonMetadata(
       deps.store,
       deps.state,
-      configuredMintlessJettonMaster(),
-      'MINTLESS_JETTON_MASTER_ADDRESS',
-      {},
+      masterForHostedMintlessMetadata(),
+      'JETTON_MASTER_ADDRESS',
+      req.query,
       reply,
     ),
   );
