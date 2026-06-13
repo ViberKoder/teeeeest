@@ -3,8 +3,8 @@ import { TonConnectButton, useTonAddress, useTonConnectUI } from '@tonconnect/ui
 import {
   type BalanceDisplayMode,
   RMJClient,
-  buildJettonTransferPayloadBase64,
-  DEFAULT_ATTACHED_TON_NANO,
+  buildMintlessTonConnectMessage,
+  prepareMintlessTransfer,
   formatBalanceDisplay,
 } from '@rmj/sdk';
 import { NETWORK } from './constants';
@@ -72,38 +72,18 @@ export function ClaimTab() {
     setBusy(true);
     setHint('Готовим транзакцию…');
     try {
-      const payload = await rmj.getCustomPayload(address);
-      if (!payload) {
-        setHint(
-          'Нет данных для клейма — адрес не в Merkle-дереве или эпоха ещё не подхватила активность.',
-        );
-        return;
-      }
-
-      const jw = await rmj.getJettonWallet(address);
-
-      const transferPayload = buildJettonTransferPayloadBase64({
-        jettonAmountNano: 0n,
+      const prepared = await prepareMintlessTransfer(rmj, {
+        owner: address,
         toOwner: address,
-        responseAddress: address,
-        forwardTonAmountNano: 1n,
-        customPayload: payload,
+        jettonAmountNano: 0n,
       });
 
-      await tonConnectUI.sendTransaction({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [
-          {
-            address: jw.jettonWallet,
-            amount: DEFAULT_ATTACHED_TON_NANO.toString(),
-            payload: transferPayload,
-            stateInit: jw.walletStateInitBase64 ?? undefined,
-          },
-        ],
-      });
+      await tonConnectUI.sendTransaction(
+        buildMintlessTonConnectMessage(prepared),
+      );
 
       setHint(
-        jw.needsDeploy
+        prepared.stateInitBase64
           ? 'Транзакция отправлена. Первый деплой jetton-wallet + клейм могут занять ~30 с.'
           : 'Транзакция отправлена. После подтверждения проверьте jetton в кошельке.',
       );
@@ -121,8 +101,8 @@ export function ClaimTab() {
       <h2 style={{ marginTop: 0 }}>Забрать токены на кошелёк (mintless)</h2>
       <p style={{ opacity: 0.9 }}>
         Если баланс в игре/боте есть, а в кошельке jetton не видно — отправьте один перевод с{' '}
-        <code>custom_payload</code> с вашего RMJ backend. Здесь это делается через TON Connect (~0.1 TON на газ /
-        деплой jetton-wallet).
+        <code>custom_payload</code> с вашего RMJ backend. Обычный Send в Tonkeeper/MyTonWallet
+        делает то же самое (claim + перевод в одной tx) — держите ~0.3 TON на балансе TON.
       </p>
 
       <label style={{ display: 'block', marginBottom: 12 }}>

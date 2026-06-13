@@ -27,10 +27,12 @@ import { keyring } from '../state/keyring';
 
 const OP_JETTON_TRANSFER = 0x0f8a7ea5;
 
-/** ≈0.05 TON covers a standard wallet-v5 + jetton-wallet message hop. */
+/** ≈0.05 TON covers a standard wallet-v5 + jetton-wallet message hop (on-chain balance only). */
 export const DEFAULT_JETTON_GAS_NANO = toNano('0.05');
-/** When a jetton-wallet needs to be deployed on first RMJ claim, bump gas. */
-export const DEFAULT_RMJ_CLAIM_GAS_NANO = toNano('0.1');
+/** Mintless claim piggybacked on transfer — matches contract tests (~0.3 TON). */
+export const DEFAULT_RMJ_CLAIM_GAS_NANO = toNano('0.3');
+/** First deploy + claim + transfer to another address (deploy recipient jetton-wallet). */
+export const DEFAULT_RMJ_SEND_GAS_NANO = toNano('0.35');
 
 export interface BuildTonTransferInput {
   network: Network;
