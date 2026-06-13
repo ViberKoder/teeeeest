@@ -42,4 +42,19 @@ describe('jettonMetadata', () => {
     expect(body?.decimals).toBe('0');
     expect(body?.mintless_merkle_dump_uri).toBe(`https://example.com/api/v1/jettons/${eq}/merkle-dump.boc`);
   });
+
+  test('rolling cache-bust on mintless_merkle_dump_uri', () => {
+    const body = buildJettonMetadataJson(master, {
+      publicAppUrl: 'https://example.com',
+      name: 'Egg',
+      symbol: 'EGG',
+      decimals: '0',
+      rollingEpoch: 29,
+      rollingRootHex: '0x0cedd9f7',
+    });
+    const eq = master.toString({ urlSafe: true, bounceable: true });
+    expect(body?.mintless_merkle_dump_uri).toBe(
+      `https://example.com/api/v1/jettons/${eq}/merkle-dump.boc?epoch=29&root=0x0cedd9f7`,
+    );
+  });
 });
