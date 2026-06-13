@@ -22,7 +22,7 @@ export function metadataUriEpoch(uri: string | null | undefined): number | null 
   }
 }
 
-/** On-chain TEP-64 URL with epoch cache-bust: `…/jetton-metadata3.json?v=29`. */
+/** On-chain TEP-64 URL with epoch cache-bust: `…/jetton-metadata4.json?v=29`. */
 export function epochMetadataUri(metadataBaseUrl: string, epoch: number): string {
   const url = new URL(metadataBaseUrl);
   url.searchParams.set('v', String(epoch));

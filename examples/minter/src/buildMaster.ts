@@ -70,7 +70,7 @@ export function buildDeploy(params: BuildMasterParams) {
 }
 
 /** Must match backend `JETTON_METADATA_FILENAME` (cache-bust for TonAPI). */
-export const JETTON_METADATA_FILENAME = 'jetton-metadata3.json';
+export const JETTON_METADATA_FILENAME = 'jetton-metadata4.json';
 
 export function fixedJettonMetadataUrl(publicBaseUrl: string): string {
   return `${publicBaseUrl.trim().replace(/\/$/, '')}/${JETTON_METADATA_FILENAME}`;
@@ -93,7 +93,7 @@ export function mintlessMerkleDumpUrl(publicBaseUrl: string, master: Address, te
 }
 
 export type PlannedDeploy = {
-  /** Always `{backend}/jetton-metadata3.json` — master is NOT in this URL. */
+  /** Always `{backend}/jetton-metadata4.json` — master is NOT in this URL. */
   metadataUrl: string;
   customPayloadApiUri: string;
   address: Address;

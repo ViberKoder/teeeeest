@@ -1,7 +1,7 @@
 import { bumpMetadataUri, metadataUriPathname, metadataUriStale, epochMetadataUri, cacheBustedMerkleDumpUri } from './metadataUriUtils';
 
 describe('metadataUriStale', () => {
-  const base = 'https://example.com/jetton-metadata3.json';
+  const base = 'https://example.com/jetton-metadata4.json';
   const bumped = `${base}?v=2`;
 
   it('?v= on-chain newer than cached without v is stale', () => {
@@ -21,14 +21,14 @@ describe('metadataUriStale', () => {
   });
 
   it('metadataUriPathname strips query', () => {
-    expect(metadataUriPathname(bumped)).toBe('https://example.com/jetton-metadata3.json');
+    expect(metadataUriPathname(bumped)).toBe('https://example.com/jetton-metadata4.json');
   });
 
   it('stale when on-chain ?v= differs from cached', () => {
     expect(
       metadataUriStale(
-        'https://example.com/jetton-metadata3.json?v=2',
-        'https://example.com/jetton-metadata3.json?v=3',
+        'https://example.com/jetton-metadata4.json?v=2',
+        'https://example.com/jetton-metadata4.json?v=3',
         base,
       ),
     ).toBe(true);
@@ -37,8 +37,8 @@ describe('metadataUriStale', () => {
 
 describe('epochMetadataUri', () => {
   it('sets v query to epoch', () => {
-    expect(epochMetadataUri('https://example.com/jetton-metadata3.json', 30)).toBe(
-      'https://example.com/jetton-metadata3.json?v=30',
+    expect(epochMetadataUri('https://example.com/jetton-metadata4.json', 30)).toBe(
+      'https://example.com/jetton-metadata4.json?v=30',
     );
   });
 });
@@ -57,8 +57,8 @@ describe('cacheBustedMerkleDumpUri', () => {
 
 describe('bumpMetadataUri', () => {
   it('increments v query param', () => {
-    expect(bumpMetadataUri('https://example.com/jetton-metadata3.json?v=2')).toBe(
-      'https://example.com/jetton-metadata3.json?v=3',
+    expect(bumpMetadataUri('https://example.com/jetton-metadata4.json?v=2')).toBe(
+      'https://example.com/jetton-metadata4.json?v=3',
     );
   });
 });

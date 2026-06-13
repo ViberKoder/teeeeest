@@ -5,6 +5,7 @@ import {
   JETTON_METADATA_FILENAME,
   JETTON_METADATA_FILENAME_LEGACY,
   JETTON_METADATA_FILENAME_LEGACY2,
+  JETTON_METADATA_FILENAME_LEGACY3,
   MINTLESS_JETTON_METADATA_FILENAME,
   masterFromJettonApiUrl,
 } from './jettonAddressPath';
@@ -111,10 +112,11 @@ export async function runWalletDisplayAudit(params: {
   const fixedFilename = contentUrl ? fixedJettonMetadataFilenameFromUrl(contentUrl) : null;
   const usesLegacyMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME_LEGACY;
   const usesLegacyMetadataUrl2 = fixedFilename === JETTON_METADATA_FILENAME_LEGACY2;
+  const usesLegacyMetadataUrl3 = fixedFilename === JETTON_METADATA_FILENAME_LEGACY3;
   const usesRmjMetadataUrl = fixedFilename === JETTON_METADATA_FILENAME;
   const usesMintlessMetadataUrl = fixedFilename === MINTLESS_JETTON_METADATA_FILENAME;
   const usesCurrentFixedUrl = usesRmjMetadataUrl || usesMintlessMetadataUrl;
-  const usesStaleRmjMetadataUrl = usesLegacyMetadataUrl || usesLegacyMetadataUrl2;
+  const usesStaleRmjMetadataUrl = usesLegacyMetadataUrl || usesLegacyMetadataUrl2 || usesLegacyMetadataUrl3;
 
   if (contentUrl) {
     const usesFixedMetadataUrl = isFixedJettonMetadataUrl(contentUrl);
@@ -281,7 +283,7 @@ export async function runWalletDisplayAudit(params: {
 
     const fixedMetaForMaster =
       fixedFilename === MINTLESS_JETTON_METADATA_FILENAME
-        ? { url: envMintlessMetaUrl, res: envMintlessMeta, label: MINTLESS_JETTON_METADATA_FILENAME, env: 'MINTLESS_JETTON_MASTER_ADDRESS' }
+        ? { url: envMintlessMetaUrl, res: envMintlessMeta, label: MINTLESS_JETTON_METADATA_FILENAME, env: 'JETTON_MASTER_ADDRESS' }
         : { url: envMetaUrl, res: envMeta, label: JETTON_METADATA_FILENAME, env: 'JETTON_MASTER_ADDRESS' };
 
     if (fixedMetaForMaster.res.ok && fixedMetaForMaster.res.body && typeof fixedMetaForMaster.res.body === 'object') {
@@ -303,7 +305,8 @@ export async function runWalletDisplayAudit(params: {
     } else if (
       usesCurrentFixedUrl ||
       fixedFilename === JETTON_METADATA_FILENAME_LEGACY ||
-      fixedFilename === JETTON_METADATA_FILENAME_LEGACY2
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY2 ||
+      fixedFilename === JETTON_METADATA_FILENAME_LEGACY3
     ) {
       checks.push(
         check(
@@ -342,11 +345,11 @@ export async function runWalletDisplayAudit(params: {
           check(
             'backend_mintless_metadata_json',
             envMatchesQuery ? 'ok' : 'warn',
-            `GET /${MINTLESS_JETTON_METADATA_FILENAME} (MINTLESS_JETTON_MASTER_ADDRESS)`,
+            `GET /${MINTLESS_JETTON_METADATA_FILENAME} (JETTON_MASTER_ADDRESS)`,
             `decimals=${m.decimals}, custom_payload_api_uri=${uri || '(missing)'}`,
             envMatchesQuery
               ? undefined
-              : `Set MINTLESS_JETTON_MASTER_ADDRESS=${masterEq} for TEP-177 fixed metadata`,
+              : `Set JETTON_MASTER_ADDRESS=${masterEq} — mintless-jetton-metadata.json mirrors RMJ master`,
           ),
         );
       }

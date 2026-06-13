@@ -9,7 +9,7 @@
 
 **До отправки транзакции** минтер вычисляет адрес master и подставляет его в `custom_payload_api_uri` и on-chain metadata URL:
 
-- **RMJ:** `{backend}/jetton-metadata3.json` → `JETTON_MASTER_ADDRESS`
+- **RMJ:** `{backend}/jetton-metadata4.json` → `JETTON_MASTER_ADDRESS`
 - **TEP-177:** `{backend}/mintless-jetton-metadata.json` → `MINTLESS_JETTON_MASTER_ADDRESS`
 
 Оба типа могут работать **параллельно** на одном бэкенде. Опциональный макс. выпуск (RMJ), деплой, готовый `.env`.

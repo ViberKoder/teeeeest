@@ -26,6 +26,15 @@ export function configuredMintlessJettonMaster(): Address | null {
   return parseConfiguredMaster(config.MINTLESS_JETTON_MASTER_ADDRESS);
 }
 
+/**
+ * Master for `GET /mintless-jetton-metadata.json`.
+ * RMJ rolling mintless uses `JETTON_MASTER_ADDRESS` for both metadata URLs when set;
+ * pure TEP-177-only backends fall back to `MINTLESS_JETTON_MASTER_ADDRESS`.
+ */
+export function masterForHostedMintlessMetadata(): Address | null {
+  return configuredJettonMaster() ?? configuredMintlessJettonMaster();
+}
+
 /** Raw `0:…` path segment (canonical; also accepts EQ/UQ when parsing). */
 export function jettonMasterUrlSegment(master?: Address): string | null {
   const m = master ?? configuredJettonMaster();
