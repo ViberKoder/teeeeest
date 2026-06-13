@@ -2,7 +2,7 @@ import { Address, beginCell, storeStateInit, toNano } from '@ton/core';
 import { JettonMaster } from '@ton/ton';
 import {
   RollingMintlessWallet,
-  buildStandardMerkleClaimPayload,
+  buildRollingClaimPayload,
   payloadToBase64,
 } from '@rmj/contracts';
 import type { AirdropState } from './state';
@@ -157,7 +157,8 @@ export async function buildMintlessWalletResponse(
   }
 
   const proof = deps.state.tree.generateProof(owner);
-  const customPayload = buildStandardMerkleClaimPayload(proof);
+  const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
+  const customPayload = buildRollingClaimPayload({ proof, voucher });
   const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
   const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
 
@@ -174,7 +175,7 @@ export async function buildMintlessWalletResponse(
     transfer_hints: {
       attach_ton: toNano('0.3').toString(),
       attach_ton_deploy: toNano('0.35').toString(),
-      note: 'TEP-177: attach custom_payload on transfer; claim and send happen in one jetton-wallet transaction',
+      note: 'RMJ rolling claim (0xc9e56df3 + voucher): attach custom_payload on transfer; claim and send in one jetton-wallet tx',
     },
   };
 
