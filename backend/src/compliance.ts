@@ -173,6 +173,7 @@ async function validateMerkleDumpUri(dumpUri: string, merkleRoot: string): Promi
 }
 
 const OP_MERKLE_CLAIM = 0x0df602d6;
+const OP_ROLLING_CLAIM = 0xc9e56df3;
 
 function parseCustomPayloadOp(b64: string): number | null {
   try {
@@ -398,18 +399,24 @@ export async function runCompliance(params: {
     group: 'our_api',
     label: '/wallet/{owner} TEP-176 payload',
     pass: ourClaimReady,
-    note: claimOp === OP_MERKLE_CLAIM
-      ? `op 0x0df602d6 (TEP-177), ${sampleOwnerNote}`
-      : claimOp != null
-        ? `op 0x${claimOp.toString(16)}, ${sampleOwnerNote}`
-        : 'no sample owner with pending claim — tree empty or all claimed',
+    note: claimOp === OP_ROLLING_CLAIM
+      ? `op 0xc9e56df3 (RMJ rolling + voucher), ${sampleOwnerNote}`
+      : claimOp === OP_MERKLE_CLAIM
+        ? `op 0x0df602d6 (TEP-177), ${sampleOwnerNote}`
+        : claimOp != null
+          ? `op 0x${claimOp.toString(16)}, ${sampleOwnerNote}`
+          : 'no sample owner with pending claim — tree empty or all claimed',
   });
   push({
     id: 'api.wallet_opcode',
     group: 'our_api',
-    label: 'custom_payload op = merkle_airdrop_claim',
-    pass: claimOp === OP_MERKLE_CLAIM,
-    note: ourClaimReady ? sampleOwnerNote : 'Tonkeeper / MyTonWallet expect 0x0df602d6',
+    label: 'custom_payload op = rolling_claim (RMJ)',
+    pass: claimOp === OP_ROLLING_CLAIM || claimOp === OP_MERKLE_CLAIM,
+    note: ourClaimReady
+      ? sampleOwnerNote
+      : claimOp === OP_ROLLING_CLAIM
+        ? sampleOwnerNote
+        : 'RMJ Proof API uses 0xc9e56df3 + signed voucher; TEP-177 0x0df602d6 also accepted on-chain',
   });
   push({
     id: 'api.wallets_batch',

@@ -448,16 +448,16 @@ export async function runWalletDisplayAudit(params: {
               ? `unknown 0x${op.toString(16)}`
               : 'unparseable';
       const opSeverity: AuditSeverity =
-        op === OP_MERKLE_CLAIM ? 'ok' : op === OP_ROLLING_CLAIM ? 'warn' : 'fail';
+        op === OP_ROLLING_CLAIM || op === OP_MERKLE_CLAIM ? 'ok' : 'fail';
       checks.push(
         check(
           `wallet_api_${short}`,
           opSeverity,
           `Wallet API ${short}`,
           `amount=${(body.compressed_info as JsonRecord)?.amount ?? '?'}, custom_payload op=${opName}`,
-          op === OP_MERKLE_CLAIM
+          op === OP_ROLLING_CLAIM || op === OP_MERKLE_CLAIM
             ? undefined
-            : 'Wallets expect TEP-177 op 0x0df602d6 — redeploy wallet code or upgrade Proof API',
+            : 'Expected RMJ rolling_claim 0xc9e56df3 or TEP-177 0x0df602d6',
         ),
       );
     }
