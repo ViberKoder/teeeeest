@@ -14,6 +14,9 @@ import type { AirdropState } from './state';
 import { config } from './config';
 import { logger } from './logger';
 import { createTonClient } from './tonClient';
+import { fixedJettonMetadataUrl } from './jettonAddressPath';
+import { buildChangeContentBody, parseOffchainContentUri } from './jettonContent';
+import { epochMetadataUri, metadataUriEpoch } from './metadataUriUtils';
 import {
   isZeroRoot,
   readOnChainMerkle,
@@ -46,6 +49,11 @@ const WALLET_V5R1_CODE_HASH_HEX = Buffer.from(
   }).init.code.hash(),
 ).toString('hex');
 
+/** Internal message value for `update_merkle_root` (matches contract wrapper default). */
+const MERKLE_ROOT_MSG_VALUE = toNano('0.02');
+/** Internal message value for `change_content` — keep ≤0.01 TON per epoch. */
+const METADATA_BUMP_MSG_VALUE = toNano('0.008');
+
 export type RootSyncReport = {
   synced: boolean;
   reason?: string;
@@ -53,6 +61,8 @@ export type RootSyncReport = {
   target_epoch?: number;
   on_chain?: OnChainMerkle | null;
   broadcast_epoch?: number;
+  metadata_uri?: string;
+  metadata_bump_skipped?: boolean;
 };
 
 /**
@@ -201,6 +211,19 @@ export class RootUpdater {
     return readOnChainMerkle(this.client, Address.parse(config.JETTON_MASTER_ADDRESS));
   }
 
+  async readOnChainMetadataUri(): Promise<string | null> {
+    if (!this.client || !config.JETTON_MASTER_ADDRESS) return null;
+    try {
+      const master = Address.parse(config.JETTON_MASTER_ADDRESS);
+      const masterJetton = this.client.open(JettonMaster.create(master));
+      const jettonData = await masterJetton.getJettonData();
+      return parseOffchainContentUri(jettonData.content);
+    } catch (e) {
+      logger.warn({ err: e }, 'root updater: could not read on-chain metadata URI');
+      return null;
+    }
+  }
+
   /** True when off-chain tree root ≠ on-chain root (indexers will reject merkle dump). */
   async needsOnChainSync(state: AirdropState): Promise<boolean> {
     if (state.tree.isEmpty()) return false;
@@ -253,7 +276,11 @@ export class RootUpdater {
     this.running = true;
     try {
       const broadcastEpoch = onChain.epoch + 1;
-      const sent = await this.sendOnce(broadcastEpoch, targetRootHex);
+      const metadataUri = epochMetadataUri(fixedJettonMetadataUrl(config.PUBLIC_APP_URL), broadcastEpoch);
+      const onChainMetaUri = await this.readOnChainMetadataUri();
+      const needsMetadataBump = metadataUriEpoch(onChainMetaUri) !== broadcastEpoch;
+
+      const sent = await this.sendEpochCommit(broadcastEpoch, targetRootHex, needsMetadataBump ? metadataUri : null);
       if (!sent.ok) {
         return {
           synced: false,
@@ -261,6 +288,8 @@ export class RootUpdater {
           target_root: targetRootHex,
           on_chain: onChain,
           broadcast_epoch: broadcastEpoch,
+          metadata_uri: needsMetadataBump ? metadataUri : onChainMetaUri ?? undefined,
+          metadata_bump_skipped: !needsMetadataBump,
         };
       }
 
@@ -293,6 +322,10 @@ export class RootUpdater {
       await this.store.setKv('last_onchain_merkle_root', targetRootHex);
       await this.store.setKv('last_onchain_merkle_epoch', String(confirmed.epoch));
       await this.store.setKv('last_committed_root', targetRootHex);
+      if (needsMetadataBump) {
+        await this.store.setKv('last_metadata_bump_epoch', String(broadcastEpoch));
+        await this.store.setKv('last_metadata_bump_uri', metadataUri);
+      }
       await this.store.updateEpochCommitted(
         broadcastEpoch,
         `confirmed:${confirmed.epoch}`,
@@ -305,6 +338,8 @@ export class RootUpdater {
           on_chain_epoch: confirmed.epoch,
           root: targetRootHex,
           off_chain_db_epoch: state.epoch,
+          metadata_uri: needsMetadataBump ? metadataUri : onChainMetaUri,
+          metadata_bump_skipped: !needsMetadataBump,
         },
         'merkle root committed on-chain',
       );
@@ -315,6 +350,8 @@ export class RootUpdater {
         target_epoch: broadcastEpoch,
         on_chain: confirmed,
         broadcast_epoch: broadcastEpoch,
+        metadata_uri: needsMetadataBump ? metadataUri : onChainMetaUri ?? undefined,
+        metadata_bump_skipped: !needsMetadataBump,
       };
     } catch (e) {
       const err = e as Error;
@@ -474,9 +511,10 @@ export class RootUpdater {
     return wallet;
   }
 
-  private async sendOnce(
+  private async sendEpochCommit(
     epoch: number,
     rootHex: string,
+    metadataUri: string | null,
   ): Promise<{ ok: boolean; reason?: string; seqno?: number }> {
     if (!this.client || !this.wallet || !this.keypair) {
       return { ok: false, reason: 'not-initialised' };
@@ -537,7 +575,7 @@ export class RootUpdater {
     const seqno = await walletContract.getSeqno();
 
     const rootBigint = BigInt(rootHex);
-    const body = beginCell()
+    const merkleBody = beginCell()
       .storeUint(OpCodes.updateMerkleRoot, 32)
       .storeUint(BigInt(epoch), 64)
       .storeUint(rootBigint, 256)
@@ -547,11 +585,22 @@ export class RootUpdater {
     const messages = [
       internal({
         to: master,
-        value: toNano('0.05'),
-        body,
+        value: MERKLE_ROOT_MSG_VALUE,
+        body: merkleBody,
         bounce: true,
       }),
     ];
+
+    if (metadataUri) {
+      messages.push(
+        internal({
+          to: master,
+          value: METADATA_BUMP_MSG_VALUE,
+          body: buildChangeContentBody(metadataUri),
+          bounce: true,
+        }),
+      );
+    }
 
     if (config.ADMIN_WALLET_VERSION === 'v5r1') {
       await walletContract.sendTransfer({
@@ -570,7 +619,10 @@ export class RootUpdater {
       });
     }
 
-    logger.info({ epoch, rootHex, seqno }, 'update_merkle_root broadcast');
+    logger.info(
+      { epoch, rootHex, seqno, metadata_uri: metadataUri, metadata_bump: Boolean(metadataUri) },
+      'update_merkle_root (+ metadata bump) broadcast',
+    );
     return { ok: true, seqno };
   }
 }

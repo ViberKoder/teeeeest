@@ -59,7 +59,7 @@ async function main() {
   registerMintlessCompliance(app, { store, state });
   registerJettonWalletApi(app, { signer: voucherSigner });
   registerJettonRegistryApi(app, { store });
-  registerPublicJettonMetadata(app, { store });
+  registerPublicJettonMetadata(app, { store, state });
   registerProofApi(app, { state, gameServer, signer: voucherSigner });
   registerGameApi(app, { gameServer });
   registerAdminApi(app, { gameServer, treeBuilder, rootUpdater, state });

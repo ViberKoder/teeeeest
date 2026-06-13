@@ -11,11 +11,15 @@ import {
   getToncenterIndexerStatus,
   metadataUriPathname,
 } from '../toncenterIndexer';
+import { epochMetadataUri, metadataUriEpoch } from '../metadataUriUtils';
 import { configuredJettonMaster, parseJettonMasterParam } from '../jettonMaster';
 import { buildJettonMetadataJson } from '../jettonMetadata';
 import { loadJettonRegistry } from '../jettonRegistry';
 import { jettonMasterFriendly } from '../jettonAddressPath';
 import { logger } from '../logger';
+
+/** Admin `change_content` attach value — keep ≤0.01 TON. */
+const METADATA_BUMP_TON = toNano('0.008');
 
 export interface MintlessComplianceDeps {
   store: AppStore;
@@ -69,6 +73,7 @@ export function registerMintlessCompliance(app: FastifyInstance, deps: MintlessC
         network: config.TON_NETWORK,
         onChainMaster: master,
         ourMetadataUri: fixedRmjMetadataUri(),
+        nextMetadataEpoch: deps.state.epoch,
         sampleOwnerAddress: req.query.owner ?? config.ADMIN_WALLET_ADDRESS ?? null,
       });
       return status;
@@ -93,6 +98,8 @@ export function registerMintlessCompliance(app: FastifyInstance, deps: MintlessC
           image: reg?.image,
           decimals: reg?.decimals,
           kind: 'rmj',
+          rollingEpoch: deps.state.epoch,
+          rollingRootHex: deps.state.rootHex(),
         }) ?? null;
 
       if (!body) {
@@ -116,47 +123,50 @@ export function registerMintlessCompliance(app: FastifyInstance, deps: MintlessC
       }
 
       const baseUri = fixedRmjMetadataUri();
+      const epochTargetUri = epochMetadataUri(baseUri, deps.state.epoch);
       const indexer = await getToncenterIndexerStatus({
         network: config.TON_NETWORK,
         onChainMaster: master,
         ourMetadataUri: baseUri,
+        nextMetadataEpoch: deps.state.epoch,
         sampleOwnerAddress: req.query.owner ?? config.ADMIN_WALLET_ADDRESS ?? null,
       });
       const currentUri = indexer.onChainMetadataUri;
-      const targetUri = baseUri;
+      const onChainEpoch = metadataUriEpoch(currentUri);
       const needsSync =
-        !!currentUri && metadataUriPathname(currentUri) !== metadataUriPathname(targetUri);
+        !!currentUri && metadataUriPathname(currentUri) !== metadataUriPathname(baseUri);
       const needsBump =
-        !needsSync &&
-        !!indexer.bumpTargetUri &&
-        (!indexer.mintlessInfoIndexed || indexer.recommendedAction === 'bump_metadata_uri');
+        onChainEpoch !== deps.state.epoch ||
+        (!!indexer.bumpTargetUri &&
+          (!indexer.mintlessInfoIndexed || indexer.recommendedAction === 'bump_metadata_uri'));
 
       return {
         onChainMaster: master.toRawString(),
         currentUri,
-        targetUri,
+        targetUri: epochTargetUri,
+        onChainMetadataEpoch: onChainEpoch,
+        targetMetadataEpoch: deps.state.epoch,
         needsSync,
         needsBump,
-        bumpTargetUri: indexer.bumpTargetUri,
+        bumpTargetUri: indexer.bumpTargetUri ?? epochTargetUri,
         toncenterCacheStale: indexer.cacheStale,
         mintlessInfoIndexed: indexer.mintlessInfoIndexed,
         rolling: {
           epoch: deps.state.epoch,
           merkle_root: deps.state.rootHex(),
-          note: 'RMJ rolling mint — merkle dump refreshes each epoch; re-index after root updates',
+          note:
+            'RMJ rolling mint — rootUpdater auto change_content each epoch (?v=epoch + dump ?epoch=&root=)',
         },
         message: {
           address: jettonMasterFriendly(master),
-          amount: toNano('0.05').toString(),
-          payload: buildChangeContentPayload(targetUri),
+          amount: METADATA_BUMP_TON.toString(),
+          payload: buildChangeContentPayload(epochTargetUri),
         },
-        bumpMessage: indexer.bumpTargetUri
-          ? {
-              address: jettonMasterFriendly(master),
-              amount: toNano('0.05').toString(),
-              payload: buildChangeContentPayload(indexer.bumpTargetUri),
-            }
-          : null,
+        bumpMessage: {
+          address: jettonMasterFriendly(master),
+          amount: METADATA_BUMP_TON.toString(),
+          payload: buildChangeContentPayload(indexer.bumpTargetUri ?? epochTargetUri),
+        },
       };
     },
   );
@@ -190,14 +200,16 @@ export function registerMintlessCompliance(app: FastifyInstance, deps: MintlessC
     const baseUri = fixedRmjMetadataUri();
     const action = body.action ?? 'sync';
     const targetUri =
-      action === 'bump' ? bumpMetadataUri(body.metadataUri ? String(body.metadataUri) : baseUri) : baseUri;
+      action === 'bump'
+        ? bumpMetadataUri(body.metadataUri ? String(body.metadataUri) : baseUri)
+        : epochMetadataUri(baseUri, deps.state.epoch);
 
     return {
       targetUri,
       action,
       message: {
         address: jettonMasterFriendly(master),
-        amount: toNano('0.05').toString(),
+        amount: METADATA_BUMP_TON.toString(),
         payload: buildChangeContentPayload(targetUri),
       },
     };

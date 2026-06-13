@@ -11,6 +11,7 @@ import {
   mintlessMerkleDumpUrl,
   parseJettonMasterPathSegment,
 } from './jettonAddressPath';
+import { cacheBustedMerkleDumpUri } from './metadataUriUtils';
 
 /**
  * TEP-64 jetton metadata JSON + TEP offchain-payloads `custom_payload_api_uri`.
@@ -31,6 +32,7 @@ export {
   jettonMasterRaw,
   mintlessMerkleDumpUrl,
 };
+export { epochMetadataUri, cacheBustedMerkleDumpUri } from './metadataUriUtils';
 
 /**
  * Build TEP-64 metadata body. `custom_payload_api_uri` is the **final** API root
@@ -62,6 +64,9 @@ export function buildJettonMetadataJson(
     image?: string;
     decimals?: string;
     kind?: JettonMetadataKind;
+    /** Rolling RMJ: cache-bust dump URI for TonAPI/Toncenter re-index each epoch. */
+    rollingEpoch?: number;
+    rollingRootHex?: string;
   },
 ): JettonMetadataJson | null {
   const base = (opts?.publicAppUrl ?? config.PUBLIC_APP_URL).trim().replace(/\/$/, '');
@@ -74,7 +79,11 @@ export function buildJettonMetadataJson(
   }
 
   const customPayloadApiUri = customPayloadApiRoot(base, master);
-  const merkleDumpUri = mintlessMerkleDumpUrl(base, master);
+  const merkleDumpBase = mintlessMerkleDumpUrl(base, master);
+  const merkleDumpUri =
+    opts?.rollingEpoch != null && opts?.rollingRootHex
+      ? cacheBustedMerkleDumpUri(merkleDumpBase, opts.rollingEpoch, opts.rollingRootHex)
+      : merkleDumpBase;
 
   const decimals =
     opts?.decimals ??

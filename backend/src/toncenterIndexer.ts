@@ -1,10 +1,21 @@
-import { Address, beginCell } from '@ton/core';
+import { Address } from '@ton/core';
 import { config } from './config';
 import { fixedJettonMetadataUrl, jettonMasterFriendly } from './jettonAddressPath';
-import { bumpMetadataUri, metadataUriPathname, metadataUriStale } from './metadataUriUtils';
-import { toOffchainContentCell } from './jettonContent';
+import {
+  bumpMetadataUri,
+  epochMetadataUri,
+  metadataUriEpoch,
+  metadataUriPathname,
+  metadataUriStale,
+} from './metadataUriUtils';
+import { buildChangeContentBody } from './jettonContent';
 
-export { bumpMetadataUri, metadataUriPathname, metadataUriStale } from './metadataUriUtils';
+export {
+  bumpMetadataUri,
+  epochMetadataUri,
+  metadataUriPathname,
+  metadataUriStale,
+} from './metadataUriUtils';
 
 export type ToncenterIndexerStatus = {
   network: 'mainnet' | 'testnet';
@@ -75,24 +86,17 @@ export function fixedRmjMetadataUri(publicAppUrl?: string): string {
   return fixedJettonMetadataUrl(base);
 }
 
-const OP_CHANGE_CONTENT = 4;
-
 /** RMJ master `change_content` (TEP-74 op 4) with off-chain URI cell. */
 export function buildChangeContentPayload(metadataUri: string): string {
-  const content = toOffchainContentCell(metadataUri);
-  return beginCell()
-    .storeUint(OP_CHANGE_CONTENT, 32)
-    .storeUint(0, 64)
-    .storeRef(content)
-    .endCell()
-    .toBoc()
-    .toString('base64');
+  return buildChangeContentBody(metadataUri).toBoc().toString('base64');
 }
 
 export async function getToncenterIndexerStatus(params: {
   network: 'mainnet' | 'testnet';
   onChainMaster: Address;
   ourMetadataUri?: string;
+  /** Next epoch metadata bump target (RMJ rolling). Defaults to on-chain epoch + 1. */
+  nextMetadataEpoch?: number;
   sampleOwnerAddress?: string | null;
 }): Promise<ToncenterIndexerStatus> {
   const { network, onChainMaster, sampleOwnerAddress } = params;
@@ -160,18 +164,20 @@ export async function getToncenterIndexerStatus(params: {
   let recommendedAction: ToncenterIndexerStatus['recommendedAction'] = 'ready';
   let bumpTargetUri: string | null = null;
 
-  const bumpBase = onChainMetadataUri ?? ourMetadataUri;
+  const bumpEpoch =
+    params.nextMetadataEpoch ?? Math.max((metadataUriEpoch(onChainMetadataUri) ?? 0) + 1, 1);
+
   if (!mintlessInfoIndexed) {
     if (cacheStale) {
       recommendedAction = 'bump_metadata_uri';
-      bumpTargetUri = bumpMetadataUri(bumpBase);
+      bumpTargetUri = epochMetadataUri(fixedRmjMetadataUri(), bumpEpoch);
     } else {
       recommendedAction = 'request_toncenter_indexing';
-      bumpTargetUri = bumpMetadataUri(bumpBase);
+      bumpTargetUri = epochMetadataUri(fixedRmjMetadataUri(), bumpEpoch);
     }
   } else if (cacheStale) {
     recommendedAction = 'wait';
-    bumpTargetUri = bumpMetadataUri(bumpBase);
+    bumpTargetUri = epochMetadataUri(fixedRmjMetadataUri(), bumpEpoch);
   }
 
   const apiRoot = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');
