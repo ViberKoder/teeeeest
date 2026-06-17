@@ -54,7 +54,7 @@ export type MintlessWalletBatchItem = {
 
 export { formatCompressedInfo, isWithinClaimWindow } from './mintlessWalletFormat';
 
-(owner: Address): Promise<bigint | null> {
+async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
   const master = configuredJettonMaster();
   if (!master) return null;
   try {
