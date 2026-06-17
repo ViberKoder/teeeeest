@@ -5,6 +5,15 @@ export type MintlessCompressedInfo = {
   expired_at: string;
 };
 
+/** Tonkeeper claim-api-go: attach custom_payload only inside [start_from, expired_at]. */
+export function isWithinClaimWindow(
+  startFrom: number,
+  expiredAt: number,
+  nowSec = Math.floor(Date.now() / 1000),
+): boolean {
+  return startFrom <= nowSec && nowSec <= expiredAt;
+}
+
 export function formatCompressedInfo(params: {
   amount: bigint;
   startFrom: number;

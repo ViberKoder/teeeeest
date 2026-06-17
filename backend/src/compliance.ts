@@ -389,9 +389,9 @@ export async function runCompliance(params: {
     ? parseCustomPayloadOp(String(walletClaim.custom_payload))
     : null;
   const ourClaimReady =
-    !!walletClaim?.custom_payload &&
     walletClaim?.state_init !== undefined &&
-    !!walletClaim?.compressed_info;
+    !!walletClaim?.compressed_info &&
+    (claimOp === OP_MERKLE_CLAIM || !!walletClaim?.custom_payload);
   const sampleOwnerNote = sampleOwner ? `owner ${Address.parse(sampleOwner).toRawString()}` : 'no pending claim in tree';
 
   push({
@@ -399,24 +399,30 @@ export async function runCompliance(params: {
     group: 'our_api',
     label: '/wallet/{owner} TEP-176 payload',
     pass: ourClaimReady,
-    note: claimOp === OP_ROLLING_CLAIM
-      ? `op 0xc9e56df3 (RMJ rolling + voucher), ${sampleOwnerNote}`
-      : claimOp === OP_MERKLE_CLAIM
-        ? `op 0x0df602d6 (TEP-177), ${sampleOwnerNote}`
-        : claimOp != null
-          ? `op 0x${claimOp.toString(16)}, ${sampleOwnerNote}`
-          : 'no sample owner with pending claim — tree empty or all claimed',
+    note: claimOp === OP_MERKLE_CLAIM
+      ? `op 0x0df602d6 (TEP-177 / claim-api-go), ${sampleOwnerNote}`
+      : claimOp === OP_ROLLING_CLAIM
+        ? `op 0xc9e56df3 (legacy rolling), ${sampleOwnerNote}`
+        : walletClaim?.custom_payload === ''
+          ? `empty custom_payload (outside claim window), ${sampleOwnerNote}`
+          : claimOp != null
+            ? `op 0x${claimOp.toString(16)}, ${sampleOwnerNote}`
+            : 'no sample owner with pending claim — tree empty or all claimed',
   });
   push({
     id: 'api.wallet_opcode',
     group: 'our_api',
-    label: 'custom_payload op = rolling_claim (RMJ)',
-    pass: claimOp === OP_ROLLING_CLAIM || claimOp === OP_MERKLE_CLAIM,
+    label: 'custom_payload op = merkle_airdrop_claim (TEP-177)',
+    pass: claimOp === OP_MERKLE_CLAIM,
     note: ourClaimReady
-      ? sampleOwnerNote
-      : claimOp === OP_ROLLING_CLAIM
+      ? claimOp === OP_MERKLE_CLAIM
         ? sampleOwnerNote
-        : 'RMJ Proof API uses 0xc9e56df3 + signed voucher; TEP-177 0x0df602d6 also accepted on-chain',
+        : claimOp === OP_ROLLING_CLAIM
+          ? `legacy rolling_claim 0xc9e56df3 — ${sampleOwnerNote}`
+          : walletClaim?.custom_payload === ''
+            ? `${sampleOwnerNote} — empty custom_payload (outside claim window)`
+            : sampleOwnerNote
+      : 'no sample owner with pending claim — tree empty or all claimed',
   });
   push({
     id: 'api.wallets_batch',

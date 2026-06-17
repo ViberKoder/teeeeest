@@ -15,7 +15,7 @@
  *   GET {custom_payload_api_uri}/wallet/{owner_raw}
  *      -> 200 { owner, jetton_wallet, custom_payload, state_init,
  *               compressed_info: { amount, start_from, expired_at } (all strings, TEP-176),
- *               epoch?, root? (RMJ extras, omitted from /wallets batch)
+ *               epoch?, root? (RMJ extras on /wallet only; /wallets batch is owner + compressed_info) }
  *      -> 404 nothing-to-claim / address-not-in-tree
  *
  *   GET {backendBase}/api/v1/balance/{owner}   (RMJ extension)

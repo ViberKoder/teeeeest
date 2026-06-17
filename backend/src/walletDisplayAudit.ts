@@ -451,16 +451,26 @@ export async function runWalletDisplayAudit(params: {
               ? `unknown 0x${op.toString(16)}`
               : 'unparseable';
       const opSeverity: AuditSeverity =
-        op === OP_ROLLING_CLAIM || op === OP_MERKLE_CLAIM ? 'ok' : 'fail';
+        op === OP_MERKLE_CLAIM
+          ? 'ok'
+          : op === OP_ROLLING_CLAIM
+            ? 'warn'
+            : b64 === ''
+              ? 'warn'
+              : 'fail';
       checks.push(
         check(
           `wallet_api_${short}`,
           opSeverity,
           `Wallet API ${short}`,
           `amount=${(body.compressed_info as JsonRecord)?.amount ?? '?'}, custom_payload op=${opName}`,
-          op === OP_ROLLING_CLAIM || op === OP_MERKLE_CLAIM
+          op === OP_MERKLE_CLAIM
             ? undefined
-            : 'Expected RMJ rolling_claim 0xc9e56df3 or TEP-177 0x0df602d6',
+            : op === OP_ROLLING_CLAIM
+              ? 'Legacy rolling_claim — upgrade backend to TEP-177 0x0df602d6'
+              : b64 === ''
+                ? 'Empty custom_payload — outside [start_from, expired_at] or nothing to claim'
+                : 'Expected TEP-177 merkle_airdrop_claim 0x0df602d6',
         ),
       );
     }

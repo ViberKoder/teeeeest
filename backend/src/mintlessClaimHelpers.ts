@@ -2,7 +2,7 @@ import { Address, beginCell, storeStateInit, toNano } from '@ton/core';
 import { JettonMaster } from '@ton/ton';
 import {
   RollingMintlessWallet,
-  buildRollingClaimPayload,
+  buildStandardMerkleClaimPayload,
   payloadToBase64,
 } from '@rmj/contracts';
 import type { AirdropState } from './state';
@@ -14,10 +14,12 @@ import {
   compareOwnerAddress,
   sortOwners,
   WALLET_BATCH_MAX,
+  WALLET_BATCH_MIN,
 } from './mintlessBatchUtils';
-import { formatCompressedInfo, type MintlessCompressedInfo } from './mintlessWalletFormat';
+import { formatCompressedInfo, isWithinClaimWindow, type MintlessCompressedInfo } from './mintlessWalletFormat';
 
 export {
+  WALLET_BATCH_MIN,
   WALLET_BATCH_MAX,
   WALLET_BATCH_DEFAULT,
   WALLET_BATCH_ZERO,
@@ -27,7 +29,7 @@ export {
   parseWalletBatchNextFrom,
 } from './mintlessBatchUtils';
 
-/** TEP offchain-payloads / ton-community mintless-jetton wallet response. */
+/** TEP offchain-payloads / tonkeeper claim-api-go wallet response. */
 export type MintlessWalletResponse = {
   owner: string;
   jetton_wallet: string;
@@ -44,9 +46,15 @@ export type MintlessWalletResponse = {
   };
 };
 
-export { formatCompressedInfo } from './mintlessWalletFormat';
+/** TEP-176 batch item (Tonkeeper claim-api-go /wallets). */
+export type MintlessWalletBatchItem = {
+  owner: string;
+  compressed_info: MintlessCompressedInfo;
+};
 
-async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
+export { formatCompressedInfo, isWithinClaimWindow } from './mintlessWalletFormat';
+
+(owner: Address): Promise<bigint | null> {
   const master = configuredJettonMaster();
   if (!master) return null;
   try {
@@ -133,9 +141,9 @@ export type MintlessClaimDeps = {
 };
 
 /**
- * Build TEP-176 wallet claim for one owner.
- * `compressed_info.amount` is the **pending delta** (tree cumulative − on-chain already_claimed)
- * so wallets show correct unclaimed balance during rolling accrual.
+ * Build TEP-176 / Tonkeeper claim-api-go wallet claim for one owner.
+ * `compressed_info.amount` is the Merkle leaf cumulative (claim-api style).
+ * `custom_payload` uses TEP-177 `merkle_airdrop_claim` (`0x0df602d6`) when claimable.
  */
 export async function buildMintlessWalletResponse(
   owner: Address,
@@ -157,25 +165,27 @@ export async function buildMintlessWalletResponse(
   }
 
   const proof = deps.state.tree.generateProof(owner);
-  const voucher = deps.signer.signRoot(deps.state.epoch, deps.state.rootBigint());
-  const customPayload = buildRollingClaimPayload({ proof, voucher });
+  const withinWindow = isWithinClaimWindow(leaf.startFrom, leaf.expiredAt);
+  const customPayload = withinWindow
+    ? payloadToBase64(buildStandardMerkleClaimPayload(proof))
+    : '';
   const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
   const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
 
   const body: MintlessWalletResponse = {
     owner: owner.toRawString(),
     jetton_wallet: jettonWallet,
-    custom_payload: payloadToBase64(customPayload),
+    custom_payload: customPayload,
     state_init: stateInit,
     compressed_info: formatCompressedInfo({
-      amount: delta,
+      amount: treeAmt,
       startFrom: leaf.startFrom,
       expiredAt: leaf.expiredAt,
     }),
     transfer_hints: {
       attach_ton: toNano('0.3').toString(),
       attach_ton_deploy: toNano('0.35').toString(),
-      note: 'RMJ rolling claim (0xc9e56df3 + voucher): attach custom_payload on transfer; claim and send in one jetton-wallet tx',
+      note: 'TEP-177 merkle_airdrop_claim (0x0df602d6): attach custom_payload on transfer; claim and send in one jetton-wallet tx',
     },
   };
 
@@ -192,10 +202,10 @@ export async function listWalletClaimBatch(
   deps: MintlessClaimDeps,
   nextFrom: Address,
   count: number,
-): Promise<{ wallets: MintlessWalletResponse[]; next_from: string }> {
+): Promise<{ wallets: MintlessWalletBatchItem[]; next_from: string }> {
   const dict = deps.state.tree.inner();
   const owners = sortOwners(dict.keys());
-  const limit = Math.min(Math.max(count, 1), WALLET_BATCH_MAX);
+  const limit = Math.min(Math.max(count, WALLET_BATCH_MIN), WALLET_BATCH_MAX);
   const startIdx = owners.findIndex((owner) => compareOwnerAddress(owner, nextFrom) >= 0);
 
   if (startIdx === -1) {
@@ -203,13 +213,17 @@ export async function listWalletClaimBatch(
   }
 
   const batchOwners = owners.slice(startIdx, startIdx + limit);
-  const wallets: MintlessWalletResponse[] = [];
-  for (const owner of batchOwners) {
-    const wallet = await buildMintlessWalletResponse(owner, deps, { includeRollingExtras: false });
-    if (wallet) {
-      wallets.push(wallet);
-    }
-  }
+  const wallets: MintlessWalletBatchItem[] = batchOwners.map((owner) => {
+    const leaf = deps.state.tree.get(owner)!;
+    return {
+      owner: owner.toRawString(),
+      compressed_info: formatCompressedInfo({
+        amount: leaf.cumulativeAmount,
+        startFrom: leaf.startFrom,
+        expiredAt: leaf.expiredAt,
+      }),
+    };
+  });
 
   const nextIdx = startIdx + limit;
   const next_from = nextIdx < owners.length ? owners[nextIdx]!.toRawString() : '';
