@@ -121,7 +121,7 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     },
   );
 
-  /** TEP-176 batch endpoint for Toncenter / MyTonWallet mintless_info indexing. */
+  /** TEP-176 batch (Tonkeeper claim-api-go: owner + compressed_info, count 5–10000). */
   app.get<{
     Params: { master: string };
     Querystring: { next_from?: string; count?: string };

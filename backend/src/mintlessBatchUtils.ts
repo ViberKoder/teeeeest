@@ -1,6 +1,9 @@
 import { Address } from '@ton/core';
 
-export const WALLET_BATCH_MAX = 100;
+/** TEP-176 / Tonkeeper claim-api-go: minimum batch page size. */
+export const WALLET_BATCH_MIN = 5;
+/** TEP-176 / Tonkeeper claim-api-go: maximum batch page size. */
+export const WALLET_BATCH_MAX = 10_000;
 export const WALLET_BATCH_DEFAULT = 100;
 export const WALLET_BATCH_ZERO =
   '0:0000000000000000000000000000000000000000000000000000000000000000';
@@ -16,7 +19,8 @@ export function sortOwners(owners: Iterable<Address>): Address[] {
 export function parseWalletBatchCount(raw: string | undefined): number {
   if (!raw) return WALLET_BATCH_DEFAULT;
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return WALLET_BATCH_DEFAULT;
+  if (!Number.isFinite(parsed)) return WALLET_BATCH_DEFAULT;
+  if (parsed < WALLET_BATCH_MIN) return WALLET_BATCH_MIN;
   return Math.min(parsed, WALLET_BATCH_MAX);
 }
 

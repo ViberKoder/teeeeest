@@ -101,10 +101,9 @@ const userAddress = connectedWallet.account.address; // raw format
 The user does **not** do anything special. When they next transfer or
 swap your jetton, Tonkeeper (or any TEP-177-aware wallet) automatically
 hits your `custom_payload_api_uri`, receives the BoC produced by our
-Proof API, and attaches it to the transfer. The jetton-wallet's
-`send_tokens` handler sees the rolling-claim op inside the
-`custom_payload`, materializes the delta, and proceeds with the
-transfer.
+Proof API emits **TEP-177** `custom_payload` (op `0x0df602d6` + merkle proof), matching
+[Tonkeeper claim-api-go](https://github.com/tonkeeper/claim-api-go). The jetton-wallet's
+`send_tokens` handler verifies the proof and credits `cumulative − already_claimed`.
 
 From the user's perspective: they just see "balance magically grows"
 whenever they next touch the jetton.

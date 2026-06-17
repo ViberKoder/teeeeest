@@ -19,11 +19,12 @@ describe('mintlessWalletBatch helpers', () => {
     expect(compareOwnerAddress(a, b)).toBeLessThan(0);
   });
 
-  test('parseWalletBatchCount clamps to max', () => {
+  test('parseWalletBatchCount clamps to claim-api min/max', () => {
     expect(parseWalletBatchCount(undefined)).toBe(100);
     expect(parseWalletBatchCount('5')).toBe(5);
-    expect(parseWalletBatchCount('999')).toBe(100);
-    expect(parseWalletBatchCount('0')).toBe(100);
+    expect(parseWalletBatchCount('99999')).toBe(10_000);
+    expect(parseWalletBatchCount('0')).toBe(5);
+    expect(parseWalletBatchCount('3')).toBe(5);
   });
 
   test('parseWalletBatchNextFrom defaults to zero address', () => {
