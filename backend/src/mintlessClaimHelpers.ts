@@ -35,7 +35,7 @@ export type MintlessWalletResponse = {
   owner: string;
   jetton_wallet: string;
   custom_payload: string;
-  state_init: string | null;
+  state_init?: string | null;
   compressed_info: MintlessCompressedInfo;
   epoch?: number;
   root?: string;

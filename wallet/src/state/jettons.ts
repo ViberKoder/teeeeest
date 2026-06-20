@@ -24,6 +24,7 @@ import {
 import {
   getJettonInfo,
   getJettonWalletAddress,
+  getAccountInfo,
   listJettons,
   type JettonBalanceRaw,
   type Network,
@@ -52,6 +53,10 @@ export interface JettonEntry {
   /** Optional richer view of the off-chain cumulative (RMJ backend extension). */
   rmjOffchain: RmjOffchainBalance | null;
   customPayloadApiUri?: string;
+  /** TonAPI mintless balance when Proof API is temporarily unreachable (display + draft guard). */
+  tonapiMintlessBalanceNano?: string;
+  /** Proof API responded successfully for this owner. */
+  proofApiReachable?: boolean;
 }
 
 function asFriendly(addr: string, net: Network): string {
@@ -80,13 +85,31 @@ async function enrichRmj(
   master: string,
   customPayloadApiUri: string,
   owner: string,
-): Promise<{ pending: RmjPending | null; offchain: RmjOffchainBalance | null }> {
+  tonapiBalanceNano: string,
+): Promise<{
+  pending: RmjPending | null;
+  offchain: RmjOffchainBalance | null;
+  proofApiReachable: boolean;
+  tonapiMintlessBalanceNano: string;
+}> {
   const [pending, offchain] = await Promise.all([
     safe(fetchRmjPending(customPayloadApiUri, owner)),
     safe(fetchRmjOffchainBalance(customPayloadApiUri, owner)),
   ]);
   void master;
-  return { pending, offchain };
+  const tonapiMintlessBalanceNano = BigInt(tonapiBalanceNano) > 0n ? tonapiBalanceNano : '0';
+  return {
+    pending,
+    offchain,
+    proofApiReachable: pending !== null,
+    tonapiMintlessBalanceNano,
+  };
+}
+
+async function resolveWalletActive(net: Network, jettonWallet: string): Promise<boolean> {
+  if (!jettonWallet) return false;
+  const info = await safe(getAccountInfo(net, jettonWallet));
+  return info?.status === 'active';
 }
 
 function fromIndexerEntry(b: JettonBalanceRaw, net: Network): JettonEntry {
@@ -100,12 +123,13 @@ function fromIndexerEntry(b: JettonBalanceRaw, net: Network): JettonEntry {
     image: b.jetton.image,
     description: b.jetton.description,
     jettonWallet: b.walletAddress,
-    walletActive: true,
+    walletActive: false,
     onchainBalanceNano: b.balance,
     isRmj,
     rmjPending: null,
     rmjOffchain: null,
     customPayloadApiUri: b.jetton.custom_payload_api_uri,
+    tonapiMintlessBalanceNano: isRmj && BigInt(b.balance || '0') > 0n ? b.balance : '0',
   };
 }
 
@@ -160,10 +184,18 @@ export async function buildJettonList(
 
   await Promise.all(
     entries.map(async (e) => {
+      e.walletActive = await resolveWalletActive(net, e.jettonWallet);
       if (!e.isRmj || !e.customPayloadApiUri) return;
-      const { pending, offchain } = await enrichRmj(e.master, e.customPayloadApiUri, owner);
+      const { pending, offchain, proofApiReachable, tonapiMintlessBalanceNano } = await enrichRmj(
+        e.master,
+        e.customPayloadApiUri,
+        owner,
+        e.onchainBalanceNano,
+      );
       e.rmjPending = pending;
       e.rmjOffchain = offchain;
+      e.proofApiReachable = proofApiReachable;
+      e.tonapiMintlessBalanceNano = tonapiMintlessBalanceNano;
     }),
   );
 
@@ -181,9 +213,14 @@ export async function buildJettonList(
   return entries;
 }
 
-/** Total displayed nano-jetton amount = on-chain + pending RMJ delta. */
+/** Total displayed nano-jetton amount for UI and draft checks. */
 export function totalNano(entry: JettonEntry): bigint {
-  const a = BigInt(entry.onchainBalanceNano);
-  const b = entry.rmjPending ? BigInt(entry.rmjPending.amount) : 0n;
-  return a + b;
+  if (entry.rmjPending) {
+    return BigInt(entry.rmjPending.amount);
+  }
+  const onchain = BigInt(entry.onchainBalanceNano);
+  if (entry.isRmj && !entry.walletActive && onchain > 0n) {
+    return onchain;
+  }
+  return onchain;
 }

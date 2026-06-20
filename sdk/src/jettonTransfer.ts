@@ -156,7 +156,7 @@ export async function prepareMintlessTransfer(
   const needsClaim = jw.needsDeploy || claim !== null;
   if (needsClaim && !claim) {
     throw new Error(
-      'Mintless proof unavailable — earn balance and wait for Merkle epoch, or try again shortly',
+      'Mintless proof unavailable — external wallets show InsufficientBalance until GET …/wallet/{owner} returns 200. Retry shortly.',
     );
   }
 

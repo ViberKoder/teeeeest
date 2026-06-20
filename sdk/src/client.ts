@@ -290,29 +290,37 @@ export class RMJClient {
       );
     }
     const masterSeg = jettonMasterPathSegment(master, this.tonNetwork);
-    try {
-      const r = await this.request<{
-        owner: string;
-        jetton_wallet: string;
-        custom_payload: string;
-        state_init: string | null;
-        compressed_info: { amount: string; start_from: string; expired_at: string };
-        epoch?: number;
-        root?: string;
-      }>(`/api/v1/jettons/${masterSeg}/wallet/${addressToApiPathSegment(address)}`);
-      return {
-        customPayload: r.custom_payload,
-        stateInit: r.state_init,
-        amount: r.compressed_info.amount,
-        startFrom: Number(r.compressed_info.start_from),
-        expiredAt: Number(r.compressed_info.expired_at),
-        epoch: r.epoch ?? 0,
-        root: r.root ?? '',
-      };
-    } catch (e) {
-      if (e instanceof RMJError && e.status === 404) return null;
-      throw e;
+    const ownerSeg = encodeURIComponent(addressToApiPathSegment(address));
+    const path = `/api/v1/jettons/${masterSeg}/wallet/${ownerSeg}`;
+    const maxAttempts = 3;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const r = await this.request<{
+          owner: string;
+          jetton_wallet: string;
+          custom_payload: string;
+          state_init?: string | null;
+          compressed_info: { amount: string; start_from: string; expired_at: string };
+          epoch?: number;
+          root?: string;
+        }>(path);
+        return {
+          customPayload: r.custom_payload,
+          stateInit: r.state_init ?? null,
+          amount: r.compressed_info.amount,
+          startFrom: Number(r.compressed_info.start_from),
+          expiredAt: Number(r.compressed_info.expired_at),
+          epoch: r.epoch ?? 0,
+          root: r.root ?? '',
+        };
+      } catch (e) {
+        if (e instanceof RMJError && e.status === 404) return null;
+        if (attempt === maxAttempts - 1) throw e;
+        await new Promise((resolve) => setTimeout(resolve, 400 * (attempt + 1)));
+      }
     }
+    return null;
   }
 
   async getStatus(): Promise<BackendStatus> {
