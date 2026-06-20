@@ -54,6 +54,20 @@ export type MintlessWalletBatchItem = {
 
 export { formatCompressedInfo, isWithinClaimWindow } from './mintlessWalletFormat';
 
+async function resolveMasterSignerPubkey(
+  master: Address,
+  fallbackSignerPubkey: bigint,
+): Promise<bigint> {
+  try {
+    const client = createTonClient();
+    const res = await client.runMethod(master, 'get_signer_pubkey');
+    return BigInt(res.stack.readBigNumber().toString());
+  } catch (e) {
+    logger.warn({ err: e, master: master.toString() }, 'mintless: could not read on-chain signer pubkey');
+    return fallbackSignerPubkey;
+  }
+}
+
 async function readOnChainAlreadyClaimed(owner: Address): Promise<bigint | null> {
   const master = configuredJettonMaster();
   if (!master) return null;
@@ -78,6 +92,7 @@ async function resolveJettonWalletRaw(owner: Address, signerPubkey: bigint): Pro
   if (!master) {
     throw new Error('JETTON_MASTER_ADDRESS not configured');
   }
+  const resolvedSignerPubkey = await resolveMasterSignerPubkey(master, signerPubkey);
   try {
     const client = createTonClient();
     const masterContract = client.open(JettonMaster.create(master));
@@ -88,7 +103,7 @@ async function resolveJettonWalletRaw(owner: Address, signerPubkey: bigint): Pro
     const masterContract = client.open(JettonMaster.create(master));
     const jd = await masterContract.getJettonData();
     const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode: jd.walletCode, signerPubkey },
+      { owner, master, walletCode: jd.walletCode, signerPubkey: resolvedSignerPubkey },
       jd.walletCode,
     );
     return jw.address.toRawString();
@@ -101,6 +116,7 @@ async function maybeJettonWalletStateInitBase64(
 ): Promise<string | null> {
   const master = configuredJettonMaster();
   if (!master) return null;
+  const resolvedSignerPubkey = await resolveMasterSignerPubkey(master, signerPubkey);
   try {
     const client = createTonClient();
     const masterContract = client.open(JettonMaster.create(master));
@@ -112,7 +128,7 @@ async function maybeJettonWalletStateInitBase64(
     const jd = await masterContract.getJettonData();
     const walletCode = jd.walletCode;
     const jw = RollingMintlessWallet.createFromConfig(
-      { owner, master, walletCode, signerPubkey },
+      { owner, master, walletCode, signerPubkey: resolvedSignerPubkey },
       walletCode,
     );
     if (!jw.init?.code || !jw.init?.data) {
