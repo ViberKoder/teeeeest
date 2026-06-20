@@ -129,7 +129,7 @@ async function checkMyTonWalletProofProxy(
       return {
         pass: false,
         note:
-          'MyTonWallet proxy rejects Proof API as "Invalid metadata JSON" — mintlessTokenBalance undefined → InsufficientBalance before signing. MTW bug: fetchJsonWithProxy used for GET …/wallet/{owner}. Workaround: TON Connect claim (ClaimTab) or Tonkeeper.',
+          'MyTonWallet proxy rejects Proof API as "Invalid metadata JSON". If PROOF_API_MTW_METADATA_SHIM=true, redeploy and re-check; rollback: set PROOF_API_MTW_METADATA_SHIM=false.',
       };
     }
     return { pass: false, note: `MyTonWallet proxy: ${err}` };

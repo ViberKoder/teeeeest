@@ -108,3 +108,17 @@ export function buildJettonMetadataJson(
 
   return body;
 }
+
+/**
+ * TEP-64 fields duplicated on Proof API `/wallet/{owner}` for MyTonWallet's `download-json` proxy
+ * (validates jetton metadata schema, not TEP-176). Extra keys are ignored by Tonkeeper / claim-api-go.
+ * Disable via `PROOF_API_MTW_METADATA_SHIM=false` to rollback.
+ */
+export function walletResponseMetadataShim(): JettonMetadataJson | null {
+  const { name, symbol, description, image } = envMintlessDisplayFields();
+  if (!name || !symbol) return null;
+  const decimals = config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '0' : '9';
+  const body: JettonMetadataJson = { name, symbol, decimals, description: description || `${symbol} — Rolling Mintless Jetton.` };
+  if (image) body.image = image;
+  return body;
+}

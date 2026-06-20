@@ -8,6 +8,8 @@ import {
 import type { AirdropState } from './state';
 import type { VoucherSigner } from './signer';
 import { configuredJettonMaster } from './jettonMaster';
+import { walletResponseMetadataShim } from './jettonMetadata';
+import { config } from './config';
 import { resolveMasterSignerPubkey } from './onChainSigner';
 import { createTonClient } from './tonClient';
 import { logger } from './logger';
@@ -45,6 +47,12 @@ export type MintlessWalletResponse = {
     attach_ton_deploy: string;
     note: string;
   };
+  /** MyTonWallet proxy shim — same fields as metadata.json (revert: PROOF_API_MTW_METADATA_SHIM=false). */
+  name?: string;
+  symbol?: string;
+  decimals?: string;
+  description?: string;
+  image?: string;
 };
 
 /** TEP-176 batch item (Tonkeeper claim-api-go /wallets). */
@@ -194,6 +202,11 @@ export async function buildMintlessWalletResponse(
   if (opts?.includeRollingExtras !== false) {
     body.epoch = deps.state.epoch;
     body.root = deps.state.rootHex();
+  }
+
+  if (config.PROOF_API_MTW_METADATA_SHIM) {
+    const shim = walletResponseMetadataShim();
+    if (shim) Object.assign(body, shim);
   }
 
   return body;

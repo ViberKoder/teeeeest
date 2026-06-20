@@ -100,6 +100,14 @@ const schema = z.object({
    * - integer: show the raw integer string (503 nano → "503") — use when 1 reward unit = 1 displayed token.
    */
   PUBLIC_BALANCE_DISPLAY: z.enum(['jetton_nano', 'integer']).default('integer'),
+  /**
+   * Duplicate TEP-64 `name`/`symbol`/`decimals` on Proof API GET /wallet/{owner} so MyTonWallet's
+   * metadata JSON proxy accepts the response. Set `false` to rollback without redeploying code.
+   */
+  PROOF_API_MTW_METADATA_SHIM: z
+    .string()
+    .default('true')
+    .transform((v) => v !== 'false' && v !== '0'),
 });
 
 const parsed = schema.safeParse(process.env);
