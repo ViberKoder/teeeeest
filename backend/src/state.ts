@@ -53,6 +53,19 @@ export class AirdropState {
     return this.tree.get(address)?.cumulativeAmount ?? 0n;
   }
 
+  /** Keep the in-memory Merkle tree in sync with DB taps (Proof API reads the tree, not the DB). */
+  upsertUser(address: Address, cumulative: bigint): void {
+    if (cumulative === 0n) {
+      return;
+    }
+    const expired = Math.floor(Date.now() / 1000) + config.PROOF_VALIDITY_WINDOW_DAYS * 86_400;
+    this.tree.set(address, {
+      cumulativeAmount: cumulative,
+      startFrom: 0,
+      expiredAt: expired,
+    });
+  }
+
   rootBigint(): bigint {
     return this.tree.root();
   }

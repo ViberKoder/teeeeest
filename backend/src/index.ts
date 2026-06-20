@@ -23,7 +23,7 @@ import { registerMintlessCompliance } from './routes/mintlessCompliance';
 async function main() {
   const store = await createAppStore();
   const state = await AirdropState.hydrate(store);
-  const gameServer = new GameServer(store);
+  const gameServer = new GameServer(store, state);
   const rootUpdater = new RootUpdater(store);
   await rootUpdater.init();
   const treeBuilder = new TreeBuilder(store, state, gameServer, voucherSigner, rootUpdater);

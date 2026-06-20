@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { Address } from '@ton/core';
 import { config } from '../config';
-import { configuredJettonMaster, masterForHostedMintlessMetadata } from '../jettonMaster';
+import { configuredJettonMaster, configuredMintlessJettonMaster, masterForHostedMintlessMetadata } from '../jettonMaster';
 import { buildJettonMetadataJson, parseMasterAddressParam } from '../jettonMetadata';
 import { loadJettonRegistry } from '../jettonRegistry';
 import {
@@ -19,27 +19,16 @@ export interface PublicJettonMetadataDeps {
   state: AirdropState;
 }
 
-function parseRollingEpochFromQuery(v: unknown, fallbackEpoch: number): number {
-  if (v == null || v === '') return fallbackEpoch;
-  const n = Number.parseInt(String(v), 10);
-  return Number.isFinite(n) && n >= 0 ? n : fallbackEpoch;
-}
-
-async function metadataForMaster(
-  store: AppStore,
-  state: AirdropState,
-  master: Address,
-  rollingEpoch?: number,
-) {
+async function metadataForMaster(store: AppStore, state: AirdropState, master: Address) {
   const reg = await loadJettonRegistry(store, master);
   const base = config.PUBLIC_APP_URL.trim().replace(/\/$/, '');
   if (!base) return null;
 
   const kind = reg?.kind ?? 'rmj';
-  const epoch = rollingEpoch ?? state.epoch;
+  // Always embed the live Merkle epoch/root in dump URI — `?v=` on the metadata URL is HTTP cache-bust only.
   const rollingOpts =
-    kind === 'rmj' && epoch > 0
-      ? { rollingEpoch: epoch, rollingRootHex: state.rootHex() }
+    kind === 'rmj' && state.epoch > 0
+      ? { rollingEpoch: state.epoch, rollingRootHex: state.rootHex() }
       : {};
 
   if (reg) {
@@ -84,8 +73,7 @@ async function serveFixedJettonMetadata(
     };
   }
 
-  const rollingEpoch = parseRollingEpochFromQuery(query.v, state.epoch);
-  const body = await metadataForMaster(store, state, master, rollingEpoch);
+  const body = await metadataForMaster(store, state, master);
   if (!body) {
     reply.code(503);
     return {
@@ -174,8 +162,7 @@ export function registerPublicJettonMetadata(app: FastifyInstance, deps: PublicJ
         return { error: 'invalid-master-address' };
       }
 
-      const rollingEpoch = parseRollingEpochFromQuery(req.query.v, deps.state.epoch);
-      const body = await metadataForMaster(deps.store, deps.state, fromPath, rollingEpoch);
+      const body = await metadataForMaster(deps.store, deps.state, fromPath);
       if (!body) {
         reply.code(404);
         return {

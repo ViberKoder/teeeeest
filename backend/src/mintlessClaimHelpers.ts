@@ -8,6 +8,7 @@ import {
 import type { AirdropState } from './state';
 import type { VoucherSigner } from './signer';
 import { configuredJettonMaster } from './jettonMaster';
+import { resolveMasterSignerPubkey } from './onChainSigner';
 import { createTonClient } from './tonClient';
 import { logger } from './logger';
 import {
@@ -169,8 +170,9 @@ export async function buildMintlessWalletResponse(
   const customPayload = withinWindow
     ? payloadToBase64(buildStandardMerkleClaimPayload(proof))
     : '';
-  const stateInit = await maybeJettonWalletStateInitBase64(owner, deps.signer.publicKeyBigint);
-  const jettonWallet = await resolveJettonWalletRaw(owner, deps.signer.publicKeyBigint);
+  const signerPubkey = await resolveMasterSignerPubkey({ fallback: deps.signer.publicKeyBigint });
+  const stateInit = await maybeJettonWalletStateInitBase64(owner, signerPubkey);
+  const jettonWallet = await resolveJettonWalletRaw(owner, signerPubkey);
 
   const body: MintlessWalletResponse = {
     owner: owner.toRawString(),

@@ -53,12 +53,18 @@ export function buildCustomPayloadApiUri(publicAppUrl: string, master?: Address)
   return customPayloadApiRoot(base, m);
 }
 
+/** Accept EQ/UQ or raw `0:…` path segments for configured RMJ or TEP-177 masters. */
 export function parseJettonMasterParam(param: string): Address | null {
-  const expected = configuredJettonMaster();
-  if (!expected) return null;
   const requested = parseJettonMasterPathSegment(param);
-  if (!requested || !requested.equals(expected)) return null;
-  return expected;
+  if (!requested) return null;
+
+  const rmj = configuredJettonMaster();
+  if (rmj?.equals(requested)) return rmj;
+
+  const mintless = configuredMintlessJettonMaster();
+  if (mintless?.equals(requested)) return mintless;
+
+  return null;
 }
 
 export { jettonMasterPathSegment, parseJettonMasterPathSegment, customPayloadApiRoot, jettonMetadataHostedUrl } from './jettonAddressPath';
