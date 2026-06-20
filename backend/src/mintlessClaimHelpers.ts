@@ -18,8 +18,7 @@ import {
 import { formatCompressedInfo, isWithinClaimWindow, type MintlessCompressedInfo } from './mintlessWalletFormat';
 import {
   buildMintlessCustomPayloadBase64,
-  resolveWalletClaimPayloadFormat,
-  transferHintsForClaimFormat,
+  rmjTransferHints,
 } from './walletClaimPayload';
 
 export {
@@ -42,7 +41,7 @@ export type MintlessWalletResponse = {
   compressed_info: MintlessCompressedInfo;
   epoch?: number;
   root?: string;
-  /** Hints for TEP-177 wallets / dApps building mintless transfers (claim + send in one tx). */
+  /** Hints for mintless wallets / dApps building RMJ claim+transfer in one tx. */
   transfer_hints?: {
     attach_ton: string;
     attach_ton_deploy: string;
@@ -153,7 +152,7 @@ export type MintlessClaimDeps = {
 /**
  * Build TEP-176 / Tonkeeper claim-api-go wallet claim for one owner.
  * `compressed_info.amount` is the Merkle leaf cumulative (claim-api style).
- * `custom_payload` uses TEP-177 `merkle_airdrop_claim` (`0x0df602d6`) when claimable.
+ * `custom_payload` uses RMJ `rolling_claim` (`0xc9e56df3`) + signed voucher when claimable.
  */
 export async function buildMintlessWalletResponse(
   owner: Address,
@@ -176,10 +175,7 @@ export async function buildMintlessWalletResponse(
 
   const proof = deps.state.tree.generateProof(owner);
   const withinWindow = isWithinClaimWindow(leaf.startFrom, leaf.expiredAt);
-  const claimFormat = await resolveWalletClaimPayloadFormat();
-  const customPayload = withinWindow
-    ? buildMintlessCustomPayloadBase64(proof, claimFormat, deps)
-    : '';
+  const customPayload = withinWindow ? buildMintlessCustomPayloadBase64(proof, deps) : '';
   const signerPubkey = await resolveMasterSignerPubkey({ fallback: deps.signer.publicKeyBigint });
   const stateInit = await maybeJettonWalletStateInitBase64(owner, signerPubkey);
   const jettonWallet = await resolveJettonWalletRaw(owner, signerPubkey);
@@ -194,7 +190,7 @@ export async function buildMintlessWalletResponse(
       startFrom: leaf.startFrom,
       expiredAt: leaf.expiredAt,
     }),
-    transfer_hints: transferHintsForClaimFormat(claimFormat),
+    transfer_hints: rmjTransferHints(),
   };
 
   if (opts?.includeRollingExtras !== false) {

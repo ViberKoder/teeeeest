@@ -443,17 +443,17 @@ export async function runWalletDisplayAudit(params: {
       const b64 = String(body.custom_payload ?? '');
       const op = b64 ? parseCustomPayloadOp(b64) : null;
       const opName =
-        op === OP_MERKLE_CLAIM
-          ? 'merkle_airdrop_claim (TEP-177)'
-          : op === OP_ROLLING_CLAIM
-            ? 'rolling_claim (RMJ legacy)'
+        op === OP_ROLLING_CLAIM
+          ? 'rolling_claim (RMJ)'
+          : op === OP_MERKLE_CLAIM
+            ? 'merkle_airdrop_claim (TEP-177)'
             : op != null
               ? `unknown 0x${op.toString(16)}`
               : 'unparseable';
       const opSeverity: AuditSeverity =
-        op === OP_MERKLE_CLAIM
+        op === OP_ROLLING_CLAIM
           ? 'ok'
-          : op === OP_ROLLING_CLAIM
+          : op === OP_MERKLE_CLAIM
             ? 'warn'
             : b64 === ''
               ? 'warn'
@@ -464,13 +464,13 @@ export async function runWalletDisplayAudit(params: {
           opSeverity,
           `Wallet API ${short}`,
           `amount=${(body.compressed_info as JsonRecord)?.amount ?? '?'}, custom_payload op=${opName}`,
-          op === OP_MERKLE_CLAIM
+          op === OP_ROLLING_CLAIM
             ? undefined
-            : op === OP_ROLLING_CLAIM
-              ? 'Legacy rolling_claim — upgrade backend to TEP-177 0x0df602d6'
+            : op === OP_MERKLE_CLAIM
+              ? 'TEP-177 merkle_airdrop_claim — RMJ Proof API uses rolling_claim 0xc9e56df3'
               : b64 === ''
                 ? 'Empty custom_payload — outside [start_from, expired_at] or nothing to claim'
-                : 'Expected TEP-177 merkle_airdrop_claim 0x0df602d6',
+                : 'Expected RMJ rolling_claim 0xc9e56df3',
         ),
       );
     }

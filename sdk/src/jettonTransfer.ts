@@ -24,7 +24,7 @@ export type MintlessTransferHints = {
 export const DEFAULT_MINTLESS_TRANSFER_HINTS: MintlessTransferHints = {
   attach_ton: DEFAULT_MINTLESS_SEND_TON_NANO.toString(),
   attach_ton_deploy: DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO.toString(),
-  note: 'TEP-177: wallets attach custom_payload on transfer; claim runs inside the same jetton-wallet tx',
+  note: 'RMJ rolling_claim: attach custom_payload on transfer; claim runs inside the same jetton-wallet tx',
 };
 
 /**
