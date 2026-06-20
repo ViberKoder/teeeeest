@@ -4,6 +4,8 @@ import type { AirdropState } from '../state';
 import type { RootUpdater } from '../rootUpdater';
 import { config } from '../config';
 import { buildCustomPayloadApiUri } from '../jettonMaster';
+import { resolveMasterSignerPubkey } from '../onChainSigner';
+import { voucherSigner } from '../signer';
 import { logger } from '../logger';
 
 const KV_TREE_TICK_AT = 'tree_builder_last_tick_at';
@@ -36,6 +38,19 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       onChainMerkle != null &&
       onChainMerkle.rootHex.toLowerCase() === offChainRoot.toLowerCase();
 
+    const envSignerPubkeyHex = voucherSigner.publicKeyHex;
+    let onChainSignerPubkeyHex: string | null = null;
+    let signerSeedMatchesMaster = true;
+    if (jettonConfigured) {
+      try {
+        const onChainSigner = await resolveMasterSignerPubkey({ fallback: voucherSigner.publicKeyBigint });
+        onChainSignerPubkeyHex = onChainSigner.toString(16).padStart(64, '0');
+        signerSeedMatchesMaster = onChainSignerPubkeyHex === envSignerPubkeyHex;
+      } catch {
+        onChainSignerPubkeyHex = null;
+      }
+    }
+
     return {
       service: 'rmj-backend',
       healthy: true,
@@ -59,7 +74,20 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       off_chain_merkle_root: offChainRoot,
       off_chain_db_epoch: deps.state.epoch,
       merkle_root_synced: merkleSynced,
+      env_signer_pubkey: envSignerPubkeyHex,
+      on_chain_signer_pubkey: onChainSignerPubkeyHex,
+      signer_seed_matches_master: signerSeedMatchesMaster,
       integration_warnings: [
+        ...(jettonConfigured && onChainSignerPubkeyHex && !signerSeedMatchesMaster
+          ? [
+              `SIGNER_SEED_HEX pubkey (${envSignerPubkeyHex}) ≠ master get_signer_pubkey (${onChainSignerPubkeyHex}) — update Railway env with the seed from minter step 3 for this jetton deploy; StateInit uses on-chain key but update_merkle_root vouchers will fail until fixed`,
+            ]
+          : []),
+        ...(jettonConfigured && !merkleSynced && deps.state.tree.size > 0 && !rootUpdatesEnabled
+          ? [
+              'Tonkeeper/MyTonWallet will NOT auto-attach claim on transfer until on-chain merkle root is synced — users see a plain send without custom_payload',
+            ]
+          : []),
         ...(jettonConfigured && !merkleSynced && deps.state.tree.size > 0
           ? [
               `On-chain merkle root (${onChainMerkle?.rootHex ?? 'unreadable'}) ≠ off-chain tree (${offChainRoot}) — Toncenter mintless_info will stay empty until update_merkle_root confirms. POST /api/v1/admin/sync-merkle-root or wait for root updater.`,
