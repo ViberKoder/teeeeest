@@ -1,10 +1,6 @@
-import { Address, beginCell, storeStateInit, toNano } from '@ton/core';
+import { Address, beginCell, storeStateInit } from '@ton/core';
 import { JettonMaster } from '@ton/ton';
-import {
-  RollingMintlessWallet,
-  buildStandardMerkleClaimPayload,
-  payloadToBase64,
-} from '@rmj/contracts';
+import { RollingMintlessWallet } from '@rmj/contracts';
 import type { AirdropState } from './state';
 import type { VoucherSigner } from './signer';
 import { configuredJettonMaster } from './jettonMaster';
@@ -20,6 +16,11 @@ import {
   WALLET_BATCH_MIN,
 } from './mintlessBatchUtils';
 import { formatCompressedInfo, isWithinClaimWindow, type MintlessCompressedInfo } from './mintlessWalletFormat';
+import {
+  buildMintlessCustomPayloadBase64,
+  resolveWalletClaimPayloadFormat,
+  transferHintsForClaimFormat,
+} from './walletClaimPayload';
 
 export {
   WALLET_BATCH_MIN,
@@ -175,8 +176,9 @@ export async function buildMintlessWalletResponse(
 
   const proof = deps.state.tree.generateProof(owner);
   const withinWindow = isWithinClaimWindow(leaf.startFrom, leaf.expiredAt);
+  const claimFormat = await resolveWalletClaimPayloadFormat();
   const customPayload = withinWindow
-    ? payloadToBase64(buildStandardMerkleClaimPayload(proof))
+    ? buildMintlessCustomPayloadBase64(proof, claimFormat, deps)
     : '';
   const signerPubkey = await resolveMasterSignerPubkey({ fallback: deps.signer.publicKeyBigint });
   const stateInit = await maybeJettonWalletStateInitBase64(owner, signerPubkey);
@@ -192,11 +194,7 @@ export async function buildMintlessWalletResponse(
       startFrom: leaf.startFrom,
       expiredAt: leaf.expiredAt,
     }),
-    transfer_hints: {
-      attach_ton: toNano('0.3').toString(),
-      attach_ton_deploy: toNano('0.35').toString(),
-      note: 'TEP-177 merkle_airdrop_claim (0x0df602d6): attach custom_payload on transfer; claim and send in one jetton-wallet tx',
-    },
+    transfer_hints: transferHintsForClaimFormat(claimFormat),
   };
 
   if (opts?.includeRollingExtras !== false) {
