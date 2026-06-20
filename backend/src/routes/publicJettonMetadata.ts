@@ -1,7 +1,11 @@
 import { FastifyInstance } from 'fastify';
 import { Address } from '@ton/core';
 import { config } from '../config';
-import { configuredJettonMaster, masterForHostedMintlessMetadata } from '../jettonMaster';
+import {
+  configuredJettonMaster,
+  configuredMintlessJettonMaster,
+  masterForHostedMintlessMetadata,
+} from '../jettonMaster';
 import { buildJettonMetadataJson, parseMasterAddressParam } from '../jettonMetadata';
 import { loadJettonRegistry } from '../jettonRegistry';
 import {

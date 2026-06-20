@@ -37,7 +37,7 @@ export function masterForHostedMintlessMetadata(): Address | null {
 
 /** Raw `0:…` path segment (canonical; also accepts EQ/UQ when parsing). */
 export function jettonMasterUrlSegment(master?: Address): string | null {
-  const m = master ?? configuredJettonMaster();
+  const m = master ?? masterForHostedMintlessMetadata();
   if (!m) return null;
   return jettonMasterPathSegment(m);
 }
@@ -48,17 +48,20 @@ export function jettonMasterUrlSegment(master?: Address): string | null {
  */
 export function buildCustomPayloadApiUri(publicAppUrl: string, master?: Address): string | null {
   const base = publicAppUrl.trim().replace(/\/$/, '');
-  const m = master ?? configuredJettonMaster();
+  const m = master ?? masterForHostedMintlessMetadata();
   if (!base || !m) return null;
   return customPayloadApiRoot(base, m);
 }
 
 export function parseJettonMasterParam(param: string): Address | null {
-  const expected = configuredJettonMaster();
-  if (!expected) return null;
   const requested = parseJettonMasterPathSegment(param);
-  if (!requested || !requested.equals(expected)) return null;
-  return expected;
+  if (!requested) return null;
+
+  const configured = [configuredJettonMaster(), configuredMintlessJettonMaster()].filter(
+    (value): value is Address => value != null,
+  );
+  const match = configured.find((known) => known.equals(requested));
+  return match ?? null;
 }
 
 export { jettonMasterPathSegment, parseJettonMasterPathSegment, customPayloadApiRoot, jettonMetadataHostedUrl } from './jettonAddressPath';
