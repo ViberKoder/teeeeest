@@ -5,6 +5,7 @@ import { RollingMintlessWallet } from '@rmj/contracts';
 
 import { config } from '../config';
 import { createTonClient } from '../tonClient';
+import { resolveMasterSignerPubkey } from '../onChainSigner';
 import type { VoucherSigner } from '../signer';
 import { logger } from '../logger';
 
@@ -48,13 +49,14 @@ export function registerJettonWalletApi(app: FastifyInstance, deps: JettonWallet
       if (needs_deploy) {
         const jd = await master.getJettonData();
         const walletCode = jd.walletCode;
+        const signerPubkey = await resolveMasterSignerPubkey({ fallback: deps.signer.publicKeyBigint });
 
         const jw = RollingMintlessWallet.createFromConfig(
           {
             owner,
             master: masterAddr,
             walletCode,
-            signerPubkey: deps.signer.publicKeyBigint,
+            signerPubkey,
           },
           walletCode,
         );
