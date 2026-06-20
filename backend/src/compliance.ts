@@ -113,6 +113,31 @@ async function fetchJson(url: string, init?: RequestInit, retries = 3): Promise<
   return null;
 }
 
+/** MyTonWallet routes mintless Proof API through /proxy/download-json (metadata validator). */
+async function checkMyTonWalletProofProxy(
+  proofWalletUrl: string,
+): Promise<{ pass: boolean; note: string }> {
+  const proxyUrl = `https://api.mytonwallet.org/proxy/download-json?url=${encodeURIComponent(proofWalletUrl)}`;
+  try {
+    const res = await fetch(proxyUrl);
+    const body = (await res.json().catch(() => ({}))) as { error?: string; compressed_info?: unknown };
+    if (res.ok && body.compressed_info) {
+      return { pass: true, note: 'MyTonWallet proxy accepts Proof API wallet JSON' };
+    }
+    const err = body.error ?? `HTTP ${res.status}`;
+    if (String(err).includes('Invalid metadata JSON')) {
+      return {
+        pass: false,
+        note:
+          'MyTonWallet proxy rejects Proof API as "Invalid metadata JSON" — mintlessTokenBalance undefined → InsufficientBalance before signing. MTW bug: fetchJsonWithProxy used for GET …/wallet/{owner}. Workaround: TON Connect claim (ClaimTab) or Tonkeeper.',
+      };
+    }
+    return { pass: false, note: `MyTonWallet proxy: ${err}` };
+  } catch (e) {
+    return { pass: false, note: `MyTonWallet proxy check failed: ${String(e)}` };
+  }
+}
+
 async function fetchOnChainMerkleRoot(
   network: 'mainnet' | 'testnet',
   masterRaw: string,
@@ -446,6 +471,18 @@ export async function runCompliance(params: {
     pass: true,
     note: 'Access-Control-Allow-Origin: * на mintless API',
   });
+
+  if (sampleOwner && walletClaim) {
+    const directWalletUrl = `${appUrl}/api/v1/jettons/${path}/wallet/${Address.parse(sampleOwner).toRawString()}`;
+    const mtwProxy = await checkMyTonWalletProofProxy(directWalletUrl);
+    push({
+      id: 'api.mytonwallet_proxy',
+      group: 'our_api',
+      label: 'MyTonWallet proxy → Proof API /wallet',
+      pass: mtwProxy.pass,
+      note: mtwProxy.note,
+    });
+  }
 
   const fixedMetaUrl = fixedJettonMetadataUrl(appUrl);
   const hostedMeta = await fetchJson(fixedMetaUrl);
