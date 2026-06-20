@@ -231,6 +231,8 @@ export async function runCompliance(params: {
       image: reg?.image,
       decimals: reg?.decimals,
       kind: 'rmj',
+      rollingEpoch: params.state.epoch,
+      rollingRootHex: params.state.rootHex(),
     }) ?? null;
 
   const tcHeaders = toncenterHeaders();

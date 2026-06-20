@@ -85,11 +85,12 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       last_tree_builder_tick_unix: lastTickUnix,
       seconds_since_last_tree_tick: lastTickUnix != null ? now - lastTickUnix : null,
       how_balance_works: [
-        'Taps POST to /api/v1/action increase cumulative_offchain in the DB immediately.',
-        `The Merkle tree refreshes on a timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); until then GET /api/v1/jettons/{master}/wallet/:owner may return 404.`,
+        'Taps POST to /api/v1/action increase cumulative_offchain in the DB and update the in-memory Merkle tree immediately.',
+        'Proof API GET /api/v1/jettons/{master}/wallet/:owner serves TEP-177 custom_payload as soon as the address is in the tree.',
+        `On-chain merkle root sync runs on epoch timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); Toncenter/TonAPI unclaimed display may lag until update_merkle_root confirms.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
         'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (TEP-177); many UIs show 0 until then.',
-        'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree to see DB vs Merkle lag.',
+        'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree — should match after each tap.',
       ],
     };
   });

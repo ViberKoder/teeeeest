@@ -1,5 +1,6 @@
 import { Address } from '@ton/core';
 import type { AppStore } from './store/appStore';
+import type { AirdropState } from './state';
 import { config } from './config';
 import { logger } from './logger';
 
@@ -39,7 +40,10 @@ export type GameActionResult =
     };
 
 export class GameServer {
-  constructor(readonly store: AppStore) {}
+  constructor(
+    readonly store: AppStore,
+    readonly state?: AirdropState,
+  ) {}
 
   private async countEventsSince(address: string, since: number): Promise<number> {
     return this.store.countTapEventsSince(address, since);
@@ -96,6 +100,8 @@ export class GameServer {
       now,
     });
 
+    this.state?.upsertUser(action.address, newCumulative);
+
     logger.info(
       {
         address,
@@ -103,7 +109,7 @@ export class GameServer {
         cumulative_offchain_nano: newCumulative.toString(),
         source: action.source,
       },
-      'tap/action recorded — appears in Merkle tree after next epoch tick',
+      'tap/action recorded — Merkle tree updated for Proof API',
     );
 
     return { ok: true, cumulativeAmount: newCumulative, deltaApplied: reward };
