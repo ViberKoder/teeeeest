@@ -69,30 +69,42 @@ export function parseCustomPayloadUri(uri: string): {
 export async function fetchRmjPending(
   customPayloadApiUri: string,
   owner: string,
+  opts?: { retries?: number },
 ): Promise<RmjPending | null> {
   const { apiRoot } = parseCustomPayloadUri(customPayloadApiUri);
   const ownerRaw = Address.parse(owner).toRawString();
-  const res = await fetch(`${apiRoot}/wallet/${ownerRaw}`);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`mintless wallet API ${res.status}`);
-  const j = (await res.json()) as {
-    jetton_wallet: string;
-    custom_payload: string;
-    state_init: string | null;
-    compressed_info: { amount: string; start_from: string; expired_at: string };
-    epoch?: number;
-    root?: string;
-  };
-  return {
-    amount: j.compressed_info.amount,
-    startFrom: Number(j.compressed_info.start_from),
-    expiredAt: Number(j.compressed_info.expired_at),
-    jettonWallet: j.jetton_wallet,
-    customPayload: j.custom_payload,
-    stateInit: j.state_init,
-    epoch: j.epoch ?? 0,
-    root: j.root ?? '',
-  };
+  const url = `${apiRoot}/wallet/${encodeURIComponent(ownerRaw)}`;
+  const attempts = Math.max(1, opts?.retries ?? 3);
+
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`mintless wallet API ${res.status}`);
+      const j = (await res.json()) as {
+        jetton_wallet: string;
+        custom_payload: string;
+        state_init?: string | null;
+        compressed_info: { amount: string; start_from: string; expired_at: string };
+        epoch?: number;
+        root?: string;
+      };
+      return {
+        amount: j.compressed_info.amount,
+        startFrom: Number(j.compressed_info.start_from),
+        expiredAt: Number(j.compressed_info.expired_at),
+        jettonWallet: j.jetton_wallet,
+        customPayload: j.custom_payload,
+        stateInit: j.state_init ?? null,
+        epoch: j.epoch ?? 0,
+        root: j.root ?? '',
+      };
+    } catch (e) {
+      if (i === attempts - 1) throw e;
+      await new Promise((r) => setTimeout(r, 400 * (i + 1)));
+    }
+  }
+  return null;
 }
 
 /**

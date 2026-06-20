@@ -4,7 +4,7 @@ import { Address } from '@ton/core';
 
 import { Screen, Card, Button, Field, RmjBadge } from '../ui/components';
 import { loadVault } from '../state/vault';
-import { buildJettonList, type JettonEntry } from '../state/jettons';
+import { buildJettonList, type JettonEntry, totalNano } from '../state/jettons';
 import { fetchRmjPending } from '../services/rmj';
 import { broadcastJettonTransfer, DEFAULT_JETTON_GAS_NANO, DEFAULT_RMJ_CLAIM_GAS_NANO, DEFAULT_RMJ_SEND_GAS_NANO } from '../services/tx';
 import { keyring } from '../state/keyring';
@@ -46,7 +46,10 @@ export function SendJetton() {
 
   const onchain = entry ? BigInt(entry.onchainBalanceNano) : 0n;
   const pending = entry?.rmjPending ? BigInt(entry.rmjPending.amount) : 0n;
-  const total = onchain + pending;
+  const total = entry ? totalNano(entry) : 0n;
+  const needsMintlessClaim =
+    Boolean(entry?.isRmj && entry.customPayloadApiUri) &&
+    (!entry.walletActive || pending > 0n || (entry.isRmj && !entry.walletActive && total > 0n));
 
   const parsedAmount = useMemo(() => {
     if (!entry) return null;
@@ -77,7 +80,11 @@ export function SendJetton() {
       return;
     }
     if (insufficient) {
-      setErr('Amount exceeds total available balance (on-chain + pending)');
+      setErr(
+        entry?.proofApiReachable === false && entry.isRmj
+          ? 'Proof API temporarily unavailable — balance shown from TonAPI; retry in a minute before sending'
+          : 'Amount exceeds total available balance (on-chain + pending)',
+      );
       return;
     }
     setStep('confirm');
@@ -95,17 +102,16 @@ export function SendJetton() {
        */
       let customPayload: string | null = null;
       let stateInit: string | null = null;
-      const needsClaimPayload = pending > 0n || !entry.walletActive;
-      if (entry.isRmj && entry.customPayloadApiUri && needsClaimPayload) {
+      if (entry.isRmj && entry.customPayloadApiUri && needsMintlessClaim) {
         const fresh = await fetchRmjPending(entry.customPayloadApiUri, vault.account.address).catch(() => null);
         if (!fresh?.customPayload) {
           throw new Error(
-            'Mintless proof unavailable — wait for the next epoch or try again in a minute',
+            'Mintless proof unavailable — MyTonWallet/Tonkeeper show InsufficientBalance until GET …/wallet/{owner} returns 200. Retry shortly.',
           );
         }
         customPayload = fresh.customPayload;
         stateInit = fresh.stateInit;
-      } else if (entry.isRmj && entry.customPayloadApiUri) {
+      } else if (entry.isRmj && entry.customPayloadApiUri && pending > 0n) {
         const fresh = await fetchRmjPending(entry.customPayloadApiUri, vault.account.address).catch(() => null);
         if (fresh?.customPayload) {
           customPayload = fresh.customPayload;
@@ -234,6 +240,11 @@ export function SendJetton() {
             {err && <div className="error-text">{err}</div>}
             <Button full onClick={goConfirm}>Continue</Button>
           </Card>
+          {entry.isRmj && entry.proofApiReachable === false && total > 0n && (
+            <div className="error-text" style={{ fontSize: 13, padding: '0 4px' }}>
+              Proof API unreachable — balance from TonAPI. Transfer may fail in other wallets until proof loads.
+            </div>
+          )}
           {entry.isRmj && pending > 0n && (
             <div className="muted" style={{ fontSize: 13, padding: '0 4px' }}>
               The {formatBigUnits(pending, entry.decimals)} {entry.symbol} pending will be claimed in the same transaction

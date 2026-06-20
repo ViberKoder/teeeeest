@@ -25,3 +25,21 @@ export function formatCompressedInfo(params: {
     expired_at: String(params.expiredAt),
   };
 }
+
+/** claim-api-go JSON: omit optional `state_init` when absent (never `null`). */
+export function serializeMintlessWalletResponse<T extends {
+  owner: string;
+  jetton_wallet: string;
+  custom_payload: string;
+  state_init?: string | null;
+  compressed_info: MintlessCompressedInfo;
+  epoch?: number;
+  root?: string;
+  transfer_hints?: { attach_ton: string; attach_ton_deploy: string; note: string };
+}>(body: T): T {
+  const out = { ...body };
+  if (out.state_init == null) {
+    delete out.state_init;
+  }
+  return out;
+}

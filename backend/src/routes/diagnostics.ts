@@ -118,6 +118,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
         `On-chain merkle root sync runs on epoch timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); Toncenter/TonAPI unclaimed display may lag until update_merkle_root confirms.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
         'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (TEP-177); many UIs show 0 until then.',
+        'MyTonWallet/Tonkeeper: if GET …/wallet/{owner} fails, mintlessTokenBalance stays undefined, on-chain jetton-wallet balance is 0 → InsufficientBalance before signing. Proof API must return 200 with compressed_info.amount.',
         'Compare GET /api/v1/balance/:addr cumulative_offchain vs cumulative_in_tree — should match after each tap.',
       ],
     };
