@@ -38,7 +38,8 @@ day for root updates. Nothing else.
 ├── examples/
 │   ├── telegram-bot/         # Public-channel bot with inline TAP button
 │   ├── tma/                  # Telegram Mini App tap-to-earn
-│   └── minter/               # Simple web minter for Rolling Mintless Jetton
+│   ├── minter/               # Simple web minter for Rolling Mintless Jetton
+│   └── wallet/               # Next.js self-custodial wallet (mnemonic) + RMJ, jettons, NFTs
 └── docs/                     # ARCHITECTURE / INTEGRATION / OPERATIONS / CONTRACTS
 ```
 
@@ -65,6 +66,10 @@ npm run -w examples/telegram-bot dev
 # 5. Run the web minter
 cp examples/minter/.env.example examples/minter/.env
 npm run -w examples/minter dev
+
+# 6. Run the RMJ self-custodial wallet (Next.js, 24-word mnemonic, RMJ + jettons + NFTs)
+cp examples/wallet/.env.example examples/wallet/.env.local
+npm run -w @rmj/example-wallet dev
 ```
 
 See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for full integration guides

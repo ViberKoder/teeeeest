@@ -11,7 +11,8 @@
     "wallet",
     "examples/telegram-bot",
     "examples/tma",
-    "examples/minter"
+    "examples/minter",
+    "examples/wallet"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
