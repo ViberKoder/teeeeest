@@ -6,6 +6,7 @@ import {
   JETTON_METADATA_FILENAME_LEGACY,
   JETTON_METADATA_FILENAME_LEGACY2,
   JETTON_METADATA_FILENAME_LEGACY3,
+  JETTON_METADATA_FILENAME_LEGACY4,
 } from './jettonAddressPath';
 
 jest.mock('./config', () => ({
@@ -13,16 +14,17 @@ jest.mock('./config', () => ({
 }));
 
 describe('jettonAddressPath metadata filenames', () => {
-  test('current RMJ on-chain URL uses jetton-metadata4.json', () => {
-    expect(JETTON_METADATA_FILENAME).toBe('jetton-metadata4.json');
+  test('current RMJ on-chain URL uses jetton-metadata5.json', () => {
+    expect(JETTON_METADATA_FILENAME).toBe('jetton-metadata5.json');
     expect(fixedJettonMetadataUrl('https://example.com')).toBe(
-      'https://example.com/jetton-metadata4.json',
+      'https://example.com/jetton-metadata5.json',
     );
   });
 
   test('isFixedJettonMetadataUrl accepts current and legacy paths', () => {
-    expect(isFixedJettonMetadataUrl('https://x/jetton-metadata4.json')).toBe(true);
-    expect(isFixedJettonMetadataUrl('https://x/jetton-metadata4.json?v=29')).toBe(true);
+    expect(isFixedJettonMetadataUrl('https://x/jetton-metadata5.json')).toBe(true);
+    expect(isFixedJettonMetadataUrl('https://x/jetton-metadata5.json?v=29')).toBe(true);
+    expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY4}`)).toBe(true);
     expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY3}`)).toBe(true);
     expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY2}`)).toBe(true);
     expect(isFixedJettonMetadataUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY}`)).toBe(true);
@@ -30,14 +32,17 @@ describe('jettonAddressPath metadata filenames', () => {
   });
 
   test('fixedJettonMetadataFilenameFromUrl strips ?v= query', () => {
-    expect(fixedJettonMetadataFilenameFromUrl('https://x/jetton-metadata4.json?v=30')).toBe(
+    expect(fixedJettonMetadataFilenameFromUrl('https://x/jetton-metadata5.json?v=30')).toBe(
       JETTON_METADATA_FILENAME,
     );
   });
 
   test('fixedJettonMetadataFilenameFromUrl resolves tier', () => {
-    expect(fixedJettonMetadataFilenameFromUrl('https://x/jetton-metadata4.json')).toBe(
+    expect(fixedJettonMetadataFilenameFromUrl('https://x/jetton-metadata5.json')).toBe(
       JETTON_METADATA_FILENAME,
+    );
+    expect(fixedJettonMetadataFilenameFromUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY4}`)).toBe(
+      JETTON_METADATA_FILENAME_LEGACY4,
     );
     expect(fixedJettonMetadataFilenameFromUrl(`https://x/${JETTON_METADATA_FILENAME_LEGACY3}`)).toBe(
       JETTON_METADATA_FILENAME_LEGACY3,

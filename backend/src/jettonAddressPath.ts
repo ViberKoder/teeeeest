@@ -34,11 +34,13 @@ export function parseJettonMasterPathSegment(param: string): Address | null {
 /**
  * On-chain TEP-64 off-chain URI filename (no master in path).
  * Bump when TonAPI/Toncenter cache a stale master at a shared URL:
- * `jetton-metadata.json` → … → `jetton-metadata3.json` → `jetton-metadata4.json`.
+ * `jetton-metadata.json` → … → `jetton-metadata4.json` → `jetton-metadata5.json`.
  */
-export const JETTON_METADATA_FILENAME = 'jetton-metadata4.json';
+export const JETTON_METADATA_FILENAME = 'jetton-metadata5.json';
 
 /** Previous fixed URLs — still served (same JSON) for in-flight indexers. */
+export const JETTON_METADATA_FILENAME_LEGACY4 = 'jetton-metadata4.json';
+
 export const JETTON_METADATA_FILENAME_LEGACY3 = 'jetton-metadata3.json';
 
 export const JETTON_METADATA_FILENAME_LEGACY2 = 'jetton-metadata2.json';
@@ -49,6 +51,7 @@ export const JETTON_METADATA_FILENAME_LEGACY = 'jetton-metadata.json';
 /** All RMJ fixed metadata paths (current first). */
 export const JETTON_METADATA_ALL_FILENAMES = [
   JETTON_METADATA_FILENAME,
+  JETTON_METADATA_FILENAME_LEGACY4,
   JETTON_METADATA_FILENAME_LEGACY3,
   JETTON_METADATA_FILENAME_LEGACY2,
   JETTON_METADATA_FILENAME_LEGACY,

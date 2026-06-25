@@ -706,7 +706,7 @@ export function App() {
           <p style={{ color: '#b45309', fontSize: 14 }}>
             On-chain URL: <code>{deployedMetadataUrl || fixedMetadataUrl(backendOrigin, jettonKind)}</code> (
             {jettonKind === 'mintless'
-              ? 'отдельно от RMJ `jetton-metadata4.json`'
+              ? 'отдельно от RMJ `jetton-metadata5.json`'
               : 'отдельно от mintless `mintless-jetton-metadata.json`'}
             ). Tonviewer/TonAPI могут кэшировать старый master несколько часов — сравните с
             живым JSON по этому URL. Tonscan часто показывает свежее.
