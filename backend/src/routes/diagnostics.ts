@@ -114,7 +114,9 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       seconds_since_last_tree_tick: lastTickUnix != null ? now - lastTickUnix : null,
       how_balance_works: [
         'Taps POST to /api/v1/action increase cumulative_offchain in the DB and update the in-memory Merkle tree immediately.',
-        'Proof API GET /api/v1/jettons/{master}/wallet/:owner serves RMJ rolling_claim custom_payload (0xc9e56df3 + voucher) as soon as the address is in the tree.',
+        'Proof API GET /api/v1|v2/jettons/{master}/wallet/:owner serves RMJ rolling_claim custom_payload (0xc9e56df3 + voucher).',
+        'For MyTonWallet: point metadata custom_payload_api_uri to /api/v2/jettons/{master} to bust proxy cache; attach ≥0.55 TON for claim + external recipient deploy.',
+        'Updated jetton-wallet code (build/RollingMintlessWallet.boc) requires new master deploy — fixes on_bounce balance restore and recipient JW deploy TON checks.',
         `On-chain merkle root sync runs on epoch timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); Toncenter/TonAPI unclaimed display may lag until update_merkle_root confirms.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,
         'Wallets show jetton balance only after a transfer/swap that attaches the custom payload (RMJ rolling_claim); many UIs show 0 until then.',

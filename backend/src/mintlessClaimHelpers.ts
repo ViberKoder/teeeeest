@@ -45,6 +45,7 @@ export type MintlessWalletResponse = {
   transfer_hints?: {
     attach_ton: string;
     attach_ton_deploy: string;
+    attach_ton_external: string;
     note: string;
   };
   /** MyTonWallet proxy shim — same fields as metadata.json (revert: PROOF_API_MTW_METADATA_SHIM=false). */
@@ -190,7 +191,7 @@ export async function buildMintlessWalletResponse(
       startFrom: leaf.startFrom,
       expiredAt: leaf.expiredAt,
     }),
-    transfer_hints: rmjTransferHints(),
+    transfer_hints: rmjTransferHints({ senderNeedsDeploy: stateInit != null }),
   };
 
   if (opts?.includeRollingExtras !== false) {

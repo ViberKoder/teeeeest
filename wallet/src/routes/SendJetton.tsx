@@ -60,6 +60,15 @@ export function SendJetton() {
     }
   }, [amount, entry]);
 
+  const externalRecipient = useMemo(() => {
+    if (!vault || !to.trim()) return false;
+    try {
+      return Address.parse(to.trim()).toRawString() !== Address.parse(vault.account.address).toRawString();
+    } catch {
+      return false;
+    }
+  }, [vault, to]);
+
   const insufficient = entry && parsedAmount !== null && parsedAmount > total;
 
   function goConfirm() {
@@ -119,8 +128,6 @@ export function SendJetton() {
         }
       }
 
-      const externalRecipient =
-        Address.parse(to.trim()).toRawString() !== Address.parse(vault.account.address).toRawString();
       const attachedTon =
         stateInit || customPayload
           ? externalRecipient || stateInit
@@ -267,7 +274,7 @@ export function SendJetton() {
           )}
           <Row
             label="Network fee"
-            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? '0.3–0.35' : '0.05'} TON`}
+            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? (externalRecipient ? '0.55' : '0.3–0.35') : '0.05'} TON`}
           />
           {keyring.isLocked() && (
             <Field label="Passcode">

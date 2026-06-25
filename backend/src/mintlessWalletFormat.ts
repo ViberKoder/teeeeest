@@ -35,7 +35,12 @@ export function serializeMintlessWalletResponse<T extends {
   compressed_info: MintlessCompressedInfo;
   epoch?: number;
   root?: string;
-  transfer_hints?: { attach_ton: string; attach_ton_deploy: string; note: string };
+  transfer_hints?: {
+    attach_ton: string;
+    attach_ton_deploy: string;
+    attach_ton_external: string;
+    note: string;
+  };
 }>(body: T): T {
   const out = { ...body };
   if (out.state_init == null) {

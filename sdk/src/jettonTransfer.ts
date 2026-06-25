@@ -9,8 +9,11 @@ export const DEFAULT_JETTON_TRANSFER_TON_NANO = toNano('0.05');
 /** Mintless claim piggybacked on transfer (tests use ~0.3 TON). */
 export const DEFAULT_MINTLESS_SEND_TON_NANO = toNano('0.3');
 
-/** First deploy of sender jetton-wallet + claim + transfer (especially to a new recipient). */
+/** First deploy of sender jetton-wallet + claim + transfer to a new recipient jetton-wallet. */
 export const DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO = toNano('0.35');
+
+/** Claim + outbound transfer that deploys the recipient jetton-wallet (RMJ wallets are heavier). */
+export const DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO = toNano('0.55');
 
 /** @deprecated Use {@link DEFAULT_MINTLESS_SEND_TON_NANO} — 0.1 TON is too low for claim+deploy. */
 export const DEFAULT_ATTACHED_TON_NANO = DEFAULT_MINTLESS_SEND_TON_NANO;
@@ -18,13 +21,16 @@ export const DEFAULT_ATTACHED_TON_NANO = DEFAULT_MINTLESS_SEND_TON_NANO;
 export type MintlessTransferHints = {
   attach_ton: string;
   attach_ton_deploy: string;
+  attach_ton_external: string;
   note: string;
 };
 
 export const DEFAULT_MINTLESS_TRANSFER_HINTS: MintlessTransferHints = {
   attach_ton: DEFAULT_MINTLESS_SEND_TON_NANO.toString(),
   attach_ton_deploy: DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO.toString(),
-  note: 'RMJ rolling_claim: attach custom_payload on transfer; claim runs inside the same jetton-wallet tx',
+  attach_ton_external: DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO.toString(),
+  note:
+    'RMJ rolling_claim: attach custom_payload on transfer; use attach_ton_external when recipient jetton-wallet is not deployed yet',
 };
 
 /**
@@ -39,7 +45,10 @@ export function estimateMintlessAttachTon(opts: {
   if (!opts.hasCustomPayload && !opts.needsDeploy) {
     return DEFAULT_JETTON_TRANSFER_TON_NANO;
   }
-  if (opts.needsDeploy || opts.externalRecipient) {
+  if (opts.externalRecipient) {
+    return DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO;
+  }
+  if (opts.needsDeploy) {
     return DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO;
   }
   return DEFAULT_MINTLESS_SEND_TON_NANO;

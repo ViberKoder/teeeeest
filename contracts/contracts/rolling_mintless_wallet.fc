@@ -186,6 +186,23 @@ int handle_merkle_airdrop_claim(
   );
 }
 
+;; Restore jetton balance when outbound internal_transfer bounces (TEP-74 parity).
+() on_bounce(slice in_msg_body) impure {
+  if (in_msg_body.slice_bits() < 96) {
+    return ();
+  }
+  in_msg_body~skip_bits(32);
+  int op = in_msg_body~load_uint(32);
+  throw_unless(error::wrong_op(), op == op::internal_transfer());
+  in_msg_body~load_uint(64);
+  int jetton_amount = in_msg_body~load_coins();
+
+  (int balance, slice owner, slice master, cell wallet_code,
+   int already_claimed, int cached_root, int cached_epoch, int signer) = load_data();
+  balance += jetton_amount;
+  save_data(balance, owner, master, wallet_code, already_claimed, cached_root, cached_epoch, signer);
+}
+
 ;; ------------- Main entry -------------
 
 () send_tokens(
@@ -235,7 +252,18 @@ int handle_merkle_airdrop_claim(
     }
   }
 
+  int fwd_count = forward_ton_amount > 0 ? 2 : 1;
+  int min_msg = forward_ton_amount
+    + fwd_count * fwd_fee
+    + (2 * const::gas_consumption() + const::min_tons_for_storage())
+    + const::min_tons_for_storage()
+    + const::gas_consumption();
+  if (~ custom_payload.null?()) {
+    min_msg += const::claim_gas_consumption();
+  }
+  throw_unless(error::not_enough_ton(), msg_value >= min_msg);
   throw_unless(error::not_enough_jetton(), balance >= jetton_amount);
+
   balance -= jetton_amount;
   save_data(balance, owner, master, wallet_code, already_claimed, cached_root, cached_epoch, signer);
 
@@ -326,10 +354,18 @@ int handle_merkle_airdrop_claim(
   if (in_msg_body.slice_empty?()) {
     return ();
   }
-  (int flags, slice sender_address, int fwd_fee) = parse_internal_header_slice(in_msg_full.begin_parse());
+  slice cs = in_msg_full.begin_parse();
+  int flags = cs~load_uint(4);
   if (flags & 1) {
+    on_bounce(in_msg_body);
     return ();
   }
+  slice sender_address = cs~load_msg_addr();
+  cs~load_msg_addr();
+  cs~load_coins();
+  cs~load_uint(1);
+  cs~load_coins();
+  int fwd_fee = muldiv(cs~load_coins(), 3, 2);
 
   int op = in_msg_body~load_uint(32);
 
