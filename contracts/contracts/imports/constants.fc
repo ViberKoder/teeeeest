@@ -63,3 +63,5 @@ int error::voucher_epoch_root_mismatch() asm "809 PUSHINT";
 
 int const::min_tons_for_storage()   asm "10000000 PUSHINT"; ;; 0.01 TON
 int const::gas_consumption()        asm "15000000 PUSHINT"; ;; 0.015 TON
+;; Extra inbound TON budget when merkle claim runs in the same `transfer` tx.
+int const::claim_gas_consumption()  asm "80000000 PUSHINT"; ;; 0.08 TON

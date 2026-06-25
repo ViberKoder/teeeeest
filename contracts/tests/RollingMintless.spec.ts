@@ -252,6 +252,88 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
     expect(cached2.epoch).toBe(2);
   });
 
+  it('claim + transfer deploys recipient jetton-wallet when enough TON is attached', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+
+    const recipient = await blockchain.treasury('external_recipient');
+    const userWallet = await openUserWalletWithInit();
+    const proof = tree.generateProof(user.address);
+    const voucher = signVoucher(1, tree.root(), signer.secretKey);
+    const customPayload = buildRollingClaimPayload({ proof, voucher });
+
+    const claimRes = await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: toNano('1'),
+      to: recipient.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.55'),
+      customPayload,
+    });
+
+    expect(claimRes.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: true,
+    });
+
+    const recipientJw = blockchain.openContract(
+      RollingMintlessWallet.createFromConfig(
+        {
+          owner: recipient.address,
+          master: master.address,
+          walletCode,
+          signerPubkey: BigInt('0x' + signer.publicKey.toString('hex')),
+        },
+        walletCode,
+      ),
+    );
+
+    expect(claimRes.transactions).toHaveTransaction({
+      from: userWallet.address,
+      to: recipientJw.address,
+      deploy: true,
+      success: true,
+    });
+
+    const recipientData = await recipientJw.getWalletData();
+    expect(recipientData.balance).toBe(toNano('1'));
+    expect(await userWallet.getAlreadyClaimed()).toBe(toNano('10'));
+  });
+
+  it('rejects claim+transfer when inbound TON is too low for recipient deploy', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+
+    const recipient = await blockchain.treasury('poor_recipient');
+    const userWallet = await openUserWalletWithInit();
+    const proof = tree.generateProof(user.address);
+    const voucher = signVoucher(1, tree.root(), signer.secretKey);
+    const customPayload = buildRollingClaimPayload({ proof, voucher });
+
+    const res = await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: toNano('1'),
+      to: recipient.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.07'),
+      customPayload,
+    });
+
+    expect(res.transactions).toHaveTransaction({
+      from: user.address,
+      to: userWallet.address,
+      success: false,
+      exitCode: ErrorCodes.notEnoughTon,
+    });
+  });
+
   it('rejects stale proof (amount <= already_claimed)', async () => {
     tree.set(user.address, {
       cumulativeAmount: toNano('10'),

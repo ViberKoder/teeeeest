@@ -1,6 +1,6 @@
 import { Cell } from '@ton/core';
-import { buildStandardMerkleClaimPayload, OpCodes } from '@rmj/contracts';
 import { formatCompressedInfo, isWithinClaimWindow } from './mintlessWalletFormat';
+import { buildMintlessCustomPayloadBase64 } from './walletClaimPayload';
 
 describe('formatCompressedInfo (TEP-176)', () => {
   it('serializes amount, start_from, expired_at as decimal strings', () => {
@@ -38,12 +38,15 @@ describe('isWithinClaimWindow (claim-api-go)', () => {
   });
 });
 
-describe('TEP-177 custom_payload opcode', () => {
-  it('buildStandardMerkleClaimPayload uses merkle_airdrop_claim', () => {
+describe('RMJ rolling_claim via Proof API builder', () => {
+  it('walletClaimPayload uses rolling_claim opcode', () => {
     const proof = new Cell();
-    const payload = buildStandardMerkleClaimPayload(proof);
-    const op = payload.beginParse().loadUint(32);
-    expect(op).toBe(OpCodes.merkleAirdropClaim);
-    expect(op).toBe(0x0df602d6);
+    const b64 = buildMintlessCustomPayloadBase64(proof, {
+      state: { epoch: 1, rootBigint: () => 1n } as never,
+      signer: {
+        signRoot: () => ({ newEpoch: 1, newRoot: 1n, signature: Buffer.alloc(64) }),
+      } as never,
+    });
+    expect(Cell.fromBase64(b64).beginParse().loadUint(32)).toBe(0xc9e56df3);
   });
 });

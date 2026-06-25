@@ -22,7 +22,11 @@ export interface ProofApiDeps {
 
 const MINTLESS_CORS = {
   'access-control-allow-origin': '*',
-  'cache-control': 'public, max-age=30',
+};
+
+const WALLET_RESPONSE_HEADERS = {
+  ...MINTLESS_CORS,
+  'cache-control': 'no-store, no-cache, must-revalidate',
 };
 
 /** Wallets poll Proof API on every transfer draft — avoid shared-proxy rate-limit false negatives. */
@@ -103,7 +107,17 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     '/api/v1/jettons/:master/wallet/:owner',
     PROOF_ROUTE_OPTS,
     async (req, reply) => {
-      reply.headers(MINTLESS_CORS);
+      reply.headers(WALLET_RESPONSE_HEADERS);
+      return serveMintlessWallet(req.params.master, req.params.owner, reply);
+    },
+  );
+
+  /** v2 alias — bust MyTonWallet proxy cache after payload format changes. */
+  app.get<{ Params: { master: string; owner: string } }>(
+    '/api/v2/jettons/:master/wallet/:owner',
+    PROOF_ROUTE_OPTS,
+    async (req, reply) => {
+      reply.headers(WALLET_RESPONSE_HEADERS);
       return serveMintlessWallet(req.params.master, req.params.owner, reply);
     },
   );
@@ -242,6 +256,6 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
   }));
 
   logger.info(
-    'mintless api: GET /api/v1/jettons/:master/wallet/:owner, /wallets, /merkle-dump[.boc], legacy /api/v1/custom-payload/wallet/:owner',
+    'mintless api: GET /api/v1|v2/jettons/:master/wallet/:owner, /wallets, /merkle-dump[.boc], legacy /api/v1/custom-payload/wallet/:owner',
   );
 }

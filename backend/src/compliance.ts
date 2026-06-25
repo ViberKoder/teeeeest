@@ -418,7 +418,7 @@ export async function runCompliance(params: {
   const ourClaimReady =
     walletClaim?.state_init !== undefined &&
     !!walletClaim?.compressed_info &&
-    (claimOp === OP_MERKLE_CLAIM || !!walletClaim?.custom_payload);
+    (claimOp === OP_ROLLING_CLAIM || !!walletClaim?.custom_payload);
   const sampleOwnerNote = sampleOwner ? `owner ${Address.parse(sampleOwner).toRawString()}` : 'no pending claim in tree';
 
   push({
@@ -426,10 +426,10 @@ export async function runCompliance(params: {
     group: 'our_api',
     label: '/wallet/{owner} TEP-176 payload',
     pass: ourClaimReady,
-    note: claimOp === OP_MERKLE_CLAIM
-      ? `op 0x0df602d6 (TEP-177 / claim-api-go), ${sampleOwnerNote}`
-      : claimOp === OP_ROLLING_CLAIM
-        ? `op 0xc9e56df3 (legacy rolling), ${sampleOwnerNote}`
+    note: claimOp === OP_ROLLING_CLAIM
+      ? `op 0xc9e56df3 (RMJ rolling_claim + voucher), ${sampleOwnerNote}`
+      : claimOp === OP_MERKLE_CLAIM
+        ? `op 0x0df602d6 (TEP-177 — not RMJ default), ${sampleOwnerNote}`
         : walletClaim?.custom_payload === ''
           ? `empty custom_payload (outside claim window), ${sampleOwnerNote}`
           : claimOp != null
@@ -439,13 +439,13 @@ export async function runCompliance(params: {
   push({
     id: 'api.wallet_opcode',
     group: 'our_api',
-    label: 'custom_payload op = merkle_airdrop_claim (TEP-177)',
-    pass: claimOp === OP_MERKLE_CLAIM,
+    label: 'custom_payload op = rolling_claim (RMJ)',
+    pass: claimOp === OP_ROLLING_CLAIM,
     note: ourClaimReady
-      ? claimOp === OP_MERKLE_CLAIM
+      ? claimOp === OP_ROLLING_CLAIM
         ? sampleOwnerNote
-        : claimOp === OP_ROLLING_CLAIM
-          ? `legacy rolling_claim 0xc9e56df3 — ${sampleOwnerNote}`
+        : claimOp === OP_MERKLE_CLAIM
+          ? `TEP-177 merkle_airdrop_claim 0x0df602d6 — RMJ backend expects rolling_claim — ${sampleOwnerNote}`
           : walletClaim?.custom_payload === ''
             ? `${sampleOwnerNote} — empty custom_payload (outside claim window)`
             : sampleOwnerNote
