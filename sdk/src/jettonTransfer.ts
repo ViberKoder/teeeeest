@@ -13,7 +13,7 @@ export const DEFAULT_MINTLESS_SEND_TON_NANO = toNano('0.3');
 export const DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO = toNano('0.35');
 
 /** Claim + outbound transfer that deploys the recipient jetton-wallet (RMJ wallets are heavier). */
-export const DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO = toNano('0.55');
+export const DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO = toNano('0.18');
 
 /** @deprecated Use {@link DEFAULT_MINTLESS_SEND_TON_NANO} — 0.1 TON is too low for claim+deploy. */
 export const DEFAULT_ATTACHED_TON_NANO = DEFAULT_MINTLESS_SEND_TON_NANO;
@@ -162,19 +162,27 @@ export async function prepareMintlessTransfer(
     rmj.getJettonWallet(params.owner),
   ]);
 
-  const needsClaim = jw.needsDeploy || claim !== null;
-  if (needsClaim && !claim) {
+  const needsClaim = jw.needsDeploy || Boolean(claim?.customPayload);
+  if (needsClaim && !claim?.customPayload) {
     throw new Error(
       'Mintless proof unavailable — external wallets show InsufficientBalance until GET …/wallet/{owner} returns 200. Retry shortly.',
     );
   }
 
-  const customPayloadUsed = claim !== null;
-  const attachedTonNano = estimateMintlessAttachTon({
-    needsDeploy: jw.needsDeploy,
-    hasCustomPayload: customPayloadUsed,
-    externalRecipient,
-  });
+  const customPayloadUsed = Boolean(claim?.customPayload);
+  const hints = claim?.transferHints ?? DEFAULT_MINTLESS_TRANSFER_HINTS;
+  const attachedTonNano = (() => {
+    if (externalRecipient) {
+      return BigInt(hints.attach_ton_external);
+    }
+    if (customPayloadUsed) {
+      return BigInt(jw.needsDeploy ? hints.attach_ton_deploy : hints.attach_ton);
+    }
+    if (jw.needsDeploy) {
+      return BigInt(hints.attach_ton_deploy);
+    }
+    return DEFAULT_JETTON_TRANSFER_TON_NANO;
+  })();
 
   const payloadBase64 = buildJettonTransferPayloadBase64({
     jettonAmountNano: params.jettonAmountNano,
@@ -190,7 +198,7 @@ export async function prepareMintlessTransfer(
     payloadBase64,
     stateInitBase64: jw.walletStateInitBase64,
     customPayloadUsed,
-    transferHints: DEFAULT_MINTLESS_TRANSFER_HINTS,
+    transferHints: hints,
   };
 }
 

@@ -9,6 +9,7 @@ import { jettonMasterUrlSegment, parseJettonMasterParam } from '../jettonMaster'
 import {
   listWalletClaimBatch,
   buildMintlessWalletResponse,
+  buildTransferHintsWalletResponse,
   parseWalletBatchCount,
   parseWalletBatchNextFrom,
 } from '../mintlessClaimHelpers';
@@ -79,20 +80,29 @@ export function registerProofApi(app: FastifyInstance, deps: ProofApiDeps): void
     }
 
     try {
-      const body = await buildMintlessWalletResponse(owner, claimDeps);
+      let body = await buildMintlessWalletResponse(owner, claimDeps);
       if (!body) {
         const inTree = deps.state.tree.has(owner);
+        if (inTree) {
+          body = await buildTransferHintsWalletResponse(owner, claimDeps);
+        }
+        if (!body) {
+          logger.debug(
+            {
+              address: owner.toString({ urlSafe: true, bounceable: false }),
+              epoch: deps.state.epoch,
+              tree_users: deps.state.tree.size,
+              in_tree: inTree,
+            },
+            'mintless: address not in tree or proof unavailable',
+          );
+          reply.code(404);
+          return inTree ? { error: 'nothing-to-claim' } : { error: 'address-not-in-tree' };
+        }
         logger.debug(
-          {
-            address: owner.toString({ urlSafe: true, bounceable: false }),
-            epoch: deps.state.epoch,
-            tree_users: deps.state.tree.size,
-            in_tree: inTree,
-          },
-          'mintless: address not in tree or nothing to claim',
+          { address: owner.toString({ urlSafe: true, bounceable: false }) },
+          'mintless: nothing to claim — serving transfer_hints for post-claim transfer',
         );
-        reply.code(404);
-        return inTree ? { error: 'nothing-to-claim' } : { error: 'address-not-in-tree' };
       }
 
       return serializeMintlessWalletResponse(body);

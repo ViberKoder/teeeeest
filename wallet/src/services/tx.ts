@@ -32,7 +32,7 @@ export const DEFAULT_JETTON_GAS_NANO = toNano('0.05');
 /** Mintless claim piggybacked on transfer — matches contract tests (~0.3 TON). */
 export const DEFAULT_RMJ_CLAIM_GAS_NANO = toNano('0.3');
 /** First deploy + claim + transfer to another address (deploy recipient jetton-wallet). */
-export const DEFAULT_RMJ_SEND_GAS_NANO = toNano('0.55');
+export const DEFAULT_RMJ_SEND_GAS_NANO = toNano('0.18');
 /** MyTonWallet default (~0.07) — too low for RMJ claim + recipient deploy; kept for reference. */
 export const MTW_DEFAULT_MINTLESS_GAS_NANO = toNano('0.07');
 

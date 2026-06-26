@@ -270,7 +270,7 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
       jettonAmount: toNano('1'),
       to: recipient.address,
       forwardTonAmount: 1n,
-      value: toNano('0.55'),
+      value: toNano('0.18'),
       customPayload,
     });
 
@@ -332,6 +332,58 @@ describe('Rolling Mintless Jetton — full tap-to-earn flow', () => {
       success: false,
       exitCode: ErrorCodes.notEnoughTon,
     });
+  });
+
+  it('MyTonWallet-style: 0.07 inbound + TON already on JW deploys recipient', async () => {
+    tree.set(user.address, {
+      cumulativeAmount: toNano('10'),
+      startFrom: 0,
+      expiredAt: NEVER_EXPIRES,
+    });
+    await updateRoot(1);
+
+    const recipient = await blockchain.treasury('mtw_recipient');
+    const userWallet = await openUserWalletWithInit();
+    const proof = tree.generateProof(user.address);
+    const voucher = signVoucher(1, tree.root(), signer.secretKey);
+
+    await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: 0n,
+      to: user.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.35'),
+      customPayload: buildRollingClaimPayload({ proof, voucher }),
+    });
+
+    // Simulate TON returned to JW after a bounced recipient deploy (MTW sends ~0.07 each time).
+    await user.send({ to: userWallet.address, value: toNano('0.08'), bounce: false });
+
+    const res = await userWallet.sendTransfer(user.getSender(), {
+      jettonAmount: toNano('1'),
+      to: recipient.address,
+      forwardTonAmount: 1n,
+      value: toNano('0.07'),
+    });
+
+    const recipientJw = blockchain.openContract(
+      RollingMintlessWallet.createFromConfig(
+        {
+          owner: recipient.address,
+          master: master.address,
+          walletCode,
+          signerPubkey: BigInt('0x' + signer.publicKey.toString('hex')),
+        },
+        walletCode,
+      ),
+    );
+
+    expect(res.transactions).toHaveTransaction({
+      from: userWallet.address,
+      to: recipientJw.address,
+      deploy: true,
+      success: true,
+    });
+    expect((await recipientJw.getWalletData()).balance).toBe(toNano('1'));
   });
 
   it('rejects stale proof (amount <= already_claimed)', async () => {
