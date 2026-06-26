@@ -207,6 +207,50 @@ export async function buildMintlessWalletResponse(
   return body;
 }
 
+/**
+ * TEP-176 wallet response when there is nothing left to claim but the owner is still in-tree.
+ * Wallets (MyTonWallet, Tonkeeper) poll this endpoint on every transfer — return 200 with
+ * `transfer_hints` so they attach ~0.18 TON for claim+recipient deploy flows (TEP-74).
+ */
+export async function buildTransferHintsWalletResponse(
+  owner: Address,
+  deps: MintlessClaimDeps,
+  opts?: { includeRollingExtras?: boolean },
+): Promise<MintlessWalletResponse | null> {
+  if (!deps.state.tree.has(owner)) {
+    return null;
+  }
+  const leaf = deps.state.tree.get(owner)!;
+  const signerPubkey = await resolveMasterSignerPubkey({ fallback: deps.signer.publicKeyBigint });
+  const stateInit = await maybeJettonWalletStateInitBase64(owner, signerPubkey);
+  const jettonWallet = await resolveJettonWalletRaw(owner, signerPubkey);
+
+  const body: MintlessWalletResponse = {
+    owner: owner.toRawString(),
+    jetton_wallet: jettonWallet,
+    custom_payload: '',
+    state_init: stateInit,
+    compressed_info: formatCompressedInfo({
+      amount: leaf.cumulativeAmount,
+      startFrom: leaf.startFrom,
+      expiredAt: leaf.expiredAt,
+    }),
+    transfer_hints: rmjTransferHints({ senderNeedsDeploy: stateInit != null }),
+  };
+
+  if (opts?.includeRollingExtras !== false) {
+    body.epoch = deps.state.epoch;
+    body.root = deps.state.rootHex();
+  }
+
+  if (config.PROOF_API_MTW_METADATA_SHIM) {
+    const shim = walletResponseMetadataShim();
+    if (shim) Object.assign(body, shim);
+  }
+
+  return body;
+}
+
 /** TEP-176 GET /wallets?next_from=&count= — batch for Toncenter mintless_info indexing. */
 export async function listWalletClaimBatch(
   deps: MintlessClaimDeps,

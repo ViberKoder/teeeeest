@@ -129,11 +129,13 @@ export function SendJetton() {
       }
 
       const attachedTon =
-        stateInit || customPayload
-          ? externalRecipient || stateInit
-            ? DEFAULT_RMJ_SEND_GAS_NANO
-            : DEFAULT_RMJ_CLAIM_GAS_NANO
-          : DEFAULT_JETTON_GAS_NANO;
+        entry.isRmj && externalRecipient
+          ? DEFAULT_RMJ_SEND_GAS_NANO
+          : stateInit || customPayload
+            ? stateInit
+              ? DEFAULT_RMJ_SEND_GAS_NANO
+              : DEFAULT_RMJ_CLAIM_GAS_NANO
+            : DEFAULT_JETTON_GAS_NANO;
 
       // Unlock fresh (allow user to use either an already-unlocked keyring or a one-shot passcode).
       if (keyring.isLocked()) {
@@ -274,7 +276,7 @@ export function SendJetton() {
           )}
           <Row
             label="Network fee"
-            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? (externalRecipient ? '0.2' : '0.3–0.35') : '0.05'} TON`}
+            value={`~${entry.isRmj && (externalRecipient || pending > 0n || !entry.walletActive) ? (externalRecipient ? '0.18' : '0.3–0.35') : '0.05'} TON`}
           />
           {keyring.isLocked() && (
             <Field label="Passcode">

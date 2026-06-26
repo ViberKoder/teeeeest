@@ -12,6 +12,11 @@ import {
   parseJettonMasterPathSegment,
 } from './jettonAddressPath';
 import { cacheBustedMerkleDumpUri } from './metadataUriUtils';
+import {
+  RMJ_ATTACH_TON_CLAIM_NANO,
+  RMJ_ATTACH_TON_EXTERNAL_NANO,
+  RMJ_ATTACH_TON_SENDER_DEPLOY_NANO,
+} from './walletClaimPayload';
 
 /**
  * TEP-64 jetton metadata JSON + TEP offchain-payloads `custom_payload_api_uri`.
@@ -105,6 +110,11 @@ export function buildJettonMetadataJson(
 
   const image = (opts?.image ?? mintlessEnv?.image ?? config.PUBLIC_JETTON_IMAGE_URL).trim();
   if (image) body.image = image;
+
+  /** TEP-64 extension — wallets MAY read these when Proof API is cached / unavailable. */
+  body.transfer_attach_ton = RMJ_ATTACH_TON_CLAIM_NANO.toString();
+  body.transfer_attach_ton_deploy = RMJ_ATTACH_TON_SENDER_DEPLOY_NANO.toString();
+  body.transfer_attach_ton_external = RMJ_ATTACH_TON_EXTERNAL_NANO.toString();
 
   return body;
 }

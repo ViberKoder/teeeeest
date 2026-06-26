@@ -111,6 +111,13 @@ export interface CustomPayloadInfo {
   expiredAt: number;
   epoch: number;
   root: string;
+  /** TEP-176 extension — recommended TON attach amounts (nano strings). */
+  transferHints?: {
+    attach_ton: string;
+    attach_ton_deploy: string;
+    attach_ton_external: string;
+    note: string;
+  };
 }
 
 export interface BackendStatus {
@@ -304,6 +311,12 @@ export class RMJClient {
           compressed_info: { amount: string; start_from: string; expired_at: string };
           epoch?: number;
           root?: string;
+          transfer_hints?: {
+            attach_ton: string;
+            attach_ton_deploy: string;
+            attach_ton_external: string;
+            note: string;
+          };
         }>(path);
         return {
           customPayload: r.custom_payload,
@@ -313,6 +326,7 @@ export class RMJClient {
           expiredAt: Number(r.compressed_info.expired_at),
           epoch: r.epoch ?? 0,
           root: r.root ?? '',
+          transferHints: r.transfer_hints,
         };
       } catch (e) {
         if (e instanceof RMJError && e.status === 404) return null;
