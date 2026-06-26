@@ -115,7 +115,7 @@ export function registerDiagnostics(app: FastifyInstance, deps: DiagnosticsDeps)
       how_balance_works: [
         'Taps POST to /api/v1/action increase cumulative_offchain in the DB and update the in-memory Merkle tree immediately.',
         'Proof API GET /api/v1|v2/jettons/{master}/wallet/:owner serves RMJ rolling_claim custom_payload (0xc9e56df3 + voucher).',
-        'For MyTonWallet: point metadata custom_payload_api_uri to /api/v2/jettons/{master} to bust proxy cache; attach ≥0.55 TON for claim + external recipient deploy.',
+        'For MyTonWallet: point metadata custom_payload_api_uri to /api/v2/jettons/{master} to bust proxy cache; attach ≥0.20 TON for claim + external recipient deploy (JW supplements ~0.07 from balance after bounce).',
         'Updated jetton-wallet code (build/RollingMintlessWallet.boc) requires new master deploy — fixes on_bounce balance restore and recipient JW deploy TON checks.',
         `On-chain merkle root sync runs on epoch timer (epoch_duration_seconds=${config.EPOCH_DURATION_SECONDS}); Toncenter/TonAPI unclaimed display may lag until update_merkle_root confirms.`,
         `Jetton UI scale: PUBLIC_BALANCE_DISPLAY=${config.PUBLIC_BALANCE_DISPLAY} → /jetton-metadata.json "decimals" ${config.PUBLIC_BALANCE_DISPLAY === 'integer' ? '"0"' : '"9"'} (integer = one on-chain unit shows as one token).`,

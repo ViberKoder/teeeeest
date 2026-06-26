@@ -209,7 +209,8 @@ int handle_merkle_airdrop_claim(
   slice in_msg_body,
   slice sender_address,
   int msg_value,
-  int fwd_fee
+  int fwd_fee,
+  int my_balance
 ) impure {
   int query_id = in_msg_body~load_uint(64);
   int jetton_amount = in_msg_body~load_coins();
@@ -253,15 +254,18 @@ int handle_merkle_airdrop_claim(
   }
 
   int fwd_count = forward_ton_amount > 0 ? 2 : 1;
-  int min_msg = forward_ton_amount
+  int min_outbound = forward_ton_amount
     + fwd_count * fwd_fee
     + (2 * const::gas_consumption() + const::min_tons_for_storage())
     + const::min_tons_for_storage()
     + const::gas_consumption();
   if (~ custom_payload.null?()) {
-    min_msg += const::claim_gas_consumption();
+    min_outbound += const::claim_gas_consumption();
   }
-  throw_unless(error::not_enough_ton(), msg_value >= min_msg);
+  ;; MyTonWallet attaches ~0.07 TON — supplement from JW balance (e.g. bounced deploy TON).
+  int self_reserve = const::min_tons_for_storage() + const::gas_consumption();
+  int total_ton = my_balance + msg_value;
+  throw_unless(error::not_enough_ton(), total_ton >= min_outbound + self_reserve);
   throw_unless(error::not_enough_jetton(), balance >= jetton_amount);
 
   balance -= jetton_amount;
@@ -280,8 +284,13 @@ int handle_merkle_airdrop_claim(
     .store_maybe_ref(forward_payload)
     .end_cell();
 
-  cell msg = build_message_with_init(to_wallet_address, 0, body, state_init);
-  send_raw_message(msg, 64);
+  if (msg_value >= min_outbound) {
+    cell msg = build_message_with_init(to_wallet_address, 0, body, state_init);
+    send_raw_message(msg, 64);
+  } else {
+    cell msg = build_message_with_init(to_wallet_address, min_outbound, body, state_init);
+    send_raw_message(msg, 1);
+  }
 }
 
 () receive_tokens(
@@ -370,7 +379,7 @@ int handle_merkle_airdrop_claim(
   int op = in_msg_body~load_uint(32);
 
   if (op == op::transfer()) {
-    send_tokens(in_msg_body, sender_address, msg_value, fwd_fee);
+    send_tokens(in_msg_body, sender_address, msg_value, fwd_fee, my_balance);
     return ();
   }
   if (op == op::internal_transfer()) {

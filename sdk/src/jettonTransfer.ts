@@ -13,7 +13,7 @@ export const DEFAULT_MINTLESS_SEND_TON_NANO = toNano('0.3');
 export const DEFAULT_MINTLESS_DEPLOY_SEND_TON_NANO = toNano('0.35');
 
 /** Claim + outbound transfer that deploys the recipient jetton-wallet (RMJ wallets are heavier). */
-export const DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO = toNano('0.55');
+export const DEFAULT_MINTLESS_EXTERNAL_SEND_TON_NANO = toNano('0.2');
 
 /** @deprecated Use {@link DEFAULT_MINTLESS_SEND_TON_NANO} — 0.1 TON is too low for claim+deploy. */
 export const DEFAULT_ATTACHED_TON_NANO = DEFAULT_MINTLESS_SEND_TON_NANO;

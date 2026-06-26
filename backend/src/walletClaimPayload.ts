@@ -9,8 +9,8 @@ export const RMJ_ROLLING_CLAIM_OPCODE = 0xc9e56df3;
 /** TON (nano) to attach to the jetton-wallet message for common RMJ flows. */
 export const RMJ_ATTACH_TON_CLAIM_NANO = 300_000_000n;
 export const RMJ_ATTACH_TON_SENDER_DEPLOY_NANO = 350_000_000n;
-/** Claim + deploy recipient jetton-wallet + forward (MyTonWallet often uses ~0.07 — too low). */
-export const RMJ_ATTACH_TON_EXTERNAL_NANO = 550_000_000n;
+/** Claim + deploy recipient jetton-wallet + forward (MyTonWallet often uses ~0.07 — JW may supplement from balance). */
+export const RMJ_ATTACH_TON_EXTERNAL_NANO = 200_000_000n;
 
 export type RmjTransferHints = {
   attach_ton: string;
@@ -38,6 +38,6 @@ export function rmjTransferHints(opts?: {
     attach_ton_external: RMJ_ATTACH_TON_EXTERNAL_NANO.toString(),
     note:
       `RMJ rolling_claim (0xc9e56df3): ${deploy}claim + transfer in one tx; ` +
-      'use attach_ton_external (0.55 TON) when recipient has no jetton-wallet yet',
+      'use attach_ton_external (0.20 TON) when recipient has no jetton-wallet; JW can supplement MTW ~0.07 from prior bounce balance',
   };
 }

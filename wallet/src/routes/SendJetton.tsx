@@ -274,7 +274,7 @@ export function SendJetton() {
           )}
           <Row
             label="Network fee"
-            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? (externalRecipient ? '0.55' : '0.3–0.35') : '0.05'} TON`}
+            value={`~${entry.isRmj && (pending > 0n || !entry.walletActive) ? (externalRecipient ? '0.2' : '0.3–0.35') : '0.05'} TON`}
           />
           {keyring.isLocked() && (
             <Field label="Passcode">
