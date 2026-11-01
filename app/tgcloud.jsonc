@@ -1,0 +1,5 @@
+{
+  // Telegram Serverless: the built Mini App is served from https://app<id>.tgcloud.ai/
+  // Run `npm run build` first — `tgcloud push` uploads this folder as it is.
+  "source": "dist"
+}

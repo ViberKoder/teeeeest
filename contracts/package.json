@@ -1,8 +1,8 @@
 {
-  "name": "@rmj/contracts",
+  "name": "@egg/contracts",
   "version": "0.1.0",
   "private": true,
-  "description": "FunC smart contracts + TS wrappers + sandbox tests for Rolling Mintless Jetton",
+  "description": "FunC smart contracts + TS wrappers + sandbox tests for EGG jetton",
   "main": "wrappers/index.ts",
   "types": "wrappers/index.ts",
   "files": [

@@ -1,106 +1,47 @@
-# Rolling Mintless Jetton (RMJ)
+# EGG
 
-A **growing-balance on-chain token system** for Telegram games, tap-to-earn apps,
-inline-button bots, mini-apps, and any real-time web application that needs to
-reward users with a Jetton on TON, **without the project paying claim gas**.
+A **self-custody TON wallet that lives inside Telegram** (Mini App), and the **EGG jetton** behind it.
 
-RMJ is a backwards-extended [TEP-176/177 Mintless Jetton](https://docs.ton.org/standard/tokens/jettons/mintless/overview)
-that supports **rolling/cumulative claims** instead of a single-shot airdrop.
-
-- Off-chain game server counts user actions (taps, clicks, inline-button
-  presses) and stores cumulative balances.
-- Every N minutes a new Merkle tree is rebuilt and its root is committed
-  on-chain by the admin.
-- When a user actually transfers or swaps their Jetton, Tonkeeper / MyTonWallet
-  / TON Space automatically fetch a fresh Merkle proof from the project's
-  Custom Payload API and attach it to the transfer. The jetton-wallet then
-  **mints the delta between the new cumulative amount and the last claimed
-  amount**, and forwards the user's transfer in the same transaction.
-
-The user pays their normal transfer gas. The project pays only a few cents a
-day for root updates. Nothing else.
-
----
-
-## Repository layout
+Players earn EGG off-chain (hatching eggs in a bot, channel posts, quests). The project owes them a
+*cumulative* amount. When they open the wallet they tap **Hatch** — or simply send EGG to someone — and the
+amount they are owed is credited to their own jetton-wallet in the same transaction. They pay a normal
+network fee; the project pays nothing per user.
 
 ```
-.
-├── contracts/                # FunC smart contracts + TS wrappers + Blueprint tests
-│   ├── func/                 # RollingMintlessMaster.fc, RollingMintlessWallet.fc, imports
-│   ├── wrappers/             # TypeScript wrappers, Dictionary helpers, Voucher helpers
-│   ├── tests/                # @ton/sandbox end-to-end tests
-│   └── scripts/              # deploy + cli tools
-├── backend/                  # Unified Node.js service (Fastify)
-│   ├── src/                  # game-server + tree-builder + proof-api + root-updater
-│   └── migrations/           # SQLite schema
-├── sdk/                      # Headless TS SDK for game servers, bots, TMAs
-├── examples/
-│   ├── telegram-bot/         # Public-channel bot with inline TAP button
-│   ├── tma/                  # Telegram Mini App tap-to-earn
-│   └── minter/               # Simple web minter for Rolling Mintless Jetton
-└── docs/                     # ARCHITECTURE / INTEGRATION / OPERATIONS / CONTRACTS
+ bot / game ──ingest──▶ server ──signed claim──▶ wallet app ──one tx──▶ your jetton-wallet
+   (rewards)           (ledger, hot key)         (your keys)            (credits delta, notifies master)
 ```
 
----
+| Package | What it is |
+|---|---|
+| [`contracts/`](contracts) | FunC jetton master + jetton-wallet, TypeScript wrappers, sandbox tests |
+| [`server/`](server) | Reward ledger, Telegram login check, claim signer (Fastify + SQLite) |
+| [`app/`](app) | The wallet Mini App (React + Vite). Built-in self-custody wallet **or** any wallet over TON Connect |
+| [`docs/`](docs) | [Architecture & trust model](docs/ARCHITECTURE.md) · [Review of RMJ v1](docs/RMJ_V1_REVIEW.md) · [Deploy](docs/DEPLOY.md) |
 
 ## Quick start
 
 ```bash
-# 1. Install dependencies
-npm install --workspaces
+npm install
+npm test                      # contracts (15) + server (4) + app (12)
 
-# 2. Compile + test contracts
-npm run -w contracts build
-npm run -w contracts test
-
-# 3. Run backend (dev mode; SQLite без DATABASE_URL, см. backend/README.md)
-cp backend/.env.example backend/.env
-npm run backend:dev
-
-# 4. Try the Telegram bot example
-cp examples/telegram-bot/.env.example examples/telegram-bot/.env
-npm run -w examples/telegram-bot dev
-
-# 5. Run the web minter
-cp examples/minter/.env.example examples/minter/.env
-npm run -w examples/minter dev
+# local design preview, no chain and no server needed
+cd app && VITE_DEMO=1 VITE_JETTON_MASTER=0:$(printf 'ab%.0s' {1..32}) npm run dev
+# open http://localhost:5180/?demo=home   (also: welcome, locked, empty)
 ```
 
-See [`docs/INTEGRATION.md`](docs/INTEGRATION.md) for full integration guides
-for tap-to-earn games, public-channel bots, and TMAs.
+Full production setup (keys, master deploy, server, Telegram Serverless): [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
-Fast path (wizard + Docker + bot/TMA env): [`docs/QUICKSTART_ONE_CLICK.md`](docs/QUICKSTART_ONE_CLICK.md).
+## Design rules
 
-Только бэкенд (локально / Docker / Railway): [`backend/README.md`](backend/README.md).
+* **One mechanism.** A claim is a signed statement *“owner X is owed N in total”*. No Merkle trees, epochs, root
+  updates, proof APIs or compatibility shims.
+* **The wallet verifies everything itself**, so it never has to ask the master and a claim fits in the user's own transfer.
+* **Cold authority → hot signer.** A cold key certifies short-lived hot keys; hot keys rotate without moving any address.
+* **Money-like numbers never touch floats.** Integers/bigints everywhere, units are jetton nano.
+* **The app builds a message once**; providers (built-in wallet, TON Connect) only differ in who signs it.
 
----
+Status: working prototype. The contracts have **not** been externally audited — see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#known-limits) before putting real value behind them.
 
-## Why RMJ
-
-Traditional approaches to continuous on-chain rewards either:
-
-1. **Burn huge amounts of gas** (server pushes a jetton transfer per reward
-   event via a Highload Wallet).
-2. **Break UX** (user clicks "Claim" every N minutes and pays their own gas
-   every time).
-
-RMJ inherits Mintless's trick — **the claim is piggy-backed on any regular
-transfer the user already wants to make** — but removes the one-shot
-limitation by storing `already_claimed: Coins` instead of `already_claimed:
-Boolean` and by letting the Merkle root be updated by the admin.
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full architectural
-rationale and cost model.
-
----
-
-## Status
-
-Reference implementation + production-ready backend + two examples. **Audit is
-a prerequisite for mainnet deployment** — the code in this repo has not been
-externally audited.
-
-## License
-
-MIT.
+MIT licensed.

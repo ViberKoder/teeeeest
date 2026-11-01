@@ -5,12 +5,10 @@ dist/
 !.env.example
 *.log
 *.db
-*.db-journal
+*.db-wal
+*.db-shm
 .DS_Store
 coverage/
 .vscode/
 .idea/
-temp/
-.turbo/
-
 *.tsbuildinfo
