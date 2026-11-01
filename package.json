@@ -2,9 +2,14 @@
   "name": "egg",
   "version": "0.2.0",
   "private": true,
-  "description": "EGG — a self-custody TON wallet Mini App and the jetton behind it",
+  "description": "EGG \u2014 a self-custody TON wallet Mini App and the jetton behind it",
   "license": "MIT",
-  "workspaces": ["contracts", "server", "app"],
+  "workspaces": [
+    "contracts",
+    "sdk",
+    "server",
+    "app"
+  ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",

@@ -27,10 +27,10 @@ export function Unlock() {
 
   return (
     <div className="screen">
-      <div className="stack center" style={{ alignItems: 'center', marginTop: 28, gap: 10 }}>
-        <Egg size={84} float />
-        <h2>Welcome back</h2>
-        <p className="muted num small">{w.lockedAddress ? shortAddr(w.lockedAddress, 5, 5) : ''}</p>
+      <div className="stack center" style={{ alignItems: 'center', marginTop: 28, gap: 8 }}>
+        <Egg size={76} float />
+        <h2 style={{ margin: '6px 0 0', fontSize: 22 }}>Enter passcode</h2>
+        <p className="hint num">{w.lockedAddress ? shortAddr(w.lockedAddress, 5, 5) : ''}</p>
       </div>
       <div className="grow" />
       {wait > 0 ? (

@@ -1,25 +1,32 @@
 import { Address, toNano } from '@ton/core';
+import { verifyEntitlement } from '@egg/sdk';
 import { useState } from 'react';
-import { api, apiErrorText } from '../api/server';
+import { api, apiErrorText, proofCell } from '../api/server';
 import { eggClaim } from '../chain/actions';
-import { readEgg, walletInit } from '../chain/egg';
+import { onchainCommitment, readEgg, walletInit } from '../chain/egg';
 import { cfg } from '../config';
 import { formatUnits } from '../lib/format';
 import { haptic } from '../lib/tg';
 import { useWallet } from '../state/wallet';
 import { Burst, Egg, EggState } from '../ui/Egg';
-import { Sheet } from '../ui/Sheet';
+import { MainButton, Page } from '../ui/native';
 
-const NEED_TON = toNano('0.12');
+const NEED_TON = toNano('0.1');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Status = 'idle' | 'working' | 'done' | 'error';
 
-export function ClaimSheet({ onClose }: { onClose: () => void }) {
+/**
+ * Claiming never trusts the server. The proof it returns is opened locally and compared with the commitment
+ * the minter contract stores for that epoch; only if both agree is a transaction sent. The wallet contract then
+ * asks the minter to verify the same proof on-chain before it credits anything.
+ */
+export function ClaimPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
   const [status, setStatus] = useState<Status>('idle');
-  const [step, setStep] = useState('');
+  const [step, setStep] = useState(0);
+  const [epoch, setEpoch] = useState<number | null>(null);
   const [err, setErr] = useState('');
   const [moved, setMoved] = useState(0n);
   if (!provider || !masterAddress) return null;
@@ -30,21 +37,27 @@ export function ClaimSheet({ onClose }: { onClose: () => void }) {
   const run = async () => {
     setStatus('working');
     setErr('');
-    setMoved(data.pending);
+    setMoved(data.ready);
     try {
       const raw = provider.address.toRawString();
-      if (data.me?.address !== raw) {
-        setStep('Linking your wallet…');
-        await api.link(raw);
-      }
-      setStep('Getting your eggs ready…');
-      const { claim, cumulative } = await api.claim();
-      const [state, init] = await Promise.all([readEgg(masterAddress, provider.address), walletInit(masterAddress, provider.address)]);
-      setStep(provider.kind === 'tonconnect' ? 'Confirm in your wallet…' : 'Sending…');
-      await provider.send(eggClaim({ state, claim, init: init.init }));
+      setStep(1);
+      if (data.me?.address !== raw) await api.link(raw);
+      const ent = await api.entitlement(raw);
+      const commitment = await onchainCommitment(masterAddress, ent.epoch);
+      if (!commitment) throw new Error('epoch-not-on-chain');
+      if (!verifyEntitlement(ent, commitment)) throw new Error('proof-mismatch');
+      setEpoch(ent.epoch);
 
-      setStep('Waiting for the network…');
-      for (let i = 0; i < 30; i++) {
+      const cumulative = BigInt(ent.cumulative);
+      const [state, init] = await Promise.all([readEgg(masterAddress, provider.address), walletInit(masterAddress, provider.address)]);
+      if (cumulative <= state.claimed) throw new Error('already-claimed');
+      setMoved(cumulative - state.claimed);
+
+      setStep(2);
+      await provider.send(eggClaim({ state, epoch: ent.epoch, cumulative, proof: proofCell(ent), init: init.init }));
+
+      setStep(3);
+      for (let i = 0; i < 40; i++) {
         await sleep(3000);
         const s = await readEgg(masterAddress, Address.parse(provider.address.toString()));
         if (s.claimed >= cumulative) break;
@@ -54,39 +67,63 @@ export function ClaimSheet({ onClose }: { onClose: () => void }) {
       setStatus('done');
     } catch (e) {
       haptic.error();
-      setErr(apiErrorText(e));
+      const m = e instanceof Error ? e.message : '';
+      setErr(
+        m === 'proof-mismatch'
+          ? 'The server’s answer does not match the blockchain, so nothing was sent.'
+          : m === 'epoch-not-on-chain'
+            ? 'That update is not on the blockchain yet. Try again in a minute.'
+            : m === 'already-claimed'
+              ? 'Everything committed so far is already in your wallet.'
+              : /reject|denied|cancel/i.test(m)
+                ? 'The transaction was cancelled.'
+                : apiErrorText(e),
+      );
       setStatus('error');
     }
   };
 
+  const steps = ['Checking the proof against the blockchain', 'Confirm the transaction', 'Moving EGG to your wallet'];
+
   return (
-    <Sheet onClose={status === 'working' ? () => undefined : onClose}>
-      <div className="stack center" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 6 }}>
+    <Page title={status === 'done' ? undefined : 'Hatch'} onBack={status === 'working' ? () => undefined : onClose} bottomSpace>
+      <div className="stack" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 18, textAlign: 'center' }}>
         {status === 'done' && <Burst />}
-        <Egg size={104} state={egg} float={status === 'idle'} />
+        <Egg size={112} state={egg} float={status === 'idle'} />
+
         {status === 'done' ? (
           <>
-            <h2>Hatched!</h2>
-            <p className="muted"><b className="num" style={{ color: 'var(--text)' }}>{formatUnits(moved, cfg.token.decimals, 2)}</b> EGG is yours, on-chain.</p>
-            <button className="btn primary" onClick={onClose}>Nice</button>
+            <h2 style={{ margin: 0, fontSize: 26 }}>Hatched!</h2>
+            <p className="hint" style={{ fontSize: 16 }}>
+              <b className="num" style={{ color: 'var(--text)' }}>{formatUnits(moved, cfg.token.decimals, 2)} EGG</b> are now in your wallet, verified by the blockchain{epoch ? ` (update #${epoch})` : ''}.
+            </p>
           </>
         ) : status === 'working' ? (
-          <>
-            <h2>Hatching…</h2>
-            <p className="muted">{step}</p>
-          </>
+          <div className="steps" style={{ marginTop: 10 }}>
+            {steps.map((t, i) => (
+              <div key={t} className={`step ${step === i + 1 ? 'on' : ''} ${step > i + 1 ? 'done' : ''}`}>
+                <i>{step > i + 1 ? '✓' : i + 1}</i>
+                {t}
+              </div>
+            ))}
+          </div>
         ) : (
           <>
-            <h2><span className="num">{formatUnits(data.pending, cfg.token.decimals, 2)}</span> EGG in the nest</h2>
-            <p className="muted" style={{ maxWidth: 320 }}>
-              These are earned but still off-chain. Moving them costs one small network fee (about 0.05 TON), and they become ordinary tokens in your wallet.
+            <h2 style={{ margin: 0, fontSize: 26 }}><span className="num">{formatUnits(data.ready, cfg.token.decimals, 2)}</span> EGG ready</h2>
+            <p className="hint" style={{ fontSize: 16, maxWidth: 330 }}>
+              Your amount is committed in a public root on the blockchain. Hatching asks the token contract itself to verify your proof — the server cannot take it back or change it.
             </p>
-            {lowTon && <p className="hint bad">You need about {formatUnits(NEED_TON, 9, 2)} TON for the network fee. You have {formatUnits(data.ton, 9, 3)}.</p>}
+            {lowTon && <p className="hint bad">You need about {formatUnits(NEED_TON, 9, 2)} TON for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
             {status === 'error' && <p className="hint bad">{err}</p>}
-            <button className="btn primary" disabled={lowTon} onClick={run}>{status === 'error' ? 'Try again' : 'Move to my wallet'}</button>
-                      </>
+          </>
         )}
       </div>
-    </Sheet>
+
+      {status === 'done' ? (
+        <MainButton text="Done" onClick={onClose} />
+      ) : (
+        <MainButton text={status === 'error' ? 'Try again' : 'Hatch to my wallet'} onClick={run} enabled={!lowTon} loading={status === 'working'} />
+      )}
+    </Page>
   );
 }

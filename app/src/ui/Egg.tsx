@@ -14,9 +14,9 @@ export function Egg({ size = 120, state = 'idle', float = false }: { size?: numb
     <svg className={`egg ${float ? 'float' : ''} ${state}`} width={size} height={size * 1.1} viewBox="0 0 120 132" aria-hidden>
       <defs>
         <radialGradient id={`s${id}`} cx="35%" cy="28%" r="85%">
-          <stop offset="0" stopColor="var(--shell-1)" />
-          <stop offset="0.55" stopColor="var(--shell-2)" />
-          <stop offset="1" stopColor="var(--shell-3)" />
+          <stop offset="0" stopColor="var(--egg-1)" />
+          <stop offset="0.55" stopColor="var(--egg-2)" />
+          <stop offset="1" stopColor="var(--egg-3)" />
         </radialGradient>
         <clipPath id={`t${id}`}><path d={`${zig}L120 0L0 0Z`} /></clipPath>
         <clipPath id={`b${id}`}><path d={`${zig}L120 132L0 132Z`} /></clipPath>

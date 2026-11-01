@@ -1,130 +1,113 @@
-import { findTransaction } from '@ton/test-utils';
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Address, Cell, toNano } from '@ton/core';
-import { keyPairFromSeed } from '@ton/crypto';
-import { readFileSync } from 'fs';
-import { join } from 'path';
-import { buildClaim, EggMaster, EggWallet, offchainContent, signCert } from '@egg/contracts';
+import { Address, toNano, TupleReader } from '@ton/core';
+import { findTransaction } from '@ton/test-utils';
+import { EggTree, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, publishRootBody, topUpBody, verifyEntitlement, walletStateInit } from '@egg/sdk';
 import { eggClaim, eggTransfer, parseAddress, tonTransfer } from '../src/chain/actions';
-import type { OutMessage } from '../src/provider/types';
 import type { EggState } from '../src/chain/egg';
-import { eggWalletStateInit } from '@egg/contracts/wrappers/messages';
+import type { OutMessage } from '../src/provider/types';
 
-const boc = (n: string) => Cell.fromBoc(readFileSync(join(__dirname, '../../contracts/build', `${n}.boc`)))[0];
 const T0 = 1_800_000_000;
-const authority = keyPairFromSeed(Buffer.alloc(32, 1));
-const hot = keyPairFromSeed(Buffer.alloc(32, 2));
-const authorityInt = BigInt('0x' + authority.publicKey.toString('hex'));
+const E = (n: number) => toNano(String(n));
 
-/** vitest has no toHaveTransaction matcher, so assert through the same helper the matcher uses. */
+/** vitest has no toHaveTransaction matcher, so assert through the helper the matcher uses. */
 function expectTx(txs: Parameters<typeof findTransaction>[0], pattern: Parameters<typeof findTransaction>[1]) {
   expect(findTransaction(txs, pattern), `no transaction matching ${JSON.stringify(pattern, (_, v) => (typeof v === 'bigint' ? v.toString() : v))}`).toBeDefined();
 }
 
-/** What a wallet provider does with an OutMessage — here the sandbox treasury plays the user's wallet. */
+/** What a wallet provider does with an OutMessage — here a sandbox treasury plays the user's wallet. */
 async function sendAs(user: SandboxContract<TreasuryContract>, msgs: OutMessage[]) {
   let last: Awaited<ReturnType<typeof user.send>> | undefined;
-  for (const m of msgs) {
-    last = await user.send({ to: m.to, value: m.value, bounce: m.bounce, body: m.body, init: m.init });
-  }
+  for (const m of msgs) last = await user.send({ to: m.to, value: m.value, bounce: m.bounce, body: m.body, init: m.init });
   return last!;
 }
 
-describe('messages built by the wallet app are accepted by the real contracts', () => {
+describe('messages built by the wallet app are accepted by the real (Tolk) contracts', () => {
   let chain: Blockchain;
   let admin: SandboxContract<TreasuryContract>;
+  let publisher: SandboxContract<TreasuryContract>;
   let alice: SandboxContract<TreasuryContract>;
   let bob: SandboxContract<TreasuryContract>;
-  let master: SandboxContract<EggMaster>;
-  let walletCode: Cell;
-
-  const claimFor = (owner: SandboxContract<TreasuryContract>, cumulative: bigint) =>
-    buildClaim({
-      master: master.address,
-      owner: owner.address,
-      cumulative,
-      validUntil: T0 + 600,
-      signerSecret: hot.secretKey,
-      cert: signCert(authority.secretKey, master.address, hot.publicKey, 1, T0 + 86_400 * 30),
-    });
-
-  const stateOf = async (owner: SandboxContract<TreasuryContract>): Promise<{ s: EggState; init: { code: Cell; data: Cell } }> => {
-    const { init, address } = eggWalletStateInit({ owner: owner.address, master: master.address, walletCode, authority: authorityInt });
-    const deployed = (await chain.getContract(address)).accountState?.type === 'active';
-    let balance = 0n;
-    let claimed = 0n;
-    if (deployed) {
-      const w = chain.openContract(EggWallet.createFromAddress(address));
-      balance = (await w.getWalletData()).balance;
-      claimed = (await w.getClaimState()).claimed;
-    }
-    return { s: { jettonWallet: address, deployed, balance, claimed }, init };
-  };
+  let minter: Address;
 
   beforeEach(async () => {
     chain = await Blockchain.create();
     chain.now = T0;
-    admin = await chain.treasury('admin');
-    alice = await chain.treasury('alice');
-    bob = await chain.treasury('bob');
-    walletCode = boc('EggWallet');
-    master = chain.openContract(
-      EggMaster.createFromConfig(
-        { maxSupply: 0n, admin: admin.address, content: offchainContent('https://x.test/j.json'), walletCode, authority: authorityInt },
-        boc('EggMaster'),
-      ),
+    [admin, publisher, alice, bob] = await Promise.all(['admin', 'publisher', 'alice', 'bob'].map((n) => chain.treasury(n)));
+    const s = minterStateInit(
+      { maxSupply: E(1_000_000), admin: admin.address, publisher: publisher.address, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
+      eggMinterCode,
     );
-    await master.sendDeploy(admin.getSender());
+    minter = s.address;
+    await admin.send({ to: minter, value: toNano('1'), init: s.init, bounce: false, body: topUpBody() });
   });
 
-  it('first claim deploys the wallet from the app-built StateInit', async () => {
-    const { s, init } = await stateOf(alice);
-    const tx = await sendAs(alice, eggClaim({ state: s, claim: claimFor(alice, toNano('2500')), init }));
+  const publish = (tree: EggTree, epoch = 1) =>
+    publisher.send({ to: minter, value: toNano('0.1'), body: publishRootBody({ epoch, treeRoot: tree.treeRoot, total: tree.total }) });
+
+  const stateOf = async (owner: Address): Promise<{ s: EggState; init: ReturnType<typeof walletStateInit>['init'] }> => {
+    const { init, address } = walletStateInit(owner, minter, eggWalletCode);
+    const deployed = (await chain.getContract(address)).accountState?.type === 'active';
+    let balance = 0n, claimed = 0n;
+    if (deployed) {
+      balance = new TupleReader((await chain.runGetMethod(address, 'get_wallet_data')).stack).readBigNumber();
+      claimed = new TupleReader((await chain.runGetMethod(address, 'get_claim_state')).stack).readBigNumber();
+    }
+    return { s: { jettonWallet: address, deployed, balance, claimed, lockedUntil: 0 }, init };
+  };
+
+  it('first claim deploys the wallet from the app-built StateInit and credits exactly the proven amount', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(2500) }, { owner: bob.address, cumulative: E(40) }]);
+    await publish(tree);
+
+    const { s, init } = await stateOf(alice.address);
+    const tx = await sendAs(alice, eggClaim({ state: s, epoch: 1, cumulative: E(2500), proof: tree.proof(alice.address)!, init }));
     expectTx(tx.transactions, { to: s.jettonWallet, success: true, deploy: true });
-    const after = await stateOf(alice);
-    expect(after.s.balance).toBe(toNano('2500'));
-    expect(after.s.claimed).toBe(toNano('2500'));
-    expect((await master.getJettonData()).totalSupply).toBe(toNano('2500'));
+    expectTx(tx.transactions, { from: minter, to: s.jettonWallet, success: true });
+    const after = (await stateOf(alice.address)).s;
+    expect(after.balance).toBe(E(2500));
+    expect(after.claimed).toBe(E(2500));
   });
 
-  it('send with a comment and a claim attached: one transaction, recipient is notified', async () => {
-    const { s, init } = await stateOf(alice);
-    const tx = await sendAs(
-      alice,
-      eggTransfer({ owner: alice.address, state: s, to: bob.address, amount: toNano('100'), comment: 'for coffee', claim: claimFor(alice, toNano('500')), init }),
-    );
-    expectTx(tx.transactions, { to: s.jettonWallet, success: true });
-    const a = await stateOf(alice);
-    const b = await stateOf(bob);
-    expect(a.s.balance).toBe(toNano('400'));
-    expect(b.s.balance).toBe(toNano('100'));
+  it('the proof the app checks locally is the same one the contract accepts', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(10) }, { owner: bob.address, cumulative: E(20) }]);
+    await publish(tree);
+    const onchain = new TupleReader((await chain.runGetMethod(minter, 'get_root', [{ type: 'int', value: 1n }])).stack).readBigNumber();
+    const commitment = Buffer.from(onchain.toString(16).padStart(64, '0'), 'hex');
+    const ent = {
+      owner: alice.address.toRawString(), epoch: 1, cumulative: E(10).toString(),
+      proof: tree.proof(alice.address)!.toBoc().toString('base64'), commitment: commitment.toString('hex'),
+    };
+    expect(verifyEntitlement(ent, commitment)).toBe(true);
+    expect(verifyEntitlement({ ...ent, cumulative: E(11).toString() }, commitment)).toBe(false);
+  });
+
+  it('a claim costs the user a few cents, the attached TON comes back, the jetton-wallet stays solvent', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(5) }, { owner: bob.address, cumulative: E(1) }]);
+    await publish(tree);
+    const { s, init } = await stateOf(alice.address);
+    const before = await alice.getBalance();
+    await sendAs(alice, eggClaim({ state: s, epoch: 1, cumulative: E(5), proof: tree.proof(alice.address)!, init }));
+    const spent = before - (await alice.getBalance());
+    expect(spent).toBeLessThan(toNano('0.03'));
+    expect((await chain.getContract(s.jettonWallet)).balance).toBeGreaterThan(0n);
+  });
+
+  it('send with a comment: recipient wallet is created and the recipient is notified', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(500) }, { owner: bob.address, cumulative: E(1) }]);
+    await publish(tree);
+    const a0 = await stateOf(alice.address);
+    await sendAs(alice, eggClaim({ state: a0.s, epoch: 1, cumulative: E(500), proof: tree.proof(alice.address)!, init: a0.init }));
+
+    const { s } = await stateOf(alice.address);
+    const tx = await sendAs(alice, eggTransfer({ owner: alice.address, state: s, to: bob.address, amount: E(100), comment: 'for coffee' }));
+    const b = await stateOf(bob.address);
+    expectTx(tx.transactions, { from: s.jettonWallet, to: b.s.jettonWallet, success: true });
     expectTx(tx.transactions, { from: b.s.jettonWallet, to: bob.address, op: 0x7362d09c });
+    expect(b.s.balance).toBe(E(100));
+    expect((await stateOf(alice.address)).s.balance).toBe(E(400));
   });
 
-  it('plain send of already-claimed tokens works and leaves the wallet contract solvent', async () => {
-    const first = await stateOf(alice);
-    await sendAs(alice, eggClaim({ state: first.s, claim: claimFor(alice, toNano('50')), init: first.init }));
-    const before = (await chain.getContract(first.s.jettonWallet)).balance;
-
-    const { s, init } = await stateOf(alice);
-    const tx = await sendAs(alice, eggTransfer({ owner: alice.address, state: s, to: bob.address, amount: toNano('20'), init }));
-    expectTx(tx.transactions, { to: s.jettonWallet, success: true });
-
-    const after = (await chain.getContract(first.s.jettonWallet)).balance;
-    // The user's attached TON pays for the operation; the jetton-wallet's own reserve is not drained.
-    expect(after).toBeGreaterThanOrEqual(before - toNano('0.002'));
-    expect((await stateOf(bob)).s.balance).toBe(toNano('20'));
-  });
-
-  it('most of the attached TON comes back as excess', async () => {
-    const { s, init } = await stateOf(alice);
-    const start = await alice.getBalance();
-    await sendAs(alice, eggClaim({ state: s, claim: claimFor(alice, toNano('1')), init }));
-    const spent = start - (await alice.getBalance());
-    expect(spent).toBeLessThan(toNano('0.07'));
-  });
-
-  it('TON transfer builder keeps bounce semantics of the address it was given', () => {
+  it('TON transfer builder keeps the bounce flag of the address it was given', () => {
     const friendly = parseAddress(new Address(0, Buffer.alloc(32, 1)).toString({ bounceable: false }));
     expect(friendly?.bounceable).toBe(false);
     const [m] = tonTransfer({ to: friendly!, amount: 1n, comment: 'hi' });

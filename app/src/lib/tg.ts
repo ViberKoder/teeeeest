@@ -18,6 +18,14 @@ interface TgWebApp {
     selectionChanged(): void;
   };
   BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
+  MainButton?: {
+    setParams(p: { text?: string; color?: string; text_color?: string; is_active?: boolean; is_visible?: boolean }): void;
+    onClick(cb: () => void): void;
+    offClick(cb: () => void): void;
+    showProgress(leaveActive?: boolean): void;
+    hideProgress(): void;
+    hide(): void;
+  };
   safeAreaInset?: { top: number; bottom: number };
 }
 
@@ -40,9 +48,9 @@ export function bootTelegram() {
   tg.disableVerticalSwipes?.();
   const apply = () => {
     document.documentElement.dataset.theme = tg.colorScheme;
-    const bg = tg.colorScheme === 'dark' ? '#0f0c09' : '#fff8ec';
-    tg.setHeaderColor?.(bg);
-    tg.setBackgroundColor?.(bg);
+    // match the native chrome to the grouped-list background
+    tg.setHeaderColor?.('secondary_bg_color');
+    tg.setBackgroundColor?.('secondary_bg_color');
   };
   apply();
   tg.onEvent('themeChanged', apply);

@@ -1,10 +1,10 @@
-import { Address, Cell } from '@ton/core';
+import { Address, Cell, StateInit } from '@ton/core';
 
 export interface OutMessage {
   to: Address;
   value: bigint;
   body?: Cell;
-  init?: { code: Cell; data: Cell };
+  init?: StateInit;
   bounce: boolean;
 }
 

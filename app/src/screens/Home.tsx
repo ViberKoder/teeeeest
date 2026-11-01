@@ -1,16 +1,16 @@
 import { useState } from 'react';
-import { cfg } from '../config';
+import { cfg, endpoints } from '../config';
 import { formatUnits, shortAddr, timeAgo } from '../lib/format';
 import { haptic, openExternal } from '../lib/tg';
-import { endpoints } from '../config';
 import { useWallet } from '../state/wallet';
 import { Egg, EggMark, TonMark } from '../ui/Egg';
 import { Gear, Receive, Send, Sparkle } from '../ui/Icons';
+import { Row, Section } from '../ui/native';
 import { useToast } from '../ui/toast';
-import { ClaimSheet } from './Claim';
-import { ReceiveSheet } from './Receive';
-import { SendSheet } from './Send';
-import { SettingsSheet } from './Settings';
+import { ClaimPage } from './Claim';
+import { ReceivePage } from './Receive';
+import { SendPage } from './Send';
+import { SettingsPage } from './Settings';
 
 type Open = null | 'send' | 'receive' | 'claim' | 'settings';
 
@@ -21,99 +21,106 @@ export function Home() {
   const { data, provider } = w;
   if (!provider) return null;
 
+  const D = cfg.token.decimals;
   const eggBalance = data.egg?.balance ?? 0n;
-  const total = eggBalance + data.pending;
+  const nest = data.ready + data.accruing;
+  const total = eggBalance + nest;
   const addr = provider.address.toString({ bounceable: false, testOnly: cfg.network === 'testnet' });
-  const hasPending = data.pending > 0n;
   const first = data.loading && !data.egg && data.ton === 0n;
+  const close = () => setOpen(null);
 
   return (
     <div className="screen">
       <div className="top">
-        <button className="who" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.tap(); toast('Address copied'); }}>
+        <button className="pill" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.tap(); toast('Address copied'); }}>
           <span className="dot" />
           <span className="num">{shortAddr(addr, 4, 4)}</span>
           {cfg.network === 'testnet' && <span className="badge">TESTNET</span>}
         </button>
-        <button className="icon-btn" aria-label="Settings" onClick={() => setOpen('settings')}><Gear /></button>
+        <button className="round" aria-label="Settings" onClick={() => setOpen('settings')}><Gear width={20} height={20} /></button>
       </div>
 
-      <section className="hero">
-        <div className="tiny" style={{ color: 'inherit', opacity: 0.7 }}>Total balance</div>
+      <div className="balance">
+        <div className="label">Balance</div>
         {first ? (
-          <div className="skeleton" style={{ height: 46, width: 190, margin: '10px 0' }} />
+          <div className="skeleton" style={{ height: 50, width: 200, margin: '8px auto' }} />
         ) : (
-          <div className="big num">{formatUnits(total, cfg.token.decimals, 2)}<small>EGG</small></div>
+          <div className="amount num">{formatUnits(total, D, 2)}<small>EGG</small></div>
         )}
-        <div className="chips">
-          <span className="chip num">On-chain {formatUnits(eggBalance, cfg.token.decimals, 2)}</span>
-          {hasPending && <span className="chip num"><i className="pulse" /> {formatUnits(data.pending, cfg.token.decimals, 2)} in the nest</span>}
+        <div className="sub num">
+          {nest > 0n ? `${formatUnits(eggBalance, D, 2)} in wallet · ${formatUnits(nest, D, 2)} in the nest` : `${formatUnits(data.ton, 9, 3)} TON for fees`}
         </div>
-        <div className="egg-deco"><Egg size={124} state="idle" /></div>
-      </section>
+      </div>
 
-      <div className="actions">
-        <button className="action" onClick={() => setOpen('send')}><span className="ic"><Send /></span>Send</button>
-        <button className="action" onClick={() => setOpen('receive')}><span className="ic"><Receive /></span>Receive</button>
-        <button className={`action hatch ${hasPending ? 'ready' : ''}`} onClick={() => (hasPending ? setOpen('claim') : toast('Nothing in the nest yet — go hatch some eggs'))}>
-          <span className="ic"><Sparkle /></span>Hatch
+      <div className="tiles">
+        <button className="tile" onClick={() => setOpen('send')}><span className="tile-ic"><Send width={18} height={18} /></span>Send</button>
+        <button className="tile" onClick={() => setOpen('receive')}><span className="tile-ic"><Receive width={18} height={18} /></span>Receive</button>
+        <button
+          className={`tile ${data.ready > 0n ? 'hot' : ''}`}
+          onClick={() => (data.ready > 0n ? setOpen('claim') : toast(nest > 0n ? 'Still hatching — it joins the next blockchain update' : 'Nothing in the nest yet'))}
+        >
+          <span className="tile-ic"><Sparkle width={18} height={18} /></span>Hatch
         </button>
       </div>
 
-      {hasPending && (
-        <button className="nest" onClick={() => setOpen('claim')}>
-          <Egg size={38} state="idle" />
-          <div className="grow">
-            <div style={{ fontWeight: 800 }} className="num">{formatUnits(data.pending, cfg.token.decimals, 2)} EGG are waiting</div>
-            <div className="small muted">Move them to your wallet in one tap</div>
+      {nest > 0n && (
+        <button className="nest" onClick={() => data.ready > 0n && setOpen('claim')}>
+          <Egg size={34} />
+          <div className="grow" style={{ minWidth: 0 }}>
+            {data.ready > 0n ? (
+              <>
+                <div className="t num">{formatUnits(data.ready, D, 2)} EGG ready to hatch</div>
+                <div className="s">Committed on-chain — yours to move in one tap</div>
+              </>
+            ) : (
+              <>
+                <div className="t num">{formatUnits(data.accruing, D, 2)} EGG hatching</div>
+                <div className="s">Joins the blockchain with the next update</div>
+              </>
+            )}
           </div>
-          <span style={{ fontWeight: 800, color: 'var(--yolk)' }}>Move →</span>
+          {data.ready > 0n && <span className="go">Hatch</span>}
         </button>
       )}
 
-      <div className="tiny section-title">Assets</div>
-      <div className="list">
-        <div className="item">
-          <div className="coin egg"><EggMark /></div>
-          <div className="grow"><div className="t">EGG</div><div className="s">{hasPending ? `${formatUnits(data.pending, cfg.token.decimals, 2)} more in the nest` : 'Egg token'}</div></div>
-          <div className="t num">{formatUnits(eggBalance, cfg.token.decimals, 2)}</div>
-        </div>
-        <div className="item">
-          <div className="coin ton"><TonMark /></div>
-          <div className="grow"><div className="t">TON</div><div className="s">Network fees</div></div>
-          <div className="t num">{formatUnits(data.ton, cfg.ton.decimals, 3)}</div>
-        </div>
-      </div>
+      <Section title="Assets">
+        <Row
+          icon={<span className="row-icon icon-egg"><EggMark /></span>}
+          title="EGG"
+          subtitle={nest > 0n ? `+ ${formatUnits(nest, D, 2)} in the nest` : 'Egg token'}
+          trailing={<span className="num">{formatUnits(eggBalance, D, 2)}</span>}
+        />
+        <Row
+          icon={<span className="row-icon icon-ton"><TonMark /></span>}
+          title="TON"
+          subtitle="Network fees"
+          trailing={<span className="num">{formatUnits(data.ton, 9, 3)}</span>}
+        />
+      </Section>
 
-      <div className="tiny section-title">Activity</div>
-      {data.activity.length === 0 ? (
-        <div className="card center muted small" style={{ padding: 22 }}>
-          {data.loading ? 'Loading…' : 'Nothing here yet. Your first transfer will show up here.'}
-        </div>
-      ) : (
-        <div className="list">
-          {data.activity.slice(0, 12).map((a) => (
-            <button className="item" key={a.id} onClick={() => openExternal(`${endpoints.explorer}/${addr}`)}>
-              <div className={`coin ${a.direction}`}>{a.direction === 'in' ? <Receive width={18} height={18} /> : <Send width={18} height={18} />}</div>
-              <div className="grow">
-                <div className="t">{a.direction === 'in' ? 'Received' : 'Sent'} {a.symbol}{a.failed ? ' · failed' : ''}</div>
-                <div className="s num">{a.peer ? shortAddr(a.peer.replace(/^0:/, ''), 5, 4) : ''}{a.comment ? ` · ${a.comment}` : ''} · {timeAgo(a.time)}</div>
-              </div>
-              <div className="t num" style={{ color: a.direction === 'in' ? 'var(--good)' : 'var(--text)' }}>
-                {a.direction === 'in' ? '+' : '−'}{formatUnits(a.amount, a.decimals, 2)}
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
+      <Section title="Activity">
+        {data.activity.length === 0 ? (
+          <div className="empty">{data.loading ? 'Loading…' : 'Your transfers will show up here'}</div>
+        ) : (
+          data.activity.slice(0, 12).map((a) => (
+            <Row
+              key={a.id}
+              onClick={() => openExternal(`${endpoints.explorer}/${addr}`)}
+              icon={<span className={`row-icon ${a.direction === 'in' ? 'icon-in' : 'icon-out'}`}>{a.direction === 'in' ? <Receive width={18} height={18} /> : <Send width={18} height={18} />}</span>}
+              title={`${a.direction === 'in' ? 'Received' : 'Sent'} ${a.symbol}${a.failed ? ' · failed' : ''}`}
+              subtitle={<span className="num">{a.peer ? shortAddr(a.peer.replace(/^0:/, ''), 5, 4) : ''}{a.comment ? ` · ${a.comment}` : ''} · {timeAgo(a.time)}</span>}
+              trailing={<span className="num" style={{ color: a.direction === 'in' ? 'var(--good)' : undefined }}>{a.direction === 'in' ? '+' : '−'}{formatUnits(a.amount, a.decimals, 2)}</span>}
+            />
+          ))
+        )}
+      </Section>
 
       {data.error && <p className="hint bad center" style={{ marginTop: 14 }}>{data.error}</p>}
 
-      {open === 'send' && <SendSheet onClose={() => setOpen(null)} />}
-      {open === 'receive' && <ReceiveSheet onClose={() => setOpen(null)} />}
-      {open === 'claim' && <ClaimSheet onClose={() => setOpen(null)} />}
-      {open === 'settings' && <SettingsSheet onClose={() => setOpen(null)} />}
+      {open === 'send' && <SendPage onClose={close} />}
+      {open === 'receive' && <ReceivePage onClose={close} />}
+      {open === 'claim' && <ClaimPage onClose={close} />}
+      {open === 'settings' && <SettingsPage onClose={close} />}
     </div>
   );
 }
-

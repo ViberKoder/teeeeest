@@ -1,5 +1,6 @@
-import { Address, Cell, toNano } from '@ton/core';
-import { Attach, claimBody, commentPayload, jettonTransferBody } from '@egg/contracts/wrappers/messages';
+import { Address, Cell, StateInit } from '@ton/core';
+import { askToClaimBody, Attach, commentPayload, transferBody } from '@egg/sdk';
+import { toNano } from '@ton/core';
 import type { OutMessage } from '../provider/types';
 import type { EggState } from './egg';
 
@@ -22,41 +23,20 @@ export function parseAddress(input: string): ParsedAddress | null {
 }
 
 export function tonTransfer(p: { to: ParsedAddress; amount: bigint; comment?: string }): OutMessage[] {
-  return [
-    {
-      to: p.to.address,
-      value: p.amount,
-      bounce: p.to.bounceable,
-      body: p.comment ? commentPayload(p.comment) : undefined,
-    },
-  ];
+  return [{ to: p.to.address, value: p.amount, bounce: p.to.bounceable, body: p.comment ? commentPayload(p.comment) : undefined }];
 }
 
-/**
- * EGG transfer. When a `claim` is supplied it rides along in the same message,
- * so syncing the project's balance and sending cost one transaction.
- */
-export function eggTransfer(p: {
-  owner: Address;
-  state: EggState;
-  to: Address;
-  amount: bigint;
-  comment?: string;
-  claim?: Cell;
-  init?: { code: Cell; data: Cell };
-}): OutMessage[] {
+export function eggTransfer(p: { owner: Address; state: EggState; to: Address; amount: bigint; comment?: string }): OutMessage[] {
   const hasComment = Boolean(p.comment);
   return [
     {
       to: p.state.jettonWallet,
-      value: p.claim ? Attach.transferWithClaim : Attach.transfer,
+      value: Attach.transfer,
       bounce: true,
-      init: p.state.deployed ? undefined : p.init,
-      body: jettonTransferBody({
+      body: transferBody({
         amount: p.amount,
         to: p.to,
         responseTo: p.owner,
-        claim: p.claim,
         // a comment only reaches the recipient inside a transfer_notification
         forwardTon: hasComment ? 1n : 0n,
         forwardPayload: hasComment ? commentPayload(p.comment!) : null,
@@ -65,14 +45,21 @@ export function eggTransfer(p: {
   ];
 }
 
-export function eggClaim(p: { state: EggState; claim: Cell; init?: { code: Cell; data: Cell } }): OutMessage[] {
+/** The claim: ask your own jetton-wallet to verify `proof` against the root the minter has published for `epoch`. */
+export function eggClaim(p: {
+  state: EggState;
+  epoch: number;
+  cumulative: bigint;
+  proof: Cell;
+  init?: StateInit;
+}): OutMessage[] {
   return [
     {
       to: p.state.jettonWallet,
       value: Attach.claim,
       bounce: true,
       init: p.state.deployed ? undefined : p.init,
-      body: claimBody(p.claim),
+      body: askToClaimBody({ epoch: p.epoch, cumulative: p.cumulative, proof: p.proof }),
     },
   ];
 }

@@ -1,45 +1,37 @@
-import { Cell, toNano } from '@ton/core';
 import { useMemo, useState } from 'react';
-import { api, apiErrorText } from '../api/server';
+import { apiErrorText } from '../api/server';
 import { eggTransfer, parseAddress, tonTransfer, TON_FEE_RESERVE } from '../chain/actions';
-import { readEgg, walletInit } from '../chain/egg';
+import { readEgg } from '../chain/egg';
 import { cfg } from '../config';
 import { formatUnits, parseUnits, shortAddr } from '../lib/format';
 import { haptic } from '../lib/tg';
 import { useWallet } from '../state/wallet';
 import { Burst } from '../ui/Egg';
 import { Check } from '../ui/Icons';
-import { Sheet } from '../ui/Sheet';
+import { MainButton, Page, Row, Section } from '../ui/native';
+import { Attach } from '@egg/sdk';
 
 type Asset = 'EGG' | 'TON';
 type Step = 'form' | 'review' | 'sending' | 'done';
+const dec = 9;
 
-const EGG_FEE = toNano('0.1');
-const EGG_FEE_CLAIM = toNano('0.15');
-
-export function SendSheet({ onClose }: { onClose: () => void }) {
+export function SendPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
-  const [asset, setAsset] = useState<Asset>(data.egg || data.pending > 0n ? 'EGG' : 'TON');
+  const [asset, setAsset] = useState<Asset>(data.egg && data.egg.balance > 0n ? 'EGG' : 'TON');
   const [to, setTo] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [comment, setComment] = useState('');
   const [step, setStep] = useState<Step>('form');
   const [err, setErr] = useState('');
 
-  const dec = 9;
   const dest = useMemo(() => (to.trim() ? parseAddress(to) : null), [to]);
   const amount = useMemo(() => parseUnits(amountStr, dec), [amountStr]);
-
   const eggOnChain = data.egg?.balance ?? 0n;
-  const eggAvailable = eggOnChain + data.pending;
-  const needsClaim = asset === 'EGG' && amount !== null && amount > eggOnChain && data.pending > 0n;
-  const attachesClaim = asset === 'EGG' && data.pending > 0n;
-  const eggFee = attachesClaim ? EGG_FEE_CLAIM : EGG_FEE;
-
-  const available = asset === 'EGG' ? eggAvailable : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
-  const wrongNet = dest ? dest.testOnly !== (cfg.network === 'testnet') && dest.testOnly : false;
+  const available = asset === 'EGG' ? eggOnChain : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
+  const nestHint = asset === 'EGG' && data.ready > 0n;
   const isSelf = dest && provider ? dest.address.equals(provider.address) : false;
+  const wrongNet = dest ? dest.testOnly && cfg.network !== 'testnet' : false;
 
   const problem = (() => {
     if (to.trim() && !dest) return 'That address doesn’t look right';
@@ -47,8 +39,8 @@ export function SendSheet({ onClose }: { onClose: () => void }) {
     if (isSelf) return 'That’s your own address';
     if (amount === null && amountStr) return 'Enter a valid amount';
     if (amount !== null && amount <= 0n) return 'Amount must be above zero';
-    if (amount !== null && amount > available) return asset === 'TON' ? 'Not enough TON (a little is kept for fees)' : 'Not enough EGG';
-    if (asset === 'EGG' && amount !== null && data.ton < eggFee) return `You need about ${formatUnits(eggFee, 9, 2)} TON to pay the network fee`;
+    if (amount !== null && amount > available) return asset === 'TON' ? 'Not enough TON (a little is kept for fees)' : 'Not enough EGG in your wallet';
+    if (asset === 'EGG' && amount !== null && data.ton < Attach.transfer) return `You need about ${formatUnits(Attach.transfer, 9, 2)} TON to pay the network fee`;
     return '';
   })();
   const ready = Boolean(dest && amount && amount > 0n && !problem);
@@ -64,96 +56,81 @@ export function SendSheet({ onClose }: { onClose: () => void }) {
         await provider.send(tonTransfer({ to: dest, amount, comment: comment.trim() || undefined }));
       } else {
         if (!masterAddress) throw new Error('EGG is not configured');
-        const init = await walletInit(masterAddress, provider.address);
         const state = await readEgg(masterAddress, provider.address);
-        let claim: Cell | undefined;
-        if (attachesClaim) {
-          const raw = provider.address.toRawString();
-          if (data.me?.address !== raw) await api.link(raw);
-          claim = (await api.claim()).claim;
-        }
-        await provider.send(
-          eggTransfer({ owner: provider.address, state, to: dest.address, amount, comment: comment.trim() || undefined, claim, init: init.init }),
-        );
+        await provider.send(eggTransfer({ owner: provider.address, state, to: dest.address, amount, comment: comment.trim() || undefined }));
       }
       haptic.success();
       setStep('done');
       setTimeout(() => void w.refresh(), 4000);
     } catch (e) {
       haptic.error();
-      setErr(e instanceof Error && e.message && !e.message.includes('fetch') ? humanize(e.message) : apiErrorText(e));
+      const m = e instanceof Error ? e.message : '';
+      setErr(/reject|denied|cancel/i.test(m) ? 'The transaction was cancelled' : /locked/i.test(m) ? 'The wallet is locked' : apiErrorText(e));
       setStep('review');
     }
   };
 
   if (step === 'done')
     return (
-      <Sheet onClose={onClose}>
-        <div className="stack center" style={{ alignItems: 'center', gap: 14, position: 'relative', padding: '10px 0 4px' }}>
+      <Page onBack={onClose} bottomSpace>
+        <div className="stack center" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 40 }}>
           <Burst />
-          <div className="coin egg" style={{ width: 84, height: 84 }}><Check width={40} height={40} /></div>
-          <h2>Sent</h2>
-          <p className="muted"><b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> is on its way to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.</p>
-          <button className="btn primary" onClick={onClose}>Done</button>
+          <div className="row-icon icon-in" style={{ width: 84, height: 84 }}><Check width={42} height={42} /></div>
+          <h2 style={{ margin: 0, fontSize: 26 }}>Sent</h2>
+          <p className="hint" style={{ fontSize: 16 }}>
+            <b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> is on its way to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.
+          </p>
         </div>
-      </Sheet>
+        <MainButton text="Done" onClick={onClose} />
+      </Page>
     );
 
   if (step === 'review' || step === 'sending')
     return (
-      <Sheet onClose={step === 'sending' ? () => undefined : () => setStep('form')} title="Review">
-        <div className="stack">
-          <div className="card center">
-            <div className="tiny">You send</div>
-            <div className="num" style={{ fontSize: 40, fontWeight: 800, letterSpacing: '-0.02em' }}>{amountStr} <span style={{ fontSize: 20 }}>{asset}</span></div>
-          </div>
-          <div className="list">
-            <div className="item"><span className="muted">To</span><span className="grow" /><span className="num" style={{ fontWeight: 700 }}>{dest && shortAddr(dest.address.toString({ bounceable: false }), 6, 6)}</span></div>
-            {comment && <div className="item"><span className="muted">Comment</span><span className="grow" /><span style={{ fontWeight: 700 }}>{comment}</span></div>}
-            <div className="item"><span className="muted">Network fee</span><span className="grow" /><span className="num" style={{ fontWeight: 700 }}>{asset === 'TON' ? '< 0.01' : `≤ ${formatUnits(eggFee, 9, 2)}`} TON</span></div>
-          </div>
-          {needsClaim && <p className="hint">This also moves {formatUnits(data.pending, 9, 2)} EGG from your nest to your wallet, in the same transaction.</p>}
-          {err && <p className="hint bad">{err}</p>}
-          <button className="btn primary" onClick={submit} disabled={step === 'sending'}>
-            {step === 'sending' ? <><span className="spinner" /> {provider.kind === 'tonconnect' ? 'Confirm in your wallet' : 'Sending'}</> : 'Confirm and send'}
-          </button>
+      <Page title="Confirm" onBack={step === 'sending' ? () => undefined : () => setStep('form')} bottomSpace>
+        <div className="balance" style={{ paddingTop: 10 }}>
+          <div className="label">You send</div>
+          <div className="amount num">{amountStr}<small>{asset}</small></div>
         </div>
-      </Sheet>
+        <Section>
+          <Row title={<span className="hint" style={{ fontSize: 17 }}>To</span>} trailing={<span className="num">{dest && shortAddr(dest.address.toString({ bounceable: false }), 6, 6)}</span>} />
+          {comment && <Row title={<span className="hint" style={{ fontSize: 17 }}>Comment</span>} trailing={comment} />}
+          <Row title={<span className="hint" style={{ fontSize: 17 }}>Network fee</span>} trailing={<span className="num">{asset === 'TON' ? '< 0.01' : '≈ 0.01'} TON</span>} />
+        </Section>
+        {err && <p className="hint bad center" style={{ marginTop: 14 }}>{err}</p>}
+        <MainButton text="Confirm and send" onClick={submit} loading={step === 'sending'} />
+      </Page>
     );
 
   return (
-    <Sheet onClose={onClose} title="Send">
-      <div className="stack">
-        <div className="seg">
-          {(['EGG', 'TON'] as Asset[]).map((a) => (
-            <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
-          ))}
+    <Page title="Send" onBack={onClose} bottomSpace>
+      <div className="seg" style={{ marginTop: 6 }}>
+        {(['EGG', 'TON'] as Asset[]).map((a) => (
+          <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
+        ))}
+      </div>
+
+      <Section>
+        <div className="amount-box">
+          <input className="num" inputMode="decimal" placeholder="0" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} />
+          <div className="unit num">Available {formatUnits(available, dec, 4)} {asset}</div>
+          <button className="max" onClick={() => setAmountStr(formatUnits(available, dec, 9).replace(/ /g, ''))}>Use max</button>
         </div>
+      </Section>
+      {nestHint && <p className="hint" style={{ padding: '8px 16px 0' }}>{formatUnits(data.ready, 9, 2)} more EGG are ready in the nest — hatch them first to send them.</p>}
+
+      <Section>
         <div className="field">
           <label>Recipient</label>
-          <input className={`input ${to.trim() && !dest ? 'err' : ''}`} placeholder="UQ… or EQ… address" value={to} onChange={(e) => setTo(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-        </div>
-        <div className="field">
-          <label>Amount</label>
-          <input className="input amount num" inputMode="decimal" placeholder="0" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} />
-          <div className="row" style={{ justifyContent: 'space-between', padding: '0 4px' }}>
-            <span className="hint num">Available {formatUnits(available, dec, 4)} {asset}</span>
-            <button style={{ color: 'var(--yolk)', fontWeight: 800 }} onClick={() => setAmountStr(formatUnits(available, dec, 9).replace(/ /g, ''))}>Max</button>
-          </div>
+          <input className="input" placeholder="UQ… or EQ… address" value={to} onChange={(e) => setTo(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
         </div>
         <div className="field">
           <label>Comment (optional)</label>
           <input className="input" maxLength={120} value={comment} onChange={(e) => setComment(e.target.value)} />
         </div>
-        {problem && <p className="hint bad">{problem}</p>}
-        <button className="btn primary" disabled={!ready} onClick={() => { haptic.tap(); setStep('review'); }}>Continue</button>
-      </div>
-    </Sheet>
+      </Section>
+      {problem && <p className="hint bad" style={{ padding: '8px 16px 0' }}>{problem}</p>}
+      <MainButton text="Continue" enabled={ready} onClick={() => { haptic.tap(); setStep('review'); }} />
+    </Page>
   );
-}
-
-function humanize(m: string) {
-  if (/reject|denied|cancel/i.test(m)) return 'The transaction was cancelled';
-  if (/locked/i.test(m)) return 'The wallet is locked';
-  return 'Couldn’t send. Please try again.';
 }

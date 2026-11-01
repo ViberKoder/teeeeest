@@ -14,18 +14,16 @@ export const schema = z.object({
   /** Shared secret for server-to-server reward ingestion (your bot). */
   INGEST_API_KEY: z.string().min(24),
 
-  /** Hot signer seed (32 bytes hex). Keep in a KMS in production. */
-  SIGNER_SEED_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/),
-  /** Cold authority PUBLIC key (hex). The secret never touches this server. */
-  AUTHORITY_PUBKEY_HEX: z.string().regex(/^[0-9a-fA-F]{64}$/),
-  /** Output of `npm run cert` (base64 JSON). */
-  KEY_CERT_B64: z.string().min(10),
+  NETWORK: z.enum(['testnet', 'mainnet']).default('testnet'),
+  TONCENTER_KEY: z.string().default(''),
   JETTON_MASTER_ADDRESS: z.string().min(10),
+  /** 24-word mnemonic of the PUBLISHER wallet. It can only publish roots, and the contract rate-limits it. */
+  PUBLISHER_MNEMONIC: z.string().default(''),
+  /** How often a new root is published when something changed. Must be >= the on-chain minInterval. */
+  PUBLISH_INTERVAL_SECONDS: z.coerce.number().int().min(30).default(600),
 
-  /** Seconds a signed claim stays valid on-chain. */
-  CLAIM_TTL_SECONDS: z.coerce.number().int().min(60).max(86_400).default(600),
-  /** Hard ceiling for everything ever issued, in jetton units (0 = none). */
-  MAX_SUPPLY_UNITS: bigint.default('0'),
+  /** Everything the ledger will ever promise, in jetton units. Must equal the on-chain max supply. */
+  MAX_SUPPLY_UNITS: bigint,
   /** Largest single reward the ingest API accepts. */
   MAX_EVENT_UNITS: bigint.default('1000000000000'),
   /** Telegram initData must be younger than this. */
@@ -42,8 +40,6 @@ export type Config = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const parsed = schema.safeParse(env);
-  if (!parsed.success) {
-    throw new Error('Invalid environment: ' + JSON.stringify(parsed.error.flatten().fieldErrors));
-  }
+  if (!parsed.success) throw new Error('Invalid environment: ' + JSON.stringify(parsed.error.flatten().fieldErrors));
   return parsed.data;
 }

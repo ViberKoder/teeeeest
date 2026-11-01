@@ -21,9 +21,10 @@ const provider: WalletProvider = {
 const peer = (b: string) => '0:' + b.repeat(64).slice(0, 64);
 const full: Data = {
   ton: E(3.482),
-  egg: { jettonWallet: address, deployed: true, balance: E(9980.5), claimed: E(9980.5) },
-  me: { tg_id: 1, address: address.toRawString(), cumulative: String(E(12480.5)), claim_locked: true, banned: false },
-  pending: E(2500),
+  egg: { jettonWallet: address, deployed: true, balance: E(9980.5), claimed: E(9980.5), lockedUntil: 0 },
+  me: { tg_id: 1, address: address.toRawString(), ledger: String(E(12600.5)), entitlement: null, address_locked: true, banned: false },
+  ready: E(2500),
+  accruing: E(120),
   loading: false,
   error: null,
   activity: [
@@ -40,7 +41,7 @@ export default function Demo() {
     if (mode === 'welcome') w.setDemo('welcome');
     else if (mode === 'locked') w.setDemo('locked');
     else if (mode === 'empty')
-      w.setDemo('ready', provider, { ...full, pending: 0n, activity: [], egg: { ...full.egg!, balance: 0n, claimed: 0n }, me: null, ton: E(0.4) });
+      w.setDemo('ready', provider, { ...full, ready: 0n, accruing: 0n, activity: [], egg: { ...full.egg!, balance: 0n, claimed: 0n }, me: null, ton: E(0.4) });
     else w.setDemo('ready', provider, full);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

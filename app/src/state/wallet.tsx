@@ -19,13 +19,15 @@ export interface Data {
   egg: EggState | null;
   me: Me | null;
   activity: Activity[];
-  /** what the project owes you but is not on-chain yet */
-  pending: bigint;
+  /** committed on-chain and provable: claimable right now */
+  ready: bigint;
+  /** earned, but not in a published root yet: it joins the next one */
+  accruing: bigint;
   loading: boolean;
   error: string | null;
 }
 
-const empty: Data = { ton: 0n, egg: null, me: null, activity: [], pending: 0n, loading: true, error: null };
+const empty: Data = { ton: 0n, egg: null, me: null, activity: [], ready: 0n, accruing: 0n, loading: true, error: null };
 
 interface Ctx {
   phase: Phase;
@@ -105,11 +107,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         api.available() ? api.me().catch(() => null) : Promise.resolve(null),
         loadActivity(provider.address, masterAddress).catch(() => [] as Activity[]),
       ]);
-      // The server balance only counts for the wallet it is linked to.
-      const linkedHere = me?.address ? me.address === provider.address.toRawString() : true;
-      const owed = me && linkedHere ? BigInt(me.cumulative) : 0n;
+      // Only count the ledger when it belongs to this wallet.
+      const mine = me ? (me.address ? me.address === provider.address.toRawString() : true) : false;
       const claimed = egg?.claimed ?? 0n;
-      setData({ ton: balance, egg, me, activity, pending: owed > claimed ? owed - claimed : 0n, loading: false, error: null });
+      const committed = me && mine && me.entitlement ? BigInt(me.entitlement.cumulative) : 0n;
+      const ready = committed > claimed ? committed - claimed : 0n;
+      const owed = me && mine ? BigInt(me.ledger) : 0n;
+      const known = claimed > committed ? claimed : committed;
+      const accruing = owed > known ? owed - known : 0n;
+      setData({ ton: balance, egg, me, activity, ready, accruing, loading: false, error: null });
     } catch {
       setData((d) => ({ ...d, loading: false, error: 'Network is unavailable' }));
     }

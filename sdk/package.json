@@ -1,0 +1,22 @@
+{
+  "name": "@egg/sdk",
+  "version": "0.2.0",
+  "private": true,
+  "description": "EGG SDK: Merkle tree + proofs, message builders, contract init, entitlement API client. Works in Node and the browser.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ton/core": "^0.62.0",
+    "@ton/crypto": "^3.3.0"
+  },
+  "devDependencies": {
+    "@ton/sandbox": "^0.45.0",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.4.5",
+    "vitest": "^2.0.5"
+  }
+}

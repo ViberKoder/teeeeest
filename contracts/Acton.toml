@@ -1,0 +1,31 @@
+[package]
+name = "egg-contracts"
+description = "EGG jetton: TEP-74 jetton whose supply is claimed against Merkle roots committed on-chain"
+version = "0.2.0"
+license = "MIT"
+
+[toolchain]
+acton = "1.2.1"
+
+[contracts.EggMinter]
+display-name = "EggMinter"
+src = "contracts/EggMinter.tolk"
+depends = ["EggWallet"]
+
+[contracts.EggWallet]
+display-name = "EggWallet"
+src = "contracts/EggWallet.tolk"
+depends = []
+
+[test]
+
+[fmt]
+width = 100
+ignore = []
+
+[import-mappings]
+acton = ".acton"
+contracts = "contracts"
+gen = "gen"
+tests = "tests"
+wrappers = "wrappers"

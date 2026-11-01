@@ -3,13 +3,14 @@ import { cfg, endpoints } from '../config';
 import { haptic, openExternal } from '../lib/tg';
 import { useWallet } from '../state/wallet';
 import { Copy, External, Key, Link as LinkIcon, Lock, Trash } from '../ui/Icons';
+import { MainButton, Page, Row, Section } from '../ui/native';
 import { PinPad } from '../ui/PinPad';
-import { Sheet } from '../ui/Sheet';
 import { useToast } from '../ui/toast';
 
 type View = 'main' | 'pin' | 'phrase' | 'confirmDelete';
+const ic = (n: React.ReactNode, c = 'icon-soft') => <span className={`row-icon ${c}`}>{n}</span>;
 
-export function SettingsSheet({ onClose }: { onClose: () => void }) {
+export function SettingsPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const toast = useToast();
   const [view, setView] = useState<View>('main');
@@ -22,7 +23,7 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
 
   if (view === 'pin')
     return (
-      <Sheet onClose={() => setView('main')} title="Enter passcode">
+      <Page title="Enter passcode" onBack={() => setView('main')}>
         <PinPad
           shake={shake}
           onComplete={async (pin) => {
@@ -30,60 +31,43 @@ export function SettingsSheet({ onClose }: { onClose: () => void }) {
             if (ws) { setWords(ws); setView('phrase'); } else { haptic.error(); setShake((s) => s + 1); }
           }}
         />
-      </Sheet>
+      </Page>
     );
 
   if (view === 'phrase')
     return (
-      <Sheet onClose={onClose} title="Recovery phrase">
-        <div className="stack">
-          <div className="words">{words.map((x, i) => (<div className="word" key={i}><i>{i + 1}</i>{x}</div>))}</div>
-          <p className="hint">Never share these words. Nobody from Telegram or this app will ever ask for them.</p>
-          <button className="btn soft" onClick={() => { setWords([]); setView('main'); }}>Hide</button>
-        </div>
-      </Sheet>
+      <Page title="Recovery phrase" onBack={() => { setWords([]); setView('main'); }}>
+        <div className="words" style={{ marginTop: 10 }}>{words.map((x, i) => (<div className="word" key={i}><i>{i + 1}</i>{x}</div>))}</div>
+        <p className="hint" style={{ padding: '14px 4px' }}>Never share these words. Nobody from Telegram or this app will ever ask for them.</p>
+      </Page>
     );
 
   if (view === 'confirmDelete')
     return (
-      <Sheet onClose={() => setView('main')} title="Remove wallet?">
-        <div className="stack">
-          <p className="muted center">{builtin ? 'This erases the wallet from this device. Without your 24 words, the funds are gone for good.' : 'This disconnects the wallet from the app. Your funds stay where they are.'}</p>
-          <button className="btn danger" onClick={() => { void w.signOut(); onClose(); }}>{builtin ? 'Erase wallet' : 'Disconnect'}</button>
-          <button className="btn soft" onClick={() => setView('main')}>Cancel</button>
-        </div>
-      </Sheet>
+      <Page title={builtin ? 'Erase wallet?' : 'Disconnect?'} onBack={() => setView('main')} bottomSpace>
+        <p className="hint center" style={{ fontSize: 16, padding: '24px 8px' }}>
+          {builtin ? 'This erases the wallet from this device. Without your 24 words, the funds are gone for good.' : 'This disconnects the wallet from the app. Your funds stay where they are.'}
+        </p>
+        <MainButton tone="danger" text={builtin ? 'Erase wallet' : 'Disconnect'} onClick={() => { void w.signOut(); onClose(); }} />
+      </Page>
     );
 
   return (
-    <Sheet onClose={onClose} title="Settings">
-      <div className="stack">
-        <div className="card center stack" style={{ gap: 6 }}>
-          <div className="tiny">{builtin ? 'Self-custody wallet · v5' : 'Connected via TON Connect'}</div>
-          <div className="addr" style={{ fontSize: 12.5 }}>{addr}</div>
-        </div>
-        <div className="list">
-          <button className="item" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }}>
-            <Copy /><span className="grow t">Copy address</span>
-          </button>
-          <button className="item" onClick={() => openExternal(`${endpoints.explorer}/${addr}`)}>
-            <External /><span className="grow t">View in explorer</span>
-          </button>
-          {builtin && (
-            <button className="item" onClick={() => setView('pin')}><Key /><span className="grow t">Show recovery phrase</span></button>
-          )}
-          {builtin && (
-            <button className="item" onClick={() => { w.lock(); onClose(); }}><Lock /><span className="grow t">Lock now</span></button>
-          )}
-          {!builtin && (
-            <button className="item" onClick={w.useExternal}><LinkIcon /><span className="grow t">Switch wallet</span></button>
-          )}
-          <button className="item" style={{ color: 'var(--bad)' }} onClick={() => setView('confirmDelete')}>
-            <Trash /><span className="grow t">{builtin ? 'Erase wallet' : 'Disconnect'}</span>
-          </button>
-        </div>
-        <p className="tiny center" style={{ marginTop: 6 }}>EGG Wallet · {cfg.network}</p>
-      </div>
-    </Sheet>
+    <Page title="Settings" onBack={onClose}>
+      <Section title={builtin ? 'Self-custody wallet' : 'Connected via TON Connect'} footer="Your keys never leave this device. EGG balances are verified by the token contract on the blockchain.">
+        <div className="addr" style={{ padding: '14px 16px' }}>{addr}</div>
+      </Section>
+      <Section>
+        <Row onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }} icon={ic(<Copy width={18} height={18} />)} title="Copy address" />
+        <Row onClick={() => openExternal(`${endpoints.explorer}/${addr}`)} icon={ic(<External width={18} height={18} />)} title="View in explorer" />
+        {builtin && <Row onClick={() => setView('pin')} icon={ic(<Key width={18} height={18} />)} title="Show recovery phrase" />}
+        {builtin && <Row onClick={() => { w.lock(); onClose(); }} icon={ic(<Lock width={18} height={18} />)} title="Lock now" />}
+        {!builtin && <Row onClick={w.useExternal} icon={ic(<LinkIcon width={18} height={18} />)} title="Switch wallet" />}
+      </Section>
+      <Section>
+        <Row tone="danger" onClick={() => setView('confirmDelete')} icon={ic(<Trash width={18} height={18} />, 'icon-out')} title={builtin ? 'Erase wallet' : 'Disconnect'} />
+      </Section>
+      <p className="hint center" style={{ marginTop: 22 }}>EGG Wallet · {cfg.network}</p>
+    </Page>
   );
 }
