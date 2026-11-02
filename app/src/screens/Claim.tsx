@@ -47,7 +47,7 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
     try {
       const raw = provider.address.toRawString();
       setStep(1);
-      if (data.me?.address !== raw) await api.link(raw);
+      if (data.me?.address !== raw) await provider.linkToAccount();
       const ent = await api.entitlement(raw).catch((e: unknown) => {
         const cached = entitlementCache.read(raw);
         if (cached) return cached; // the server is unreachable, but a verified proof is still good

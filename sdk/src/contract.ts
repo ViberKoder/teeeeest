@@ -53,6 +53,7 @@ export function minterInitData(c: MinterConfig): Cell {
     .storeBit(0) // roots: empty map
     .storeRef(governance)
     .storeRef(limits)
+    .storeCoins(0) // totalMinted
     .endCell();
 }
 

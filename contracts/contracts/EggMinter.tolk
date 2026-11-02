@@ -67,7 +67,12 @@ fun onInternalMessage(in: InMessage) {
             if (msg.cumulative > msg.claimedAtWallet) {
                 val delta = msg.cumulative - msg.claimedAtWallet;
                 assert (storage.totalSupply + delta <= storage.maxSupply) throw Errors.SupplyExceeded;
+                // What has ever been created can never exceed the NEWEST published total, which the growth limits bound.
+                // A tree's internal sums are only checked along the claimed path, so a dishonest publisher could otherwise
+                // promise the same total to different people in different roots and mint past the limits.
+                assert (storage.totalMinted + delta <= storage.limits.load().lastTotal) throw Errors.SupplyExceeded;
                 storage.totalSupply += delta;
+                storage.totalMinted += delta;
                 storage.save();
             }
 
@@ -186,6 +191,10 @@ fun onInternalMessage(in: InMessage) {
             val gov = storage.governance.load();
             assertSenderIsAdmin(in.senderAddress, gov.adminAddress);
             var limits = storage.limits.load();
+            // limits can only be tightened: a compromised admin must not be able to open the tap
+            assert (msg.maxGrowth <= limits.maxGrowth) throw Errors.LimitsLoosened;
+            assert (msg.periodSeconds >= limits.periodSeconds) throw Errors.LimitsLoosened;
+            assert (msg.minInterval >= limits.minInterval) throw Errors.LimitsLoosened;
             limits.maxGrowth = msg.maxGrowth;
             limits.periodSeconds = msg.periodSeconds;
             limits.minInterval = msg.minInterval;
@@ -267,6 +276,11 @@ get fun get_wallet_address(ownerAddress: address): address {
 }
 
 // ------------------------------- EGG getters -------------------------------
+
+get fun get_total_minted(): int {
+    val storage = lazy MinterStorage.load();
+    return storage.totalMinted;
+}
 
 get fun get_max_supply(): int {
     val storage = lazy MinterStorage.load();

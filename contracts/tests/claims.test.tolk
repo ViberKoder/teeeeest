@@ -257,3 +257,33 @@ get fun `test proof: depth beyond one cell is followed through the chain`() {
     claim(wallet, a, 1, 10, head);
     expect(wallet.getWalletData().jettonBalance).toEqual(10);
 }
+
+get fun `test supply: what was ever created stays within the newest published total`() {
+    // a publisher that promises the same total to different people in different roots cannot mint more than that total
+    val env = setupMinter();
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    publish(env, 1, t1.root, t1.total);
+    val t2 = twoLeafTree(env.admin.address, t1.total, env.bob.address, 0);
+    testing.setNow(testing.getNow() + 3601);
+    publish(env, 2, t2.root, t2.total);
+
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(aw, env.alice.address, 1, ALICE_EGGS, t1.aliceProof);
+    claim(bw, env.bob.address, 1, BOB_EGGS, t1.bobProof);
+    expect(env.minter.getTotalMinted()).toEqual(t1.total);
+
+    val cw = deployUserWallet(env.minter, env.admin.address, env.admin.address);
+    claim(cw, env.admin.address, 2, t1.total, t2.aliceProof);
+    expect(cw.getWalletData().jettonBalance).toEqual(0);
+    expect(env.minter.getTotalMinted()).toEqual(t1.total);
+    expect(env.minter.getJettonData().totalSupply).toEqual(t1.total);
+}
+
+get fun `test governance: limits can only be tightened`() {
+    val env = setupMinter(MAX_SUPPLY, 500000000000);
+    val looser = env.minter.sendSetLimits(env.admin.address, 0, MAX_SUPPLY, 3600, 0, { value: grams("0.05") });
+    expect(looser).toHaveFailedTx<SetLimits>({ to: env.minter.address, exitCode: Errors.LimitsLoosened });
+    val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, 60, { value: grams("0.05") });
+    expect(tighter).toHaveSuccessfulTx<SetLimits>({ to: env.minter.address });
+}

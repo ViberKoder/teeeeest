@@ -250,6 +250,10 @@ fun EggMinter.getWalletAddress(self, ownerAddress: address): address {
     return net.runGetMethod(self.address, "get_wallet_address", [ownerAddress]);
 }
 
+fun EggMinter.getTotalMinted(self): int {
+    return net.runGetMethod(self.address, "get_total_minted");
+}
+
 fun EggMinter.getMaxSupply(self): int {
     return net.runGetMethod(self.address, "get_max_supply");
 }

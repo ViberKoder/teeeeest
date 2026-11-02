@@ -15,6 +15,7 @@ enum Errors {
     SupplyExceeded = 84
     GrowthLimit = 85
     PublishTooSoon = 86
+    LimitsLoosened = 87
 
     // claims
     UnknownEpoch = 90

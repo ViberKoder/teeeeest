@@ -64,6 +64,7 @@ fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY): E
         roots: [],
         governance: governance.toCell(),
         limits: limits.toCell(),
+        totalMinted: 0,
     });
     // the generated .deploy() sends an empty body; this contract expects TopUpGrams
     val res = net.send(

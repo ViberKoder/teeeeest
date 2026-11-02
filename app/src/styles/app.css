@@ -331,3 +331,12 @@ body { font-feature-settings: 'ss01', 'tnum' 0; }
 @keyframes bob { 50% { transform: translateY(-4px) rotate(3deg); } }
 .section { margin-top: 20px; }
 .section-title { text-transform: none; font-size: 16px; font-weight: 650; color: var(--text); letter-spacing: -0.01em; padding-bottom: 8px; }
+
+/* centred action tiles: icon and label share one vertical axis, whatever the glyph's own shape */
+.actions4 { align-items: stretch; }
+.act { justify-content: center; min-height: 86px; padding: 12px 4px; text-align: center; line-height: 1.1; }
+.act .ic { margin: 0 auto; flex: none; }
+.act .ic svg { display: block; margin: 0 auto; }
+.act .badge-n { top: 6px; right: 6px; }
+.counter .count { width: 100%; justify-content: center; }
+.counter .chips { width: 100%; }

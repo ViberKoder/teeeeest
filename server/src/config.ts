@@ -36,6 +36,16 @@ export const schema = z.object({
   MAX_SUPPLY_UNITS: bigint,
   /** Largest single reward the ingest API accepts. */
   MAX_EVENT_UNITS: bigint.default('1000000000000'),
+  /**
+   * Linking a wallet to a Telegram account requires a signature by the wallet's own key, so nobody can squat on an address that is not theirs.
+   * Switch off only for tests / wallets that are not WalletTg.
+   */
+  REQUIRE_LINK_PROOF: z.enum(['true', 'false']).default('true').transform((v) => v === 'true'),
+  /**
+   * Largest amount the ledger may owe beyond the newest published root (jetton units; 0 = unlimited). Set it to the on-chain `maxGrowth`:
+   * the contract refuses a root that grows faster, and a ledger that outran it would stall publication.
+   */
+  MAX_GROWTH_UNITS: bigint.default('0'),
   /** Telegram initData must be younger than this. */
   INIT_DATA_MAX_AGE_SECONDS: z.coerce.number().int().default(3600),
 

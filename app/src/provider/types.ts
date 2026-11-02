@@ -14,4 +14,6 @@ export interface OutMessage {
 export interface WalletProvider {
   readonly address: Address;
   send(messages: OutMessage[]): Promise<void>;
+  /** Links the wallet to the Telegram account on the server, proving control of the wallet's key. */
+  linkToAccount(): Promise<unknown>;
 }

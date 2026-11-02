@@ -1,9 +1,10 @@
 import { Address, SendMode, toNano } from '@ton/core';
 import { KeyPair, mnemonicToPrivateKey } from '@ton/crypto';
-import { changeKey, externalBoc, SUBWALLET_ID, sendOne, tgWalletStateInit } from '@egg/sdk';
+import { changeKey, externalBoc, SUBWALLET_ID, sendOne, signLink, tgWalletStateInit } from '@egg/sdk';
 import { api, ApiError } from '../api/server';
 import { ton } from '../chain/client';
 import { cfg } from '../config';
+import { tgUserId } from '../lib/tg';
 import type { OutMessage, WalletProvider } from './types';
 
 /** TON a request needs on the wallet itself to pay its own way (the forwarded value plus the wallet's gas). */
@@ -42,6 +43,12 @@ export class TgWalletProvider implements WalletProvider {
   static async addressOf(words: string[]): Promise<string> {
     const k = await mnemonicToPrivateKey(words);
     return tgWalletStateInit({ publicKey: k.publicKey, subwalletId: SUBWALLET_ID[cfg.network] }).address.toRawString();
+  }
+
+  /** Links this wallet to the Telegram account, proving control of its key. */
+  linkToAccount() {
+    const raw = this.address.toRawString();
+    return api.link(raw, this.publicKeyHex, signLink(tgUserId(), raw, this.keys.secretKey).toString('hex'));
   }
 
   get publicKeyHex() {

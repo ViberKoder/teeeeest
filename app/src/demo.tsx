@@ -15,6 +15,7 @@ const now = Math.floor(Date.now() / 1000);
 const provider: WalletProvider = {
   address,
   send: () => new Promise((r) => setTimeout(r, 900)),
+  linkToAccount: async () => ({ ok: true }),
 };
 
 const peer = (b: string) => '0:' + b.repeat(64).slice(0, 64);

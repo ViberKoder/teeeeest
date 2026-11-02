@@ -24,6 +24,12 @@ const Swap = () => (
   </svg>
 );
 
+const Star = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
+    <path d="M12 3.5l2.2 6.3 6.3 2.2-6.3 2.2L12 20.5l-2.2-6.3-6.3-2.2 6.3-2.2z" />
+  </svg>
+);
+
 const dayLabel = (t: number) => {
   const d = new Date(t * 1000);
   const today = new Date();
@@ -110,7 +116,7 @@ export function Home() {
       <div className="actions4">
         {eggOn && (
           <button className={`act ${data.ready > 0n ? 'hot' : ''}`} onClick={hatch}>
-            <span className="ic"><Sparkle width={22} height={22} /></span>Hatch
+            <span className="ic"><Star /></span>Hatch
             {data.ready > 0n && <span className="badge-n num">{formatUnits(data.ready, D, 0)}</span>}
           </button>
         )}

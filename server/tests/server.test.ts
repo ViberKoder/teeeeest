@@ -3,7 +3,7 @@ import { Address, Cell, StateInit, toNano, TupleReader } from '@ton/core';
 import { findTransaction } from '@ton/test-utils';
 import { keyPairFromSeed } from '@ton/crypto';
 import {
-  askToClaimBody, Attach, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, sendOne, SUBWALLET_ID, tgWalletStateInit,
+  askToClaimBody, Attach, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, sendOne, signLink, SUBWALLET_ID, tgWalletStateInit,
   topUpBody, verifyEntitlement, walletStateInit,
 } from '@egg/sdk';
 import { buildApp } from '../src/app';
@@ -78,6 +78,7 @@ async function setup() {
     JETTON_MASTER_ADDRESS: minter.toString(),
     MAX_SUPPLY_UNITS: E(1_000_000).toString(),
     MAX_EVENT_UNITS: E(10_000).toString(),
+    REQUIRE_LINK_PROOF: 'false',
   } as unknown as NodeJS.ProcessEnv);
   const db = new Db(':memory:');
   const sbx = new SandboxChain(chain, minter, publisherW, relayerW);
@@ -316,3 +317,39 @@ describe('gasless first hatch (sponsored relay)', () => {
 function beginCellOp(op: number): Cell {
   return new (require('@ton/core').Builder)().storeUint(op, 32).storeUint(0, 64).endCell();
 }
+
+describe('linking a wallet to a Telegram account', () => {
+  const key = keyPairFromSeed(Buffer.alloc(32, 9));
+  const other = keyPairFromSeed(Buffer.alloc(32, 10));
+  const rawOf = (pk: Buffer) => tgWalletStateInit({ publicKey: pk, subwalletId: SUBWALLET_ID.testnet }).address.toRawString();
+
+  async function strictApp() {
+    const env = await setup();
+    const config = { ...env.config, REQUIRE_LINK_PROOF: true };
+    const app = await buildApp({ config, db: env.db, publisher: env.publisher, chain: env.sbx, now: () => T0 });
+    const post = (id: number, payload: object) => app.inject({ method: 'POST', url: '/v1/link', headers: tma(id), payload });
+    return { post };
+  }
+
+  it('needs the wallet’s own signature: an address alone, or someone else’s signature, is refused', async () => {
+    const { post } = await strictApp();
+    const raw = rawOf(key.publicKey);
+    expect((await post(1, { address: raw })).statusCode).toBe(400);
+    const wrongSigner = signLink(1, raw, other.secretKey).toString('hex');
+    expect((await post(1, { address: raw, public_key: key.publicKey.toString('hex'), signature: wrongSigner })).statusCode).toBe(403);
+    // a signature made for another Telegram account does not transfer
+    const forOther = signLink(2, raw, key.secretKey).toString('hex');
+    expect((await post(1, { address: raw, public_key: key.publicKey.toString('hex'), signature: forOther })).statusCode).toBe(403);
+    const good = signLink(1, raw, key.secretKey).toString('hex');
+    expect((await post(1, { address: raw, public_key: key.publicKey.toString('hex'), signature: good })).statusCode).toBe(200);
+  });
+});
+
+describe('growth budget', () => {
+  it('asks the bot to retry later instead of letting the ledger outrun what the contract would accept', async () => {
+    const env = await setup();
+    const app = await buildApp({ config: { ...env.config, MAX_GROWTH_UNITS: E(100) }, db: env.db, publisher: env.publisher, chain: env.sbx, now: () => T0 });
+    expect((await earn(app, 1, E(60))).statusCode).toBe(200);
+    expect((await earn(app, 2, E(60), 'b')).statusCode).toBe(429);
+  });
+});

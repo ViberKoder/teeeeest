@@ -29,6 +29,8 @@ NAME=Egg SYMBOL=EGG IMAGE=https://… NETWORK=testnet npm run deploy-minter
 Amounts are jetton units (decimals 9 ⇒ 1 EGG = 1 000 000 000). Think about `MAX_GROWTH`: it is the most a compromised
 publisher can ever release per `PERIOD_SECONDS`. Note the printed **minter address**.
 
+`MAX_GROWTH` is required and limits can only be **tightened** afterwards, so choose it deliberately; set the server's `MAX_GROWTH_UNITS` to the same value. Mini App users link their wallet with a signature (`REQUIRE_LINK_PROOF`, on by default).
+
 Governance later: the admin can `ChangePublisher`, `SetLimits`, `ChangeMetadata`, hand the admin role over (2 steps) or `DropAdmin`
 (irreversible: publisher and limits are then frozen forever).
 

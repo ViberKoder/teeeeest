@@ -35,7 +35,7 @@ governance (admin, next admin, publisher), limits.
 |---|---|---|
 | `PublishRoot(epoch, treeRoot, total)` | publisher | stores `H(0x02|treeRoot|total)`. Requires: `epoch = last+1`, `total ≤ maxSupply`, `total ≥ lastTotal`, `Δtotal` per period ≤ `maxGrowth`, ≥ `minInterval` since the previous one |
 | `ClaimRequest(owner, epoch, cumulative, claimedAtWallet, proof)` | **a genuine EggWallet only** (address recomputed from `owner`) | opens the proof, compares with `roots[epoch]`, checks `totalSupply + delta ≤ maxSupply`, adds `delta`, replies `ClaimCredit` |
-| `ChangePublisher`, `SetLimits`, `ChangeMetadata`, 2-step admin change, `DropAdmin` | admin | governance. **There is no mint and no code upgrade** |
+| `ChangePublisher`, `SetLimits` (tighten only), `ChangeMetadata`, 2-step admin change, `DropAdmin` | admin | governance. **There is no mint and no code upgrade** |
 | `BurnNotification`, `RequestWalletAddress` | wallets / anyone | standard |
 
 **EggWallet** — TEP-74 wallet plus `claimed` and a short lock.
@@ -56,7 +56,8 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
 | Nobody can be credited an amount that is not in a published root | the minter verifies the proof itself; the wallet accepts `ClaimCredit` only from the minter |
 | Nobody can be credited twice for the same amount | `claimed` in the wallet + monotone `cumulative`; replays credit 0 |
 | What was published stays claimable forever | roots are never deleted or replaced; there is no admin function that edits them |
-| A root cannot promise more than `maxSupply`, and can only grow | checked at publication; the sum is bound by the tree hash |
+| A root cannot promise more than `maxSupply`, and can only grow | checked at publication |
+| Everything ever created ≤ the newest published total | `totalMinted` check at claim time (inner tree sums are only verified along a claimed path, so this — not the tree — is the binding bound; see `SECURITY_REVIEW.md`) |
 | Total supply never exceeds `maxSupply` | checked again at claim time |
 | A compromised publisher can only release `maxGrowth` per period | on-chain limits |
 | The server cannot take back or change a published amount | it holds no key that can touch the minter's roots or any wallet |
@@ -73,8 +74,8 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
   mirror it (IPFS, a public channel) and the app caches each user's last verified proof on the device. If you lose the
   data, an unproven amount cannot be claimed.
 * **A malicious publisher can promise the same tokens to different people in different epochs** (each root is below the
-  cap, but the sum of everyone's best proof is not). The claim-time cap stops supply from exceeding `maxSupply`, so the
-  *later* claimants would be refused. Publishers must keep each user's amount non-decreasing; the public leaf sets make
+  cap, but the sum of everyone's best proof is not). The claim-time cap stops everything ever created from exceeding the *newest published total* (and `maxSupply`), so the
+  *later* claimants are refused. Publishers must keep each user's amount non-decreasing; the public leaf sets make
   this auditable by anyone.
 * **A failed claim keeps its TON** in the user's wallet contract (bounced messages return there). The app avoids it by
   verifying the proof locally against the on-chain commitment first.

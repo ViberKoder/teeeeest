@@ -17,7 +17,7 @@ bot ─▶ server ledger ─▶ sum-Merkle tree ─▶ root published on-chain �
 | [`sdk/`](sdk) | Tree + proofs, message builders, entitlement client — for the server, the app and *other projects* |
 | [`server/`](server) | Reward ledger, root publisher, public proof API (Fastify + SQLite) |
 | [`app/`](app) | The wallet Mini App: Telegram-native (Money-style), seedless, deployable to Telegram Serverless |
-| [`docs/`](docs) | [Architecture & guarantees](docs/ARCHITECTURE.md) · [Showing EGG elsewhere](docs/INTEGRATIONS.md) · [Deploy](docs/DEPLOY.md) · [Review of v1](docs/RMJ_V1_REVIEW.md) |
+| [`docs/`](docs) | [Architecture & guarantees](docs/ARCHITECTURE.md) · [Showing EGG elsewhere](docs/INTEGRATIONS.md) · [Deploy](docs/DEPLOY.md) · [Review of v1](docs/RMJ_V1_REVIEW.md) · [Security review](docs/SECURITY_REVIEW.md) |
 
 ## Quick start
 

@@ -107,3 +107,13 @@ export function shareLink(url: string, text: string) {
   if (tg?.openTelegramLink) tg.openTelegramLink(link);
   else window.open(link, '_blank', 'noopener');
 }
+
+/** The Telegram user id from the (signed) launch data; the server verifies the signature, this only labels what we sign. */
+export function tgUserId(): number {
+  try {
+    const u = JSON.parse(new URLSearchParams(initData()).get('user') ?? '') as { id?: number };
+    return typeof u.id === 'number' ? u.id : 0;
+  } catch {
+    return 0;
+  }
+}

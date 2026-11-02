@@ -48,6 +48,8 @@ struct MinterStorage {
     roots: map<uint32, RootRecord>
     governance: Cell<Governance>
     limits: Cell<Limits>
+    /// everything ever created by claims (burns do not lower it). Bounded by the newest published total.
+    totalMinted: coins
 }
 
 fun MinterStorage.load(): MinterStorage {

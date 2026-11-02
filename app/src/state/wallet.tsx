@@ -137,7 +137,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       let me = api.available() ? await api.me().catch(() => null) : null;
       // the wallet belongs to the Telegram account: tell the server which address that is (once, quietly)
       if (me && me.address !== raw && !me.address_locked) {
-        await api.link(raw).catch(() => undefined);
+        await provider.linkToAccount().catch(() => undefined);
         me = await api.me().catch(() => me);
       }
       const [balance, egg, activity] = await Promise.all([

@@ -28,13 +28,24 @@ async function main() {
   const keys = await mnemonicToPrivateKey(need('DEPLOYER_MNEMONIC').trim().split(/\s+/));
   const deployer = client.open(WalletContractV5R1.create({ workchain: 0, publicKey: keys.publicKey, walletId: { networkGlobalId: testnet ? -3 : -239 } }));
 
+  // Limits can only be tightened later, so choose them deliberately. Refuse the dangerous defaults.
+  const maxSupply = BigInt(need('MAX_SUPPLY'));
+  const maxGrowth = BigInt(need('MAX_GROWTH'));
+  const periodSeconds = Number(process.env.PERIOD_SECONDS ?? 3600);
+  const admin = Address.parse(need('ADMIN_ADDRESS'));
+  const publisher = Address.parse(need('PUBLISHER_ADDRESS'));
+  if (maxGrowth <= 0n || maxGrowth > maxSupply) throw new Error('MAX_GROWTH must be in (0, MAX_SUPPLY]');
+  if (maxGrowth * 20n > maxSupply * BigInt(Math.max(1, Math.floor(86_400 / periodSeconds)))) console.warn('warning: MAX_GROWTH allows more than 5% of the supply per day');
+  if (!Number.isInteger(periodSeconds) || periodSeconds < 60) throw new Error('PERIOD_SECONDS must be an integer >= 60');
+  if (admin.equals(publisher)) throw new Error('ADMIN_ADDRESS and PUBLISHER_ADDRESS must be different wallets (the admin should stay cold)');
+
   const { init, address } = minterStateInit(
     {
-      maxSupply: BigInt(need('MAX_SUPPLY')),
-      admin: Address.parse(need('ADMIN_ADDRESS')),
-      publisher: Address.parse(need('PUBLISHER_ADDRESS')),
-      maxGrowth: process.env.MAX_GROWTH ? BigInt(process.env.MAX_GROWTH) : undefined,
-      periodSeconds: Number(process.env.PERIOD_SECONDS ?? 3600),
+      maxSupply,
+      admin,
+      publisher,
+      maxGrowth,
+      periodSeconds,
       minInterval: Number(process.env.MIN_INTERVAL ?? 60),
       metadata: onchainMetadata({
         name: process.env.NAME ?? 'Egg',

@@ -4,7 +4,8 @@ import rateLimit from '@fastify/rate-limit';
 import { Address } from '@ton/core';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
-import { EggTree } from '@egg/sdk';
+import { EggTree, SUBWALLET_ID, linkMessage, tgWalletStateInit } from '@egg/sdk';
+import { signVerify } from '@ton/crypto';
 import { Chain } from './chain';
 import { checkRelayRequest } from './relay';
 import { Config } from './config';
@@ -137,6 +138,11 @@ export async function buildApp({ config, db, publisher, chain, now = () => Math.
     if (!body.success) return reply.code(400).send({ error: 'bad-request' });
     const amount = BigInt(body.data.amount);
     if (amount > config.MAX_EVENT_UNITS) return reply.code(422).send({ error: 'amount-too-large' });
+    if (config.MAX_GROWTH_UNITS > 0n) {
+      // the contract refuses a root that grows by more than `maxGrowth`; keep the ledger within reach of the newest root
+      const base = BigInt(db.lastEpochRow()?.total ?? '0');
+      if (db.issuedTotal() + amount - base > config.MAX_GROWTH_UNITS) return reply.code(429).send({ error: 'growth-budget', retry_after: config.PUBLISH_INTERVAL_SECONDS });
+    }
     const r = db.credit({ tgId: body.data.tg_id, amount, kind: body.data.kind, idemKey: body.data.idempotency_key, now: now(), maxSupply: config.MAX_SUPPLY_UNITS });
     if (r.reason === 'banned') return reply.code(403).send({ error: 'banned' });
     if (r.reason === 'supply') return reply.code(409).send({ error: 'max-supply-reached' });
@@ -225,7 +231,11 @@ export async function buildApp({ config, db, publisher, chain, now = () => Math.
     return { ok: true, remaining: Math.max(0, config.RELAY_MAX_PER_USER - db.relaysUsed(u.id)) };
   });
 
-  const Link = z.object({ address: z.string().min(10).max(128) });
+  const Link = z.object({
+    address: z.string().min(10).max(128),
+    public_key: z.string().regex(/^[0-9a-fA-F]{64}$/).optional(),
+    signature: z.string().regex(/^[0-9a-fA-F]{128}$/).optional(),
+  });
   app.post('/v1/link', async (req, reply) => {
     const u = requireUser(req, reply);
     if (!u) return;
@@ -238,6 +248,15 @@ export async function buildApp({ config, db, publisher, chain, now = () => Math.
       return reply.code(400).send({ error: 'invalid-address' });
     }
     if (addr.workChain !== 0) return reply.code(400).send({ error: 'invalid-address' });
+    if (config.REQUIRE_LINK_PROOF) {
+      // the address must be the WalletTg of a key the caller can sign with: proves control, not just knowledge of the address
+      const { public_key, signature } = body.data;
+      if (!public_key || !signature) return reply.code(400).send({ error: 'proof-required' });
+      const pk = Buffer.from(public_key, 'hex');
+      const derived = tgWalletStateInit({ publicKey: pk, subwalletId: SUBWALLET_ID[config.NETWORK] }).address;
+      const msg = Buffer.from(linkMessage(u.id, addr.toRawString()));
+      if (!derived.equals(addr) || !signVerify(msg, Buffer.from(signature, 'hex'), pk)) return reply.code(403).send({ error: 'bad-proof' });
+    }
     const r = db.link(u.id, addr.toRawString(), now());
     if (!r.ok) return reply.code(409).send({ error: r.reason === 'locked' ? 'address-locked' : 'address-taken' });
     return { ok: true, address: addr.toRawString() };

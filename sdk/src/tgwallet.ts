@@ -138,3 +138,7 @@ export const relayMessage = (wallet: Address, body: Cell, value: bigint, init?: 
 
 /** Storage-prefix-agnostic getter parsing helpers live with the callers; these are the getter names. */
 export const TG_WALLET_GETTERS = { seqno: 'seqno', subwalletId: 'get_subwallet_id', publicKey: 'get_public_key', revision: 'revision' } as const;
+
+/** What a wallet signs to link itself to a Telegram account (proves the caller holds the wallet's key). */
+export const linkMessage = (tgId: number, rawAddress: string) => `egg-link:v1:${tgId}:${rawAddress}`;
+export const signLink = (tgId: number, rawAddress: string, secretKey: Buffer): Buffer => sign(Buffer.from(linkMessage(tgId, rawAddress)), secretKey);
