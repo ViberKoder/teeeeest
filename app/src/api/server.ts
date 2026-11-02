@@ -31,7 +31,12 @@ const useServerless = () => !cfg.apiUrl && Boolean(serverless());
 
 function viaServerless<T>(name: string, input: object = {}): Promise<T> {
   return new Promise((resolve, reject) => {
+    let done = false;
+    const t = setTimeout(() => { if (!done) { done = true; reject(new ApiError('timeout', 504)); } }, 9000);
     serverless()!.call(name, input, (err, result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(t);
       if (!err) return resolve(result as T);
       const code = err.parameters?.code ?? err.message ?? 'request-failed';
       reject(new ApiError(code, code === 'no-entitlement' ? 404 : err.type === 'ENDPOINT_ERROR' ? 400 : 500));
@@ -58,6 +63,8 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   available: () => (Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData()),
   me: () => call<Me>('/v1/me'),
+  /** nudges the publisher in the bot's runtime; fire and forget */
+  kick: () => call<{ status: string }>('/v1/kick').catch(() => undefined),
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string, replace = false) =>
     call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),

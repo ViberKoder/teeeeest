@@ -136,7 +136,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // a second wallet would split the account's EGG across two wallets, so only the first one's phrase may be used.
       let me: Awaited<ReturnType<typeof api.me>> | null = null;
       if (api.available()) {
-        for (let i = 0; i < 3 && !me; i++) me = await api.me().catch(() => null);
+        for (let i = 0; i < 2 && !me; i++) {
+          me = await api.me().catch(() => null);
+          if (!me) await new Promise((r) => setTimeout(r, 1500));
+        }
         if (!me) return setPhase('offline');
       }
       if (me?.address) {
@@ -179,6 +182,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const egg = e.status === 'fulfilled' ? e.value : prev.egg;
       const activity = a.status === 'fulfilled' ? a.value : prev.activity;
       const chainDown = b.status === 'rejected' || (masterAddress != null && e.status === 'rejected');
+      if (api.available()) void api.kick();
       const mine = me ? (me.address ? me.address === raw : true) : false;
       const claimed = egg?.claimed ?? 0n;
       const committed = me && mine && me.entitlement ? BigInt(me.entitlement.cumulative) : 0n;

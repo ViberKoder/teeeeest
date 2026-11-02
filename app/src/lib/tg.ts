@@ -85,27 +85,30 @@ export const cloud = {
   get(key: string): Promise<string | null> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(null);
-      tg.CloudStorage.getItem(key, (err, v) => resolve(err || !v ? null : v));
+      const t = setTimeout(() => resolve(null), 5000); // a storage that never answers must not freeze the app
+      tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err || !v ? null : v); });
     });
   },
   /** like get(), but tells "nothing stored" (ok, null) apart from "could not ask" (ok: false) */
   read(key: string): Promise<{ ok: boolean; value: string | null }> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve({ ok: false, value: null });
-      const t = setTimeout(() => resolve({ ok: false, value: null }), 8000);
+      const t = setTimeout(() => resolve({ ok: false, value: null }), 5000);
       tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err ? { ok: false, value: null } : { ok: true, value: v || null }); });
     });
   },
   set(key: string, value: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(false);
-      tg.CloudStorage.setItem(key, value, (err, ok) => resolve(!err && ok !== false));
+      const t = setTimeout(() => resolve(false), 5000);
+      tg.CloudStorage.setItem(key, value, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); });
     });
   },
   remove(key: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(false);
-      tg.CloudStorage.removeItem(key, (err, ok) => resolve(!err && ok !== false));
+      const t = setTimeout(() => resolve(false), 5000);
+      tg.CloudStorage.removeItem(key, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); });
     });
   },
 };
