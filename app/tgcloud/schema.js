@@ -11,6 +11,9 @@ export const users = table('users', {
   linkSig: text('link_sig'),
   // 1 once the signature was checked (ed25519) and the address was derived from that key
   verified: integer('verified').notNull().default(0),
+  // 1 once this address was included in a root sent on-chain: from then on it is the account's wallet for good
+  // (a second wallet could otherwise claim the same ledger again from an older root)
+  locked: integer('locked').notNull().default(0),
   createdAt: integer('created_at').notNull(),
 });
 

@@ -54,20 +54,24 @@ const parseWords = (raw: string | null): string[] | null => {
   }
 };
 
-export type Loaded = { kind: 'ready'; words: string[] } | { kind: 'needs-phrase'; marker: Marker } | { kind: 'none' };
+export type Loaded = { kind: 'ready'; words: string[] } | { kind: 'needs-phrase'; marker: Marker } | { kind: 'none' } | { kind: 'unknown' };
 
 export const keyStore = {
   async load(): Promise<Loaded> {
     const local = parseWords(dev.get(KEY));
     if (local) return { kind: 'ready', words: local };
 
-    const fromCloud = parseWords(await cloud.get(KEY));
+    // Telegram's CloudStorage can be slow or fail: "I could not ask" must never be read as "there is no wallet"
+    let asked = await cloud.read(KEY);
+    for (let i = 0; i < 2 && !asked.ok && cloud.available(); i++) asked = await cloud.read(KEY);
+    const fromCloud = parseWords(asked.value);
     if (fromCloud) {
       dev.set(KEY, JSON.stringify({ words: fromCloud }));
       return { kind: 'ready', words: fromCloud };
     }
     const marker = await keyStore.marker();
     if (marker) return { kind: 'needs-phrase', marker };
+    if (!asked.ok && cloud.available()) return { kind: 'unknown' };
     return { kind: 'none' };
   },
 
@@ -82,6 +86,13 @@ export const keyStore = {
 
   /** A fresh wallet: new phrase, backed up to the Telegram account unless told otherwise. */
   async create(address: (words: string[]) => Promise<string>, backup = true): Promise<string[]> {
+    // never overwrite an existing backup: look once more right before writing
+    const again = await cloud.read(KEY);
+    const existing = parseWords(again.value);
+    if (existing) {
+      await keyStore.save(existing, await address(existing), true);
+      return existing;
+    }
     const words = await mnemonicNew(24);
     await keyStore.save(words, await address(words), backup);
     return words;

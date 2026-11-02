@@ -24,6 +24,12 @@ export default async function (input, ctx) {
   if (derived !== address || !(await verify(msg, fromHex(sig), pk))) throw new EndpointError('bad-proof', { code: 'bad-proof' });
 
   await ensureUser(id, Math.floor(Date.now() / 1000));
+  const me = await db.select().from(users).where(eq(users.tgId, id)).get();
+  if (me.verified && me.address && me.address !== address) {
+    // one Telegram account = one wallet. It can be replaced only before it ever entered a published root.
+    if (me.locked) throw new EndpointError('address-locked', { code: 'address-locked' });
+    if (!input?.replace) throw new EndpointError('wallet-exists', { code: 'wallet-exists' });
+  }
   const owner = await db.select().from(users).where(eq(users.address, address)).get();
   if (owner && owner.tgId !== id) throw new EndpointError('address-taken', { code: 'address-taken' });
   await db.update(users).set({ address, publicKey: key, linkSig: sig, verified: 1 }).where(eq(users.tgId, id)).run();

@@ -26,15 +26,29 @@ export function Restore() {
     <div className="screen">
       <div className="stack center" style={{ alignItems: 'center', gap: 10, marginTop: 20 }}>
         <Egg size={84} float />
-        <h2 style={{ margin: 0, fontSize: 24 }}>Enter your Secret Phrase</h2>
+        <h2 style={{ margin: 0, fontSize: 24 }}>{w.conflict ? 'This account already has a wallet' : 'Enter your Secret Phrase'}</h2>
         <p className="hint" style={{ maxWidth: 320, fontSize: 15 }}>
-          You turned the backup off for this wallet{w.marker ? ` (${shortAddr(w.marker.address.replace(/^0:/, ''), 5, 4)})` : ''}, so you have to enter its 24-word Secret Phrase in every new Telegram session.
+          {w.conflict
+            ? `Your Telegram account’s EGG wallet${w.marker ? ` (${shortAddr(w.marker.address.replace(/^0:/, ''), 5, 4)})` : ''} was created on another device. To use it here, enter its 24-word Secret Phrase (Settings → Keys & Backup → Show Secret Phrase on that device).`
+            : `You turned the backup off for this wallet${w.marker ? ` (${shortAddr(w.marker.address.replace(/^0:/, ''), 5, 4)})` : ''}, so you have to enter its 24-word Secret Phrase in every new Telegram session.`}
         </p>
       </div>
       <section className="section"><div className="group">
         <textarea className="input" style={{ height: 130, padding: '12px 16px', resize: 'none', lineHeight: 1.5 }} autoCapitalize="none" autoCorrect="off" spellCheck={false} placeholder="word1 word2 word3 …" value={text} onChange={(e) => { setText(e.target.value); setBad(false); }} />
       </div></section>
       {bad && <p className="hint bad" style={{ padding: '8px 16px 0' }}>The words you entered don’t match the wallet. Check the order and try again.</p>}
+      {w.conflict && (
+        <div className="stack center" style={{ alignItems: 'center', padding: '14px 24px 0', gap: 6 }}>
+          {w.conflict.locked ? (
+            <p className="hint" style={{ fontSize: 14, textAlign: 'center' }}>Your EGG is already committed to that wallet on the blockchain, so only its phrase can open it.</p>
+          ) : (
+            <>
+              <p className="hint" style={{ fontSize: 14, textAlign: 'center' }}>Lost it? While nothing has been committed on-chain you can start over with a new wallet.</p>
+              <button className="btn link" onClick={async () => { setBusy(true); try { await w.useNewWallet(); } finally { setBusy(false); } }}>Create a new wallet instead</button>
+            </>
+          )}
+        </div>
+      )}
       <MainButton text="Continue" enabled={Boolean(text.trim())} loading={busy} onClick={go} />
     </div>
   );

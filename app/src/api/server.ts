@@ -59,8 +59,8 @@ export const api = {
   available: () => (Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData()),
   me: () => call<Me>('/v1/me'),
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
-  link: (address: string, publicKey: string, signature: string) =>
-    call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature }) }),
+  link: (address: string, publicKey: string, signature: string, replace = false) =>
+    call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),
   /** public: the same answer any wallet or explorer would get */
   relay: (request: string, publicKey: string) =>
     call<{ ok: true; remaining: number }>('/v1/relay', { method: 'POST', body: JSON.stringify({ request, public_key: publicKey }) }),

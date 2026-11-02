@@ -11,7 +11,7 @@ import { haptic } from '../lib/tg';
 import { TgWalletProvider } from '../provider/tg';
 import type { WalletProvider } from '../provider/types';
 
-export type Phase = 'boot' | 'needs-phrase' | 'ready';
+export type Phase = 'boot' | 'needs-phrase' | 'offline' | 'ready';
 
 export interface Data {
   ton: bigint;
@@ -38,6 +38,11 @@ interface Ctx {
   firstRun: boolean;
   backupOn: boolean;
   refresh: () => Promise<void>;
+  /** this Telegram account already has a wallet that this device does not hold (only its phrase can open it) */
+  conflict: { locked: boolean } | null;
+  /** start over with the wallet of this device — allowed only while the account's wallet never entered a published root */
+  useNewWallet: () => Promise<void>;
+  retryBoot: () => void;
   /** enter the secret phrase of a wallet that exists for this account but has no cloud backup */
   restore: (words: string[]) => Promise<boolean>;
   setBackup: (on: boolean) => Promise<void>;
@@ -80,6 +85,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [firstRun, setFirstRun] = useState(false);
   const [localAct, setLocalAct] = useState<Activity[]>(() => readLocalActivity());
   const words = useRef<string[] | null>(null);
+  const [conflict, setConflict] = useState<{ locked: boolean } | null>(null);
+  const [bootTry, setBootTry] = useState(0);
 
   const masterAddress = useMemo(() => {
     try {
@@ -125,10 +132,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setMarker(loaded.marker);
         return setPhase('needs-phrase');
       }
+      // No key here. Before creating a wallet, ask the account itself: if it already has one (another device made it),
+      // a second wallet would split the account's EGG across two wallets, so only the first one's phrase may be used.
+      let me: Awaited<ReturnType<typeof api.me>> | null = null;
+      if (api.available()) {
+        for (let i = 0; i < 3 && !me; i++) me = await api.me().catch(() => null);
+        if (!me) return setPhase('offline');
+      }
+      if (me?.address) {
+        setMarker({ address: me.address, backup: false });
+        setConflict({ locked: me.address_locked });
+        return setPhase('needs-phrase');
+      }
+      if (loaded.kind === 'unknown') return setPhase('offline'); // Telegram's storage did not answer: never guess "no wallet"
       const w = await keyStore.create(TgWalletProvider.addressOf);
       await open(w, true);
     })();
-  }, [open]);
+  }, [open, bootTry]);
 
   // ---- data ---------------------------------------------------------------
   const refresh = useCallback(async () => {
@@ -137,10 +157,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const raw = provider.address.toRawString();
       let me = api.available() ? await api.me().catch(() => null) : null;
-      // the wallet belongs to the Telegram account: tell the server which address that is (once, quietly)
-      if (me && me.address !== raw && !me.address_locked) {
+      // The account has ONE wallet. If it has none yet, this one becomes it; if it has another, never replace it silently.
+      if (me && !me.address) {
         await provider.linkToAccount().catch(() => undefined);
         me = await api.me().catch(() => me);
+      } else if (me?.address && me.address !== raw) {
+        setMarker({ address: me.address, backup: false });
+        setConflict({ locked: me.address_locked });
+        setPhase('needs-phrase');
+        setData((d) => ({ ...d, loading: false }));
+        return;
       }
       // each source stands on its own: a slow or throttled one must not blank what the others know
       const [b, e, a] = await Promise.allSettled([
@@ -182,6 +208,19 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     firstRun,
     backupOn,
     refresh,
+    conflict,
+    retryBoot: () => { setPhase('boot'); setBootTry((n) => n + 1); },
+    async useNewWallet() {
+      let p = provider;
+      if (!p) {
+        const w = await keyStore.create(TgWalletProvider.addressOf);
+        words.current = w;
+        p = await TgWalletProvider.fromWords(w);
+      }
+      await p.linkToAccount(true);
+      setConflict(null);
+      await open(words.current ?? [], false);
+    },
     async restore(w) {
       if (!marker) return false;
       const ok = await keyStore.validate(w, marker.address, TgWalletProvider.addressOf);
@@ -190,6 +229,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       await keyStore.save(w, marker.address, marker.backup);
+      setConflict(null);
       await open(w, false);
       haptic.success();
       return true;

@@ -72,7 +72,8 @@ export async function tick(now) {
     const commitment = hex(tree.commitment);
     if (!s.pendingEpoch && commitment === s.lastCommitment) return 'idle';
 
-    // 3. send the root
+    // 3. send the root. From this moment every included address is the account's wallet for good (see users.locked)
+    await db.run(sql`UPDATE users SET locked = 1 WHERE verified = 1 AND address IS NOT NULL AND tg_id IN (SELECT DISTINCT tg_id FROM hatches)`);
     const epoch = s.pendingEpoch || (await lastEpoch(MINTER)) + 1;
     const seqno = await seqnoOf(PUBLISHER);
     if (seqno === null) return 'publisher-not-deployed';

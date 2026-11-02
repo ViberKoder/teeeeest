@@ -46,9 +46,9 @@ export class TgWalletProvider implements WalletProvider {
   }
 
   /** Links this wallet to the Telegram account, proving control of its key. */
-  linkToAccount() {
+  linkToAccount(replace = false) {
     const raw = this.address.toRawString();
-    return api.link(raw, this.publicKeyHex, signLink(tgUserId(), raw, this.keys.secretKey).toString('hex'));
+    return api.link(raw, this.publicKeyHex, signLink(tgUserId(), raw, this.keys.secretKey).toString('hex'), replace);
   }
 
   get publicKeyHex() {

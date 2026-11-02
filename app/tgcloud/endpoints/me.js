@@ -18,7 +18,7 @@ export default async function (_input, ctx) {
     address,
     ledger: total(await countOf(id)),
     entitlement: e ? { owner: e.address, epoch: e.epoch, cumulative: e.cumulative, proof: e.proof, commitment: e.commitment } : null,
-    address_locked: false,
+    address_locked: Boolean(u.locked),
     banned: false,
     sponsored_left: 0,
   };

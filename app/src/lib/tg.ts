@@ -88,6 +88,14 @@ export const cloud = {
       tg.CloudStorage.getItem(key, (err, v) => resolve(err || !v ? null : v));
     });
   },
+  /** like get(), but tells "nothing stored" (ok, null) apart from "could not ask" (ok: false) */
+  read(key: string): Promise<{ ok: boolean; value: string | null }> {
+    return new Promise((resolve) => {
+      if (!tg?.CloudStorage || !inTelegram) return resolve({ ok: false, value: null });
+      const t = setTimeout(() => resolve({ ok: false, value: null }), 8000);
+      tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err ? { ok: false, value: null } : { ok: true, value: v || null }); });
+    });
+  },
   set(key: string, value: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(false);
