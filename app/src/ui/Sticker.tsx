@@ -1,4 +1,4 @@
-import lottie, { AnimationItem } from 'lottie-web/build/player/lottie_light';
+import type { AnimationItem } from 'lottie-web/build/player/lottie_light';
 import { useEffect, useRef, useState } from 'react';
 import { FRAMES, loadEggHatch } from '../lib/sticker';
 import { Egg } from './Egg';
@@ -21,9 +21,11 @@ export function Sticker({ mode, size = 160, onDone, className }: { mode: Sticker
 
   useEffect(() => {
     let dead = false;
-    void loadEggHatch().then((data) => {
+    // the animation player is loaded on demand, so the wallet itself starts without it
+    void Promise.all([loadEggHatch(), import('lottie-web/build/player/lottie_light')]).then(([data, mod]) => {
       if (dead || !box.current) return;
       if (!data) return setFailed(true);
+      const lottie = mod.default;
       anim.current = lottie.loadAnimation({
         container: box.current,
         renderer: 'svg',
@@ -35,7 +37,7 @@ export function Sticker({ mode, size = 160, onDone, className }: { mode: Sticker
       anim.current.addEventListener('complete', () => done.current?.());
       anim.current.addEventListener('loopComplete', () => undefined);
       setReady(true);
-    });
+    }).catch(() => setFailed(true));
     return () => {
       dead = true;
       anim.current?.destroy();

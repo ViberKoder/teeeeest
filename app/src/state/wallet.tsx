@@ -5,6 +5,7 @@ import { api, Me } from '../api/server';
 import { Activity, loadActivity } from '../chain/history';
 import { EggState, readEgg } from '../chain/egg';
 import { ton } from '../chain/client';
+import { loadSnap, saveSnap } from './snapshot';
 import { cfg } from '../config';
 import { keyStore, Marker, pendingKey } from '../keys/store';
 import { haptic } from '../lib/tg';
@@ -99,12 +100,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const open = useCallback(async (w: string[], created: boolean) => {
     words.current = w;
     const p = await TgWalletProvider.fromWords(w);
+    const snap = loadSnap(p.address.toRawString()); // the last known numbers: the wallet opens with something real on screen
+    if (snap) setData((d) => ({ ...d, ton: snap.ton, egg: snap.egg, me: snap.me }));
     setProvider(p);
     setFirstRun(created);
-    const m = await keyStore.marker();
-    setMarker(m);
-    setBackupOn(m ? m.backup : true);
     setPhase('ready');
+    // the marker only matters for settings: do not make the first screen wait for Telegram's storage
+    void keyStore.marker().then((m) => { setMarker(m); setBackupOn(m ? m.backup : true); });
   }, []);
 
   // ---- boot: adopt a staged rotation, find the wallet of this account, or create it -----------------
@@ -156,44 +158,52 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // ---- data ---------------------------------------------------------------
   const refresh = useCallback(async () => {
     if (demo || !provider) return;
-    setData((d) => ({ ...d, loading: true, error: null }));
-    try {
-      const raw = provider.address.toRawString();
-      let me = api.available() ? await api.me().catch(() => null) : null;
-      // The account has ONE wallet. If it has none yet, this one becomes it; if it has another, never replace it silently.
-      if (me && !me.address) {
-        await provider.linkToAccount().catch(() => undefined);
-        me = await api.me().catch(() => me);
-      } else if (me?.address && me.address !== raw) {
-        setMarker({ address: me.address, backup: false });
-        setConflict({ locked: me.address_locked });
-        setPhase('needs-phrase');
-        setData((d) => ({ ...d, loading: false }));
-        return;
-      }
-      // each source stands on its own: a slow or throttled one must not blank what the others know
-      const [b, e, a] = await Promise.allSettled([
-        ton().getBalance(provider.address),
-        masterAddress ? readEgg(masterAddress, provider.address) : Promise.resolve(null),
-        loadActivity(provider.address, masterAddress),
-      ]);
-      const prev = dataRef.current;
-      const balance = b.status === 'fulfilled' ? b.value : prev.ton;
-      const egg = e.status === 'fulfilled' ? e.value : prev.egg;
-      const activity = a.status === 'fulfilled' ? a.value : prev.activity;
-      const chainDown = b.status === 'rejected' || (masterAddress != null && e.status === 'rejected');
-      if (api.available()) void api.kick();
-      const mine = me ? (me.address ? me.address === raw : true) : false;
-      const claimed = egg?.claimed ?? 0n;
-      const committed = me && mine && me.entitlement ? BigInt(me.entitlement.cumulative) : 0n;
+    const raw = provider.address.toRawString();
+    setData((d) => ({ ...d, loading: true }));
+
+    // Everything runs at once and shows up as it arrives: the numbers of the last visit first, then each source as soon as it answers.
+    const acc: { ton: bigint; egg: EggState | null; me: Me | null; activity: Activity[] } = {
+      ton: dataRef.current.ton, egg: dataRef.current.egg, me: dataRef.current.me, activity: dataRef.current.activity,
+    };
+    const derive = () => {
+      const mine = acc.me ? (acc.me.address ? acc.me.address === raw : true) : false;
+      const claimed = acc.egg?.claimed ?? 0n;
+      const committed = acc.me && mine && acc.me.entitlement ? BigInt(acc.me.entitlement.cumulative) : 0n;
       const ready = committed > claimed ? committed - claimed : 0n;
-      const owed = me && mine ? BigInt(me.ledger) : 0n;
+      const owed = acc.me && mine ? BigInt(acc.me.ledger) : 0n;
       const known = claimed > committed ? claimed : committed;
-      const accruing = owed > known ? owed - known : 0n;
-      setData({ ton: balance, egg, me, activity, ready, accruing, loading: false, error: chainDown ? 'Network is busy — retrying' : null });
-    } catch {
-      setData((d) => ({ ...d, loading: false, error: 'Network is unavailable' }));
-    }
+      return { ton: acc.ton, egg: acc.egg, me: acc.me, activity: acc.activity, ready, accruing: owed > known ? owed - known : 0n };
+    };
+    const push = () => setData((d) => ({ ...d, ...derive() }));
+    push(); // numbers of the last visit first
+    let chainDown = false;
+
+    const tasks: Promise<unknown>[] = [
+      ton().getBalance(provider.address).then((v) => { acc.ton = v; push(); }).catch(() => { chainDown = true; }),
+      masterAddress
+        ? readEgg(masterAddress, provider.address).then((v) => { acc.egg = v; push(); }).catch(() => { chainDown = true; })
+        : Promise.resolve(),
+      loadActivity(provider.address, masterAddress).then((v) => { acc.activity = v; push(); }).catch(() => undefined),
+      (async () => {
+        let me = api.available() ? await api.me().catch(() => null) : null;
+        // The account has ONE wallet. If it has none yet, this one becomes it; if it has another, never replace it silently.
+        if (me && !me.address) {
+          await provider.linkToAccount().catch(() => undefined);
+          me = await api.me().catch(() => me);
+        } else if (me?.address && me.address !== raw) {
+          setMarker({ address: me.address, backup: false });
+          setConflict({ locked: me.address_locked });
+          setPhase('needs-phrase');
+          return;
+        }
+        acc.me = me;
+        push();
+        if (api.available()) void api.kick();
+      })().catch(() => undefined),
+    ];
+    await Promise.all(tasks);
+    saveSnap(raw, { ton: acc.ton, egg: acc.egg, me: acc.me });
+    setData((d) => ({ ...d, ...derive(), loading: false, error: chainDown ? 'Network is busy — retrying' : null }));
   }, [provider, masterAddress, demo]);
 
   useEffect(() => {

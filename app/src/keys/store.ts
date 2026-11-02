@@ -63,7 +63,7 @@ export const keyStore = {
 
     // Telegram's CloudStorage can be slow or fail: "I could not ask" must never be read as "there is no wallet"
     let asked = await cloud.read(KEY);
-    for (let i = 0; i < 2 && !asked.ok && cloud.available(); i++) asked = await cloud.read(KEY);
+    for (let i = 0; i < 1 && !asked.ok && cloud.available(); i++) asked = await cloud.read(KEY);
     const fromCloud = parseWords(asked.value);
     if (fromCloud) {
       dev.set(KEY, JSON.stringify({ words: fromCloud }));

@@ -1,5 +1,6 @@
 import { Address } from '@ton/core';
-import { cfg, endpoints } from '../config';
+import { cfg } from '../config';
+import { tonapiFetch } from './tonapi';
 
 export interface Activity {
   id: string;
@@ -32,9 +33,7 @@ interface TonApiAction {
 /** Recent activity from TonAPI (events are already parsed into actions there). */
 export async function loadActivity(owner: Address, master: Address | null): Promise<Activity[]> {
   const me = owner.toRawString();
-  const res = await fetch(`${endpoints.tonapi}/v2/accounts/${encodeURIComponent(me)}/events?limit=25&subject_only=true`, {
-    headers: cfg.tonapiKey ? { authorization: `Bearer ${cfg.tonapiKey}` } : undefined,
-  });
+  const res = await tonapiFetch(`/v2/accounts/${encodeURIComponent(me)}/events?limit=25&subject_only=true`);
   if (!res.ok) throw new Error('history unavailable');
   const data = (await res.json()) as { events: { event_id: string; timestamp: number; actions: TonApiAction[] }[] };
   const out: Activity[] = [];
