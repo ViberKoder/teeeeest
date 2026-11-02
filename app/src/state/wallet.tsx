@@ -147,7 +147,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setConflict({ locked: me.address_locked });
         return setPhase('needs-phrase');
       }
-      if (loaded.kind === 'unknown') return setPhase('offline'); // Telegram's storage did not answer: never guess "no wallet"
+      // (storage that does not answer + an account the server knows has no wallet = safe to create one; the server is the authority)
       const w = await keyStore.create(TgWalletProvider.addressOf);
       await open(w, true);
     })();

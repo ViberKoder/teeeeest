@@ -86,7 +86,7 @@ export const cloud = {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(null);
       const t = setTimeout(() => resolve(null), 5000); // a storage that never answers must not freeze the app
-      tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err || !v ? null : v); });
+      try { tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err || !v ? null : v); }); } catch { clearTimeout(t); resolve(null); }
     });
   },
   /** like get(), but tells "nothing stored" (ok, null) apart from "could not ask" (ok: false) */
@@ -94,21 +94,21 @@ export const cloud = {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve({ ok: false, value: null });
       const t = setTimeout(() => resolve({ ok: false, value: null }), 5000);
-      tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err ? { ok: false, value: null } : { ok: true, value: v || null }); });
+      try { tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(t); resolve(err ? { ok: false, value: null } : { ok: true, value: v || null }); }); } catch { clearTimeout(t); resolve({ ok: false, value: null }); }
     });
   },
   set(key: string, value: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(false);
       const t = setTimeout(() => resolve(false), 5000);
-      tg.CloudStorage.setItem(key, value, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); });
+      try { tg.CloudStorage.setItem(key, value, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); }); } catch { clearTimeout(t); resolve(false); }
     });
   },
   remove(key: string): Promise<boolean> {
     return new Promise((resolve) => {
       if (!tg?.CloudStorage || !inTelegram) return resolve(false);
       const t = setTimeout(() => resolve(false), 5000);
-      tg.CloudStorage.removeItem(key, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); });
+      try { tg.CloudStorage.removeItem(key, (err, ok) => { clearTimeout(t); resolve(!err && ok !== false); }); } catch { clearTimeout(t); resolve(false); }
     });
   },
 };
