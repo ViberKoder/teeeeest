@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "EGG wallet \u2014 self-custody TON wallet as a Telegram Mini App",
+  "description": "EGG wallet — self-custody TON wallet as a Telegram Mini App",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -13,16 +13,18 @@
     "status": "tgcloud status"
   },
   "dependencies": {
+    "@egg/sdk": "*",
     "@ton/core": "^0.62.0",
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^15.4.0",
     "buffer": "^6.0.3",
+    "lottie-web": "^5.13.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@egg/sdk": "*"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@tgcloud/cli": "0.2.0",
     "@ton/sandbox": "^0.45.0",
     "@ton/test-utils": "^0.4.2",
     "@types/node": "^20.11.0",
@@ -32,7 +34,6 @@
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.4.5",
     "vite": "^5.3.3",
-    "vitest": "^2.0.5",
-    "@tgcloud/cli": "0.2.0"
+    "vitest": "^2.0.5"
   }
 }

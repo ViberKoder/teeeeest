@@ -37,6 +37,7 @@ export default function Demo() {
   const w = useWallet();
   useEffect(() => {
     const mode = new URLSearchParams(location.search).get('demo') ?? 'home';
+    if (mode === 'splash') return; // stays on the launch screen
     if (mode === 'restore') w.setDemo('needs-phrase', undefined, undefined, { address: address.toRawString(), backup: false });
     else if (mode === 'empty')
       w.setDemo('ready', provider, { ...full, ready: 0n, accruing: 0n, activity: [], egg: { ...full.egg!, balance: 0n, claimed: 0n }, me: null, ton: 0n });

@@ -233,3 +233,52 @@ button.row:active { background: var(--fill); }
 .warn { background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); border-radius: var(--r); padding: 12px 14px; font-size: 14px; line-height: 1.4; }
 .qr-card { background: linear-gradient(150deg, #ffe49a, #ffbb45 50%, #f58a31); border-radius: 20px; padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 14px; color: #2b1500; box-shadow: 0 7px 18px rgba(242, 125, 44, 0.3); }
 .qr-card .qr { margin: 0; box-shadow: none; }
+
+/* ======================= Premium-style hero with the 3D egg ======================= */
+.home-hero { position: relative; margin: calc(-8px - var(--safe-t)) -16px 0; height: clamp(300px, 44vh, 400px); overflow: hidden; isolation: isolate; }
+.home-hero .bg { position: absolute; inset: 0; z-index: -2; background: linear-gradient(180deg, #e3eb86 0%, #8fcf8e 52%, #4fae86 100%); }
+:root[data-theme='dark'] .home-hero .bg { background: linear-gradient(180deg, #6d7f2a 0%, #2c7d57 55%, #12493a 100%); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme]) .home-hero .bg { background: linear-gradient(180deg, #6d7f2a 0%, #2c7d57 55%, #12493a 100%); } }
+.home-hero .bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(60% 55% at 50% 55%, rgba(255, 255, 255, 0.55), transparent 70%), radial-gradient(40% 30% at 15% 10%, rgba(255, 244, 160, 0.5), transparent 70%); animation: drift 9s ease-in-out infinite alternate; }
+@keyframes drift { to { transform: translate3d(0, -2%, 0) scale(1.06); } }
+.home-hero::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 90px; background: linear-gradient(transparent, var(--bg)); z-index: -1; pointer-events: none; }
+.home-hero .bar { position: absolute; z-index: 3; top: calc(var(--safe-t) + 10px); left: 16px; right: 16px; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
+.home-hero .bar > * { pointer-events: auto; }
+.home-hero .glass { background: rgba(255, 255, 255, 0.28); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: #14301f; border: 0; }
+:root[data-theme='dark'] .home-hero .glass { background: rgba(0, 0, 0, 0.28); color: #fff; }
+.home-hero .stage { position: absolute; inset: 46px 0 70px 0; z-index: 1; }
+.home-hero .shadow { position: absolute; left: 50%; bottom: 76px; width: 150px; height: 26px; margin-left: -75px; border-radius: 50%; background: radial-gradient(closest-side, rgba(10, 40, 25, 0.38), transparent); filter: blur(4px); z-index: 0; }
+.home-hero .hint { position: absolute; z-index: 2; top: calc(var(--safe-t) + 62px); left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(20, 48, 31, 0.55); letter-spacing: 0.02em; animation: fadeout 6s forwards; pointer-events: none; }
+:root[data-theme='dark'] .home-hero .hint { color: rgba(255, 255, 255, 0.55); }
+@keyframes fadeout { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+.counter { position: relative; z-index: 2; text-align: center; margin-top: -34px; }
+.counter .label { font-size: 15px; font-weight: 500; color: var(--hint); }
+.counter .count { font-size: 56px; font-weight: 700; letter-spacing: -0.035em; line-height: 1.05; margin-top: 2px; }
+.counter .count .frac { font-size: 30px; color: var(--hint); letter-spacing: -0.01em; }
+.counter .count .unit { font-size: 22px; font-weight: 700; color: var(--hint); letter-spacing: 0; margin-left: 8px; }
+.counter .chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 6px 14px; border-radius: 999px; background: var(--surface); font-size: 14px; font-weight: 600; }
+.counter .chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--brand-3); animation: pulse2 1.8s infinite; }
+@keyframes pulse2 { 0% { box-shadow: 0 0 0 0 rgba(63, 157, 120, 0.6); } 70% { box-shadow: 0 0 0 9px rgba(63, 157, 120, 0); } 100% { box-shadow: 0 0 0 0 rgba(63, 157, 120, 0); } }
+
+.actions4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 20px; }
+.act { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0 10px; border-radius: 16px; background: var(--surface); font-size: 13px; font-weight: 600; color: var(--text); transition: transform 0.12s; }
+.act:active { transform: scale(0.95); }
+.act .ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.act.hot { background: linear-gradient(160deg, var(--brand-1), var(--brand-2)); color: #10301e; box-shadow: 0 6px 18px rgba(79, 174, 134, 0.35); }
+.act.hot .ic { background: rgba(255, 255, 255, 0.55); color: #10301e; }
+.act .badge-n { position: absolute; top: 6px; right: 10px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: #10301e; color: #dfe77a; font-size: 11px; font-weight: 700; display: grid; place-items: center; }
+.act[disabled] { opacity: 0.55; }
+
+.meter i { background: linear-gradient(90deg, var(--brand-1), var(--brand-3)); }
+.hatch-ic { background: linear-gradient(160deg, var(--brand-1), var(--brand-2)); color: #10301e; }
+.qr-card { background: linear-gradient(150deg, var(--brand-1), var(--brand-2) 55%, var(--brand-3)); color: #10301e; box-shadow: 0 7px 18px rgba(79, 174, 134, 0.3); }
+.big.hatch { background: linear-gradient(180deg, var(--brand-1), var(--brand-2)); color: #10301e; }
+
+/* ======================= launch splash (egghatch.tgs) ======================= */
+.splash { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: var(--bg); transition: opacity 0.4s ease; }
+.splash.out { opacity: 0; pointer-events: none; }
+.splash .bg { position: absolute; inset: 0; background: radial-gradient(70% 45% at 50% 42%, color-mix(in srgb, var(--brand-2) 38%, transparent), transparent 70%); }
+.splash .col { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.splash h2 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+.splash p { margin: 0; color: var(--hint); font-size: 15px; }

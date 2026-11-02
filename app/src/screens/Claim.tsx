@@ -8,7 +8,9 @@ import { cfg } from '../config';
 import { formatUnits } from '../lib/format';
 import { haptic } from '../lib/tg';
 import { useWallet } from '../state/wallet';
-import { Burst, Egg, EggState } from '../ui/Egg';
+import { Burst } from '../ui/Egg';
+import { FRAMES } from '../lib/sticker';
+import { Sticker, StickerMode } from '../ui/Sticker';
 import { MainButton, Page } from '../ui/native';
 import { NeedTonError } from '../provider/tg';
 
@@ -21,7 +23,7 @@ type Status = 'idle' | 'working' | 'done' | 'error';
  * the minter contract stores for that epoch; only if both agree is a transaction sent. The wallet contract then
  * asks the minter to verify the same proof on-chain before it credits anything.
  */
-export function ClaimPage({ onClose }: { onClose: () => void }) {
+export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
   const [status, setStatus] = useState<Status>('idle');
@@ -33,7 +35,10 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
 
   const sponsored = (data.me?.sponsored_left ?? 0) > 0;
   const lowTon = data.ton < Attach.claim && !sponsored;
-  const egg: EggState = status === 'working' ? 'cracking' : status === 'done' ? 'hatched' : 'idle';
+  const mode: StickerMode =
+    status === 'working' ? { kind: 'loop', from: FRAMES.egg, to: FRAMES.cracked, speed: 1.4 }
+    : status === 'done' ? { kind: 'play', from: FRAMES.cracked, to: FRAMES.hatched + 8 }
+    : { kind: 'still', frame: FRAMES.egg };
 
   const run = async () => {
     setStatus('working');
@@ -95,10 +100,10 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
   const steps = ['Checking the proof against the blockchain', 'Signing your request', 'Moving EGG to your wallet'];
 
   return (
-    <Page title={status === 'done' ? undefined : 'Hatch'} onBack={status === 'working' ? () => undefined : onClose} bottomSpace>
+    <Page title={status === 'done' ? undefined : 'Hatch'} onBack={status === 'working' ? () => undefined : () => onClose(status === 'done')} bottomSpace>
       <div className="stack" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 18, textAlign: 'center' }}>
         {status === 'done' && <Burst />}
-        <Egg size={112} state={egg} float={status === 'idle'} />
+        <Sticker mode={mode} size={168} />
 
         {status === 'done' ? (
           <>
@@ -130,7 +135,7 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
       </div>
 
       {status === 'done' ? (
-        <MainButton text="Done" onClick={onClose} />
+        <MainButton text="Done" onClick={() => onClose(true)} />
       ) : (
         <MainButton text={status === 'error' ? 'Try again' : 'Hatch to my wallet'} onClick={run} enabled={!lowTon} loading={status === 'working'} />
       )}
