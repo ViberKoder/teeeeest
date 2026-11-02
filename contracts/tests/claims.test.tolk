@@ -174,7 +174,7 @@ get fun `test claim: only the wallet owner can ask, and not while another claim 
     val notOwner = claim(wallet, env.bob.address, 1, ALICE_EGGS, t.aliceProof);
     expect(notOwner).toHaveFailedTx<AskToClaim>({ to: wallet.address, exitCode: Errors.NotOwner });
 
-    val lowGas = wallet.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, { value: 10000000 });
+    val lowGas = wallet.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, null, { value: 10000000 });
     expect(lowGas).toHaveFailedTx<AskToClaim>({ to: wallet.address, exitCode: Errors.NotEnoughGas });
 
     // a wallet whose lock is still running refuses a second request
@@ -286,4 +286,41 @@ get fun `test governance: limits can only be tightened`() {
     expect(looser).toHaveFailedTx<SetLimits>({ to: env.minter.address, exitCode: Errors.LimitsLoosened });
     val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, 60, { value: grams("0.05") });
     expect(tighter).toHaveSuccessfulTx<SetLimits>({ to: env.minter.address });
+}
+
+get fun `test claim and send: one signed request credits the claim and passes part of it on`() {
+    val env = setupMinter();
+    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    publish(env, 1, t.root, t.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+
+    val intent = TransferIntent {
+        jettonAmount: 30000000000,
+        transferRecipient: env.bob.address,
+        sendExcessesTo: env.alice.address,
+        forwardTonAmount: 0,
+        forwardPayload: beginCell().storeUint(0, 1).toSlice(),
+    }.toCell();
+    val res = aw.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, intent, { value: grams("0.3") });
+    expect(res).toHaveSuccessfulTx<AskToClaim>({ from: env.alice.address, to: aw.address });
+    expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS - 30000000000);
+    expect(aw.getClaimState().claimed).toEqual(ALICE_EGGS);
+    expect(userWallet(env.minter, env.bob.address).getWalletData().jettonBalance).toEqual(30000000000);
+    expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS);
+}
+
+get fun `test claim and send: asking for more than the balance still credits the claim and sends nothing`() {
+    val env = setupMinter();
+    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    publish(env, 1, t.root, t.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    val intent = TransferIntent {
+        jettonAmount: ALICE_EGGS + 1,
+        transferRecipient: env.bob.address,
+        sendExcessesTo: null,
+        forwardTonAmount: 0,
+        forwardPayload: beginCell().storeUint(0, 1).toSlice(),
+    }.toCell();
+    aw.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, intent, { value: grams("0.3") });
+    expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
 }

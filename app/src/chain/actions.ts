@@ -1,5 +1,5 @@
 import { Address, Cell, StateInit } from '@ton/core';
-import { askToClaimBody, Attach, commentPayload, transferBody } from '@egg/sdk';
+import { askToClaimBody, Attach, commentPayload, transferBody, transferIntent } from '@egg/sdk';
 import { toNano } from '@ton/core';
 import type { OutMessage } from '../provider/types';
 import type { EggState } from './egg';
@@ -52,15 +52,26 @@ export function eggClaim(p: {
   cumulative: bigint;
   proof: Cell;
   init?: StateInit;
+  /** claim AND send in the same request: pass `amount` on to `to` as soon as the claim is credited */
+  thenSend?: { owner: Address; to: Address; amount: bigint; comment?: string };
 }): OutMessage[] {
+  const next = p.thenSend
+    ? transferIntent({
+        amount: p.thenSend.amount,
+        to: p.thenSend.to,
+        excessesTo: p.thenSend.owner,
+        forwardTon: p.thenSend.comment ? 1n : 0n,
+        comment: p.thenSend.comment,
+      })
+    : null;
   return [
     {
       to: p.state.jettonWallet,
-      value: Attach.claim,
+      value: p.thenSend ? Attach.claimAndSend : Attach.claim,
       bounce: true,
       sponsorable: true,
       init: p.state.deployed ? undefined : p.init,
-      body: askToClaimBody({ epoch: p.epoch, cumulative: p.cumulative, proof: p.proof }),
+      body: askToClaimBody({ epoch: p.epoch, cumulative: p.cumulative, proof: p.proof, next }),
     },
   ];
 }

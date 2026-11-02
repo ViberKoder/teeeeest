@@ -61,13 +61,22 @@ fun EggMinter.sendClaimRequest(
     cumulative: coins,
     claimedAtWallet: coins,
     proof: cell,
+    next: cell?,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: ClaimRequest { queryId, ownerAddress, epoch, cumulative, claimedAtWallet, proof },
+        body: ClaimRequest {
+            queryId,
+            ownerAddress,
+            epoch,
+            cumulative,
+            claimedAtWallet,
+            proof,
+            next,
+        },
     });
     return net.send(from, genericMsg);
 }

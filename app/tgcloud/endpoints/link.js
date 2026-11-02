@@ -2,20 +2,31 @@ import { db, EndpointError } from 'sdk';
 import { eq } from 'sdk/db';
 import { users } from '../schema.js';
 import { ensureUser } from '../lib/ledger.js';
+import { fromHex } from '../lib/bytes.js';
+import { verify } from '../lib/ed25519.js';
+import { walletAddress, SUBWALLET } from '../lib/wallet.js';
+import { NETWORK } from '../lib/config.js';
+import { tickSafe } from '../lib/publisher.js';
 
-// Stores the claim "this wallet is mine" with the wallet's signature. The operator verifies the signature
-// (ed25519, plus address = WalletTg(public key)) before the address can enter a published root.
+// Stores "this wallet is mine" and checks it: the address must be the WalletTg of the given key, and the
+// signature (by that key, for THIS Telegram account) must verify. Only verified wallets enter a published root.
 export default async function (input, ctx) {
   const id = ctx.initData.user.id;
   const address = String(input?.address ?? '');
-  const key = String(input?.public_key ?? '');
-  const sig = String(input?.signature ?? '');
-  if (!/^0:[0-9a-f]{64}$/.test(address) || !/^[0-9a-f]{64}$/i.test(key) || !/^[0-9a-f]{128}$/i.test(sig)) {
+  const key = String(input?.public_key ?? '').toLowerCase();
+  const sig = String(input?.signature ?? '').toLowerCase();
+  if (!/^0:[0-9a-f]{64}$/.test(address) || !/^[0-9a-f]{64}$/.test(key) || !/^[0-9a-f]{128}$/.test(sig)) {
     throw new EndpointError('bad-request', { code: 'bad-request' });
   }
+  const pk = fromHex(key);
+  const derived = await walletAddress(pk, SUBWALLET[NETWORK]);
+  const msg = new TextEncoder().encode(`egg-link:v1:${id}:${address}`);
+  if (derived !== address || !(await verify(msg, fromHex(sig), pk))) throw new EndpointError('bad-proof', { code: 'bad-proof' });
+
   await ensureUser(id, Math.floor(Date.now() / 1000));
   const owner = await db.select().from(users).where(eq(users.address, address)).get();
   if (owner && owner.tgId !== id) throw new EndpointError('address-taken', { code: 'address-taken' });
-  await db.update(users).set({ address, publicKey: key.toLowerCase(), linkSig: sig.toLowerCase() }).where(eq(users.tgId, id)).run();
+  await db.update(users).set({ address, publicKey: key, linkSig: sig, verified: 1 }).where(eq(users.tgId, id)).run();
+  await tickSafe();
   return { ok: true, address };
 }

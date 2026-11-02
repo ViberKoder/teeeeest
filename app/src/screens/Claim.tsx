@@ -1,9 +1,10 @@
 import { Address } from '@ton/core';
-import { Attach, verifyEntitlement } from '@egg/sdk';
+import { Attach } from '@egg/sdk';
 import { useState } from 'react';
-import { api, apiErrorText, entitlementCache, proofCell } from '../api/server';
+import { apiErrorText } from '../api/server';
+import { loadVerifiedEntitlement } from '../chain/entitlement';
 import { eggClaim } from '../chain/actions';
-import { onchainCommitment, readEgg, walletInit } from '../chain/egg';
+import { readEgg } from '../chain/egg';
 import { cfg } from '../config';
 import { formatUnits } from '../lib/format';
 import { haptic } from '../lib/tg';
@@ -47,25 +48,13 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
     try {
       const raw = provider.address.toRawString();
       setStep(1);
-      if (data.me?.address !== raw) await provider.linkToAccount();
-      const ent = await api.entitlement(raw).catch((e: unknown) => {
-        const cached = entitlementCache.read(raw);
-        if (cached) return cached; // the server is unreachable, but a verified proof is still good
-        throw e;
-      });
-      const commitment = await onchainCommitment(masterAddress, ent.epoch);
-      if (!commitment) throw new Error('epoch-not-on-chain');
-      if (!verifyEntitlement(ent, commitment)) throw new Error('proof-mismatch');
-      entitlementCache.write(ent);
+      const { ent, cumulative, proof, state, init } = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === raw);
       setEpoch(ent.epoch);
-
-      const cumulative = BigInt(ent.cumulative);
-      const [state, init] = await Promise.all([readEgg(masterAddress, provider.address), walletInit(masterAddress, provider.address)]);
       if (cumulative <= state.claimed) throw new Error('already-claimed');
       setMoved(cumulative - state.claimed);
 
       setStep(2);
-      await provider.send(eggClaim({ state, epoch: ent.epoch, cumulative, proof: proofCell(ent), init: init.init }));
+      await provider.send(eggClaim({ state, epoch: ent.epoch, cumulative, proof, init: init.init }));
       w.addLocalActivity({ id: `hatch-${ent.epoch}-${Date.now()}`, kind: 'egg', direction: 'in', amount: cumulative - state.claimed, symbol: 'EGG', decimals: cfg.token.decimals, peer: '', time: Math.floor(Date.now() / 1000), label: 'hatch', failed: false });
 
       setStep(3);

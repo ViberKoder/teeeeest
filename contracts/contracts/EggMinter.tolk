@@ -83,6 +83,7 @@ fun onInternalMessage(in: InMessage) {
                 body: ClaimCredit {
                     queryId: msg.queryId,
                     cumulative: msg.cumulative,
+                    next: msg.next,
                 },
             });
             creditMsg.send(

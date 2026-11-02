@@ -172,6 +172,7 @@ fun onInternalMessage(in: InMessage) {
                     cumulative: msg.cumulative,
                     claimedAtWallet: storage.claimed,
                     proof: msg.proof,
+                    next: msg.next,
                 },
             });
             requestMsg.send(
@@ -191,6 +192,41 @@ fun onInternalMessage(in: InMessage) {
             }
             storage.claimLockedUntil = 0;
             storage.save();
+
+            // "claim and send": the owner asked, in the same signed request, to pass part of it on right away.
+            // Best effort: if anything does not fit (balance, gas), the claim stays credited and the rest is returned.
+            if (msg.next != null) {
+                val intent = TransferIntent.fromCell(msg.next);
+                if (
+                    intent.transferRecipient.getWorkchain() == MY_WORKCHAIN
+                    && storage.jettonBalance >= intent.jettonAmount
+                    && in.valueCoins > calcMinimalTransferAmount(intent.forwardTonAmount, in.originalForwardFee)
+                ) {
+                    storage.jettonBalance -= intent.jettonAmount;
+                    storage.save();
+                    val deployMsg = createMessage({
+                        bounce: BounceMode.Only256BitsOfBody,
+                        dest: calcDeployedJettonWallet(
+                            intent.transferRecipient,
+                            storage.minterAddress,
+                            contract.getCode(),
+                        ),
+                        value: 0,
+                        body: InternalTransferStep {
+                            queryId: msg.queryId,
+                            jettonAmount: intent.jettonAmount,
+                            transferInitiator: storage.ownerAddress,
+                            sendExcessesTo: intent.sendExcessesTo ?? storage.ownerAddress,
+                            forwardTonAmount: intent.forwardTonAmount,
+                            forwardPayload: intent.forwardPayload,
+                        },
+                    });
+                    deployMsg.send(
+                        SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+                    );
+                    return;
+                }
+            }
 
             returnExcesses(storage.ownerAddress, msg.queryId, in.valueCoins);
         }

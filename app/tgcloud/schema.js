@@ -9,6 +9,8 @@ export const users = table('users', {
   address: text('address').unique(),
   publicKey: text('public_key'),
   linkSig: text('link_sig'),
+  // 1 once the signature was checked (ed25519) and the address was derived from that key
+  verified: integer('verified').notNull().default(0),
   createdAt: integer('created_at').notNull(),
 });
 
@@ -35,3 +37,15 @@ export const proofs = table('proofs', {
   once: uniqueIndex('uq_proof').on(t.epoch, t.address),
   byAddr: index('idx_proof_addr').on(t.address, t.epoch),
 }));
+
+// The publisher's state machine (a single row): what is in flight on-chain and when the last root went out.
+export const state = table('state', {
+  id: integer('id').primaryKey(),
+  lockUntil: integer('lock_until').notNull().default(0),
+  lastPublishAt: integer('last_publish_at').notNull().default(0),
+  lastCommitment: text('last_commitment').notNull().default(''),
+  pendingEpoch: integer('pending_epoch').notNull().default(0),
+  pendingCommitment: text('pending_commitment').notNull().default(''),
+  pendingLeaves: text('pending_leaves').notNull().default(''),
+  sentAt: integer('sent_at').notNull().default(0),
+});

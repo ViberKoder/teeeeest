@@ -77,6 +77,18 @@ struct (0x28dac35b) AskToClaim {
     epoch: uint32
     cumulative: coins
     proof: cell
+    /// optional `TransferIntent`: after the credit lands, send this much to someone, in the same flow
+    next: cell?
+}
+
+/// What the owner wants done right after the claim is credited: claim and send in one signed request.
+struct TransferIntent {
+    jettonAmount: coins
+    transferRecipient: address
+    sendExcessesTo: address?
+    forwardTonAmount: coins
+    @abi.clientType(PayloadInline | PayloadInRef)
+    forwardPayload: ForwardPayloadRemainder
 }
 
 /// wallet -> minter. The wallet is identified by its address, so `claimedAtWallet` is trustworthy.
@@ -87,12 +99,15 @@ struct (0x87a42c7c) ClaimRequest {
     cumulative: coins
     claimedAtWallet: coins
     proof: cell
+    next: cell?
 }
 
 /// minter -> wallet.
 struct (0x49e1974f) ClaimCredit {
     queryId: uint64
     cumulative: coins
+    /// echoed unchanged from the owner's request; only the genuine minter can send it
+    next: cell?
 }
 
 // ---------------- governance ----------------

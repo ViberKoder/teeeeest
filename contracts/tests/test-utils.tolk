@@ -131,5 +131,5 @@ fun publish(env: Env, epoch: int, root: int, total: int): SendResultList {
 }
 
 fun claim(wallet: EggWallet, owner: address, epoch: int, cumulative: int, proof: cell): SendResultList {
-    return wallet.sendAskToClaim(owner, 0, epoch, cumulative, proof, { value: CLAIM_VALUE });
+    return wallet.sendAskToClaim(owner, 0, epoch, cumulative, proof, null, { value: CLAIM_VALUE });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { eggTransfer, parseAddress, ParsedAddress, tonTransfer, TON_FEE_RESERVE } from '../chain/actions';
+import { eggClaim, eggTransfer, parseAddress, ParsedAddress, tonTransfer, TON_FEE_RESERVE } from '../chain/actions';
 import { readEgg } from '../chain/egg';
+import { loadVerifiedEntitlement } from '../chain/entitlement';
 import { cfg } from '../config';
 import { formatUnits, parseUnits, shortAddr } from '../lib/format';
 import { haptic } from '../lib/tg';
@@ -42,7 +43,8 @@ export function SendPage({ onClose }: { onClose: () => void }) {
   const parsed = useMemo(() => (to.trim() ? parseAddress(to) : null), [to]);
   const amount = useMemo(() => (amountStr ? parseUnits(amountStr, dec) : null), [amountStr]);
   const eggOnChain = data.egg?.balance ?? 0n;
-  const available = asset === 'EGG' ? eggOnChain : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
+  // what can leave in ONE request: the tokens already on-chain plus what the contract can credit from the published root
+  const available = asset === 'EGG' ? eggOnChain + data.ready : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
 
   if (!provider) return null;
   const isSelf = parsed ? parsed.address.equals(provider.address) : false;
@@ -77,8 +79,22 @@ export function SendPage({ onClose }: { onClose: () => void }) {
         await provider.send(tonTransfer({ to: dest, amount, comment: comment.trim() || undefined }));
       } else {
         if (!masterAddress) throw new Error('EGG is not configured');
-        const state = await readEgg(masterAddress, provider.address);
-        await provider.send(eggTransfer({ owner: provider.address, state, to: dest.address, amount, comment: comment.trim() || undefined }));
+        const note = comment.trim() || undefined;
+        if (data.ready > 0n) {
+          // claim what the blockchain has committed AND send, in a single signed request
+          const v = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === provider.address.toRawString());
+          if (v.cumulative > v.state.claimed) {
+            await provider.send(eggClaim({
+              state: v.state, epoch: v.ent.epoch, cumulative: v.cumulative, proof: v.proof, init: v.init.init,
+              thenSend: { owner: provider.address, to: dest.address, amount, comment: note },
+            }));
+          } else {
+            await provider.send(eggTransfer({ owner: provider.address, state: v.state, to: dest.address, amount, comment: note }));
+          }
+        } else {
+          const state = await readEgg(masterAddress, provider.address);
+          await provider.send(eggTransfer({ owner: provider.address, state, to: dest.address, amount, comment: note }));
+        }
       }
       try {
         const raw = dest.address.toString({ bounceable: false });
@@ -136,6 +152,7 @@ export function SendPage({ onClose }: { onClose: () => void }) {
             Balance: {formatUnits(available, dec, 4)} {asset}
             <button onClick={() => setAmountStr(formatUnits(available, dec, 9).replace(/ /g, ''))}>Max</button>
           </div>
+          {asset === 'EGG' && data.accruing > 0n && <div className="hint" style={{ marginTop: 6, padding: '0 20px' }}>{formatUnits(data.accruing, dec, 2)} EGG more are being committed to the blockchain and can be sent in a minute.</div>}
           {amountProblem && <div className="hint bad" style={{ marginTop: 6 }}>{amountProblem}</div>}
           {err && <div className="hint bad" style={{ marginTop: 6, padding: '0 20px' }}>{err}</div>}
         </div>

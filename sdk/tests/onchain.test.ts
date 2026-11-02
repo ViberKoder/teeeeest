@@ -3,7 +3,7 @@ import { Address, beginCell, Cell, Dictionary, toNano, TupleReader } from '@ton/
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   askToClaimBody, Attach, burnBody, commentPayload, EggTree, eggMinterCode, eggWalletCode, Err, minterStateInit,
-  onchainMetadata, publishRootBody, transferBody, verifyProof, walletStateInit, changePublisherBody,
+  onchainMetadata, publishRootBody, transferBody, transferIntent, verifyProof, walletStateInit, changePublisherBody,
 } from '../src';
 
 const T0 = 1_800_000_000;
@@ -136,6 +136,27 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
 
     await alice.send({ to: wallet, value: Attach.burn, body: burnBody({ amount: E(20), responseTo: alice.address }) });
     expect((await get(minter, 'get_jetton_data')).readBigNumber()).toBe(E(80));
+  });
+
+  it('claim and send in ONE request: the claim is credited, then the amount (with a comment) reaches the recipient', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
+    await publish(1, tree);
+    const { init, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
+    const res = await alice.send({
+      to: wallet,
+      value: Attach.claimAndSend,
+      bounce: true,
+      init,
+      body: askToClaimBody({
+        epoch: 1, cumulative: E(100), proof: tree.proof(alice.address)!,
+        next: transferIntent({ amount: E(30), to: bob.address, excessesTo: alice.address, forwardTon: 1n, comment: 'for coffee' }),
+      }),
+    });
+    expect(exitOf(res.transactions, wallet)).toBe(0);
+    expect(await balanceOf(alice.address)).toBe(E(70));
+    expect(await balanceOf(bob.address)).toBe(E(30));
+    expect(res.transactions.some((t) => t.inMessage?.info.dest?.toString() === bob.address.toString() && t.inMessage.body.beginParse().loadUint(32) === 0x7362d09c)).toBe(true);
+    expect((await get(minter, 'get_jetton_data')).readBigNumber()).toBe(E(100));
   });
 
   it('the commitment is binding: what is published stays claimable after a later root drops the user', async () => {

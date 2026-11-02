@@ -46,7 +46,8 @@ export function Home() {
   const { data, provider } = w;
   const D = cfg.token.decimals;
   const eggBalance = data.egg?.balance ?? 0n;
-  const shown = useCountUp(eggBalance);
+  // the balance is everything that is yours: in the wallet, committed on-chain (claimed with your next send) and just earned
+  const shown = useCountUp(eggBalance + data.ready + data.accruing);
   if (!provider) return null;
 
   const eggOn = Boolean(w.masterAddress);

@@ -137,13 +137,14 @@ fun EggWallet.sendAskToClaim(
     epoch: uint32,
     cumulative: coins,
     proof: cell,
+    next: cell?,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: AskToClaim { queryId, epoch, cumulative, proof },
+        body: AskToClaim { queryId, epoch, cumulative, proof, next },
     });
     return net.send(from, genericMsg);
 }
@@ -153,13 +154,14 @@ fun EggWallet.sendClaimCredit(
     from: address,
     queryId: uint64,
     cumulative: coins,
+    next: cell?,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: ClaimCredit { queryId, cumulative },
+        body: ClaimCredit { queryId, cumulative, next },
     });
     return net.send(from, genericMsg);
 }
