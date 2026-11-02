@@ -1,0 +1,1 @@
+export const OP_KEY = 'change-me-and-keep-this-file-out-of-git';

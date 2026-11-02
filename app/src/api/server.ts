@@ -22,7 +22,30 @@ export class ApiError extends Error {
   }
 }
 
+/** Telegram's own serverless runtime: the Mini App talks to the bot's endpoints, no server of ours in between. */
+interface Serverless {
+  call(name: string, input: object, cb: (err: { message?: string; type?: string; parameters?: { code?: string } } | null, result?: unknown) => void): void;
+}
+const serverless = (): Serverless | null => (window as unknown as { Telegram?: { WebApp?: { Serverless?: Serverless } } }).Telegram?.WebApp?.Serverless ?? null;
+const useServerless = () => !cfg.apiUrl && Boolean(serverless());
+
+function viaServerless<T>(name: string, input: object = {}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    serverless()!.call(name, input, (err, result) => {
+      if (!err) return resolve(result as T);
+      const code = err.parameters?.code ?? err.message ?? 'request-failed';
+      reject(new ApiError(code, code === 'no-entitlement' ? 404 : err.type === 'ENDPOINT_ERROR' ? 400 : 500));
+    });
+  });
+}
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (useServerless()) {
+    const name = path.replace(/^\/v1\//, '').split('/')[0];
+    if (name === 'relay') throw new ApiError('relay-unavailable', 503);
+    const input = init.body ? (JSON.parse(String(init.body)) as object) : {};
+    return viaServerless<T>(name === 'entitlement' ? 'entitlement' : name, name === 'entitlement' ? { address: decodeURIComponent(path.split('/')[3] ?? '') } : input);
+  }
   const res = await fetch(cfg.apiUrl + path, {
     ...init,
     headers: { 'content-type': 'application/json', authorization: `tma ${initData()}`, ...init.headers },
@@ -33,7 +56,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  available: () => Boolean(cfg.apiUrl) && Boolean(initData()),
+  available: () => (Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData()),
   me: () => call<Me>('/v1/me'),
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string) =>

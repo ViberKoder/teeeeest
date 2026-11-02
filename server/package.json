@@ -10,7 +10,8 @@
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "gen-wallet": "tsx scripts/gen-wallet.ts",
-    "deploy-minter": "tsx scripts/deploy-minter.ts"
+    "deploy-minter": "tsx scripts/deploy-minter.ts",
+    "publish-from-cloud": "tsx scripts/publish-from-cloud.ts"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
