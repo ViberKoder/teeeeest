@@ -6,6 +6,9 @@ export const cfg = {
   apiUrl: ((env.VITE_API_URL as string) || '').replace(/\/$/, ''),
   network: ((env.VITE_NETWORK as string) === 'testnet' ? 'testnet' : 'mainnet') as Network,
   master: (env.VITE_JETTON_MASTER as string) || '',
+  /** the vault that holds transfers to a @username until its owner opens the wallet (raw address) */
+  vault: (env.VITE_VAULT_ADDRESS as string) || '',
+  bot: (env.VITE_BOT_USERNAME as string) || 'hatchapp',
   toncenterKey: (env.VITE_TONCENTER_KEY as string) || '',
   tonapiKey: (env.VITE_TONAPI_KEY as string) || '',
   publicUrl: ((env.VITE_PUBLIC_URL as string) || '').replace(/\/$/, ''),

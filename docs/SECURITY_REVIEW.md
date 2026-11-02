@@ -21,6 +21,10 @@ Every finding below has a regression test unless marked *doc*.
 * Wallet address depends only on `(owner, minter, code)`; there is no upgrade path, no mint message, no admin function that edits or deletes a root.
 * Server: initData HMAC and freshness, constant-time key comparison, zod validation, body limit, rate limits, idempotent ingest, relay re-derives the wallet and checks the message and value.
 
+## Username transfers (vault)
+
+Deposits are identified by an on-chain comment `@username`; payout goes only to the verified wallet of the Telegram account whose (platform-verified) username matches, once per deposit (unique `event_key`); refunds only to the depositing wallet after 7 days. The vault is custodial for funds in transit (see `docs/BOT.md`). A username is a mutable handle: if it changes hands before collection, the new owner collects.
+
 ## Residual risks (known, accepted — decide before mainnet)
 
 1. **Publisher can still choose who gets what** in *new* roots, within `maxGrowth` per period (and up to twice that across a window boundary). Until the admin is dropped or is a multisig, the admin can also replace the publisher. Keep the admin cold, then `DropAdmin` once parameters are proven.

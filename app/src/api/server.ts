@@ -63,6 +63,11 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   available: () => (Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData()),
   me: () => call<Me>('/v1/me'),
+  /** pays out whatever was sent to this account's @username into its wallet */
+  claimIncoming: () => call<{ username: string | null; incoming: { kind: 'ton' | 'egg'; amount: string; status: string }[] }>('/v1/claimIncoming', { method: 'POST', body: '{}' }),
+  /** transfers this wallet sent to a @username that were not collected yet */
+  sentList: () => call<{ items: { key: string; kind: 'ton' | 'egg'; amount: string; to: string; time: number }[]; refundAfter: number }>('/v1/sentList', { method: 'POST', body: '{}' }),
+  refund: (key: string) => call<{ status: string }>('/v1/refund', { method: 'POST', body: JSON.stringify({ key }) }),
   /** nudges the publisher in the bot's runtime; fire and forget */
   kick: () => call<{ status: string }>('/v1/kick').catch(() => undefined),
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */

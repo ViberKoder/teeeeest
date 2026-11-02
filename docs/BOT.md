@@ -17,3 +17,12 @@ Everything runs on Telegram's own infrastructure (`app/tgcloud/`): no server of 
 (`server/scripts/publish-from-cloud.ts` is the manual operator alternative.)
 
 Limits worth knowing: the daily cap is per player, not per device (no anti-sybil); the contract allows at most `maxGrowth` EGG per hour to be published.
+
+## Sending to a @username (also to people who never opened the wallet)
+
+1. The sender types `@username` in Send. The wallet makes an ordinary transfer to the **vault** (a WalletTg held by the bot) with the comment `@username` — TON (+0.05 TON delivery fee) or EGG (with 0.06 TON travelling along, which pays for the payout). Claim-and-send works here too: one signed request.
+2. The app offers "Tell @username" (a `t.me/<bot>?start=claim` share link); the bot answers with the Open-wallet button. The recipient does not need to be known to the bot.
+3. When the owner of that username opens the wallet, `claimIncoming` (platform-verified `initData.user.username`) pays every deposit with that comment out to *their own* verified wallet, once (one row per deposit in `payouts`).
+4. If nobody collects it, the sender can **take it back after 7 days** (`refund`, only for the wallet that made the deposit).
+
+Trust, honestly: the vault key is in the bot's code, so whoever runs the bot could move what is *in transit*. A username that changes owner before collection goes to its new owner. Nothing else about the wallet changes: balances stay in the player's own self-custodial wallet.

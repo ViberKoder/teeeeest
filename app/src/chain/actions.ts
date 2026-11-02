@@ -26,19 +26,19 @@ export function tonTransfer(p: { to: ParsedAddress; amount: bigint; comment?: st
   return [{ to: p.to.address, value: p.amount, bounce: p.to.bounceable, body: p.comment ? commentPayload(p.comment) : undefined }];
 }
 
-export function eggTransfer(p: { owner: Address; state: EggState; to: Address; amount: bigint; comment?: string }): OutMessage[] {
+export function eggTransfer(p: { owner: Address; state: EggState; to: Address; amount: bigint; comment?: string; forwardTon?: bigint }): OutMessage[] {
   const hasComment = Boolean(p.comment);
   return [
     {
       to: p.state.jettonWallet,
-      value: Attach.transfer,
+      value: Attach.transfer + (p.forwardTon ?? 0n),
       bounce: true,
       body: transferBody({
         amount: p.amount,
         to: p.to,
         responseTo: p.owner,
         // a comment only reaches the recipient inside a transfer_notification
-        forwardTon: hasComment ? 1n : 0n,
+        forwardTon: p.forwardTon ?? (hasComment ? 1n : 0n),
         forwardPayload: hasComment ? commentPayload(p.comment!) : null,
       }),
     },
@@ -53,21 +53,21 @@ export function eggClaim(p: {
   proof: Cell;
   init?: StateInit;
   /** claim AND send in the same request: pass `amount` on to `to` as soon as the claim is credited */
-  thenSend?: { owner: Address; to: Address; amount: bigint; comment?: string };
+  thenSend?: { owner: Address; to: Address; amount: bigint; comment?: string; forwardTon?: bigint };
 }): OutMessage[] {
   const next = p.thenSend
     ? transferIntent({
         amount: p.thenSend.amount,
         to: p.thenSend.to,
         excessesTo: p.thenSend.owner,
-        forwardTon: p.thenSend.comment ? 1n : 0n,
+        forwardTon: p.thenSend.forwardTon ?? (p.thenSend.comment ? 1n : 0n),
         comment: p.thenSend.comment,
       })
     : null;
   return [
     {
       to: p.state.jettonWallet,
-      value: p.thenSend ? Attach.claimAndSend : Attach.claim,
+      value: p.thenSend ? Attach.claimAndSend + (p.thenSend.forwardTon ?? 0n) : Attach.claim,
       bounce: true,
       sponsorable: true,
       init: p.state.deployed ? undefined : p.init,
@@ -78,3 +78,10 @@ export function eggClaim(p: {
 
 /** Keeps a little TON behind so the wallet can always pay for its next move. */
 export const TON_FEE_RESERVE = toNano('0.02');
+
+/** Sending to a @username: the vault holds it until that person opens the wallet (see docs/BOT.md). */
+export const USERNAME_RE = /^@[A-Za-z][A-Za-z0-9_]{4,31}$/;
+/** TON a TON deposit adds to cover the payout */
+export const USERNAME_TON_FEE = toNano('0.05');
+/** TON that travels with an EGG deposit to pay for its payout */
+export const USERNAME_EGG_FORWARD = toNano('0.06');

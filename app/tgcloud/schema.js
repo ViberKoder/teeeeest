@@ -7,6 +7,8 @@ export const users = table('users', {
   // wallet link: the address, the WalletTg public key and the signature that proves control of it.
   // The signature is verified by the operator (Node, ed25519) before an address enters a Merkle tree.
   address: text('address').unique(),
+  // the @username Telegram reports for this account (lowercase, without @); lets transfers sent to @username find their owner
+  username: text('username'),
   publicKey: text('public_key'),
   linkSig: text('link_sig'),
   // 1 once the signature was checked (ed25519) and the address was derived from that key
@@ -52,3 +54,21 @@ export const state = table('state', {
   pendingLeaves: text('pending_leaves').notNull().default(''),
   sentAt: integer('sent_at').notNull().default(0),
 });
+
+// Transfers sent to a @username through the vault. One row per deposit (eventKey = the deposit's own id), so a deposit is
+// paid out at most once; the row also walks queued -> sent -> done as the vault's requests are confirmed.
+export const payouts = table('payouts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  eventKey: text('event_key').notNull(),
+  kind: text('kind').notNull(), // 'ton' | 'egg'
+  amount: text('amount').notNull(), // what is paid out (jetton units or nanoTON)
+  toAddress: text('to_address').notNull(),
+  reason: text('reason').notNull(), // 'claim' | 'refund'
+  status: text('status').notNull().default('queued'),
+  sentSeqno: integer('sent_seqno').notNull().default(0),
+  sentAt: integer('sent_at').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+}, (t) => ({
+  once: uniqueIndex('uq_payout_event').on(t.eventKey),
+  byStatus: index('idx_payout_status').on(t.status, t.id),
+}));

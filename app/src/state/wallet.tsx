@@ -23,11 +23,16 @@ export interface Data {
   ready: bigint;
   /** earned, but not in a published root yet: it joins the next one */
   accruing: bigint;
+  /** sent to this account's @username and on its way into the wallet */
+  incoming: { kind: 'ton' | 'egg'; amount: string; status: string }[];
+  /** this wallet sent these to a @username and nobody has collected them yet */
+  waiting: { key: string; kind: 'ton' | 'egg'; amount: string; to: string; time: number }[];
+  refundAfter: number;
   loading: boolean;
   error: string | null;
 }
 
-const empty: Data = { ton: 0n, egg: null, me: null, activity: [], ready: 0n, accruing: 0n, loading: true, error: null };
+const empty: Data = { ton: 0n, egg: null, me: null, activity: [], ready: 0n, accruing: 0n, incoming: [], waiting: [], refundAfter: 604800, loading: true, error: null };
 
 interface Ctx {
   phase: Phase;
@@ -198,7 +203,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         acc.me = me;
         push();
-        if (api.available()) void api.kick();
+        if (api.available()) {
+          void api.kick();
+          // transfers sent to this account's @username are paid out into this wallet; and what this wallet sent is listed for refunds
+          void api.claimIncoming().then((r) => setData((d) => ({ ...d, incoming: r.incoming }))).catch(() => undefined);
+          void api.sentList().then((r) => setData((d) => ({ ...d, waiting: r.items, refundAfter: r.refundAfter }))).catch(() => undefined);
+        }
       })().catch(() => undefined),
     ];
     await Promise.all(tasks);

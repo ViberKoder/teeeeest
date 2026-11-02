@@ -159,6 +159,25 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     expect((await get(minter, 'get_jetton_data')).readBigNumber()).toBe(E(100));
   });
 
+  it('claim and send to the username vault: 0.06 TON travels with the EGG so the vault can pay it out', async () => {
+    const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
+    await publish(1, tree);
+    const { init, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
+    const fwd = toNano('0.06');
+    const res = await alice.send({
+      to: wallet, value: Attach.claimAndSend + fwd, bounce: true, init,
+      body: askToClaimBody({
+        epoch: 1, cumulative: E(100), proof: tree.proof(alice.address)!,
+        next: transferIntent({ amount: E(10), to: bob.address, excessesTo: alice.address, forwardTon: fwd, comment: '@someone' }),
+      }),
+    });
+    expect(exitOf(res.transactions, wallet)).toBe(0);
+    expect(await balanceOf(bob.address)).toBe(E(10));
+    const note = res.transactions.find((t) => t.inMessage?.info.dest?.toString() === bob.address.toString() && t.inMessage.body.beginParse().loadUint(32) === 0x7362d09c);
+    expect(note).toBeTruthy();
+    expect((note!.inMessage!.info as any).value.coins).toBeGreaterThanOrEqual(fwd - toNano('0.001'));
+  });
+
   it('the commitment is binding: what is published stays claimable after a later root drops the user', async () => {
     const t1 = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
     await publish(1, t1);

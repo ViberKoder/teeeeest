@@ -340,3 +340,9 @@ body { font-feature-settings: 'ss01', 'tnum' 0; }
 .act .badge-n { top: 6px; right: 6px; }
 .counter .count { width: 100%; justify-content: center; }
 .counter .chips { width: 100%; }
+
+/* incoming / waiting */
+.incoming { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 14px 16px; border-radius: 18px; background: color-mix(in srgb, var(--good) 14%, var(--surface)); }
+.incoming .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--good); animation: pulse2 1.6s infinite; flex: none; }
+.incoming b { display: block; font-size: 15px; }
+.incoming span.num { font-size: 13px; color: var(--hint); }

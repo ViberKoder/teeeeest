@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../api/server';
 import { cfg, endpoints } from '../config';
 import { formatUnits, shortAddr } from '../lib/format';
 import { haptic, openExternal } from '../lib/tg';
@@ -135,6 +136,35 @@ export function Home() {
           </div>
           <div className="bi"><EggMark /></div>
         </button>
+      )}
+
+      {data.incoming.length > 0 && (
+        <div className="incoming">
+          <span className="dot" />
+          <div>
+            <b>On its way to you</b>
+            <span className="num">{data.incoming.map((i) => `${formatUnits(BigInt(i.amount), 9, i.kind === 'ton' ? 3 : 2)} ${i.kind === 'ton' ? 'TON' : 'EGG'}`).join(' · ')} sent to your @username</span>
+          </div>
+        </div>
+      )}
+
+      {data.waiting.length > 0 && (
+        <Section title="Waiting to be collected">
+          {data.waiting.map((w) => {
+            const left = w.time + data.refundAfter - Math.floor(Date.now() / 1000);
+            return (
+              <Row
+                key={w.key}
+                icon={<span className={`row-icon ${w.kind === 'egg' ? 'icon-egg' : 'icon-ton'}`}>{w.kind === 'egg' ? <EggMark /> : <TonMark />}</span>}
+                title={<span className="num">{formatUnits(BigInt(w.amount), 9, w.kind === 'ton' ? 3 : 2)} {w.kind === 'ton' ? 'TON' : 'EGG'}</span>}
+                subtitle={<span className="num">to {w.to} · not collected yet</span>}
+                trailing={left > 0
+                  ? <span className="hint">back in {Math.ceil(left / 86400)}d</span>
+                  : <button className="btn link" onClick={() => { haptic.tap(); void api.refund(w.key).then(() => toast('Taking it back…')).catch(() => toast('Could not take it back')); }}>Take back</button>}
+              />
+            );
+          })}
+        </Section>
       )}
 
       {groups.length === 0 ? (
