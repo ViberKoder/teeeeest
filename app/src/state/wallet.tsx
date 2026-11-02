@@ -1,5 +1,6 @@
 import { Address } from '@ton/core';
-import { mnemonicNew, mnemonicValidate } from '@ton/crypto';
+import { mnemonicNew, mnemonicToPrivateKey, mnemonicValidate } from '@ton/crypto';
+import { rotationSignature } from '@egg/sdk';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, Me } from '../api/server';
 import { Activity, loadActivity } from '../chain/history';
@@ -12,7 +13,7 @@ import { haptic } from '../lib/tg';
 import { TgWalletProvider } from '../provider/tg';
 import type { WalletProvider } from '../provider/types';
 
-export type Phase = 'boot' | 'needs-phrase' | 'offline' | 'ready';
+export type Phase = 'boot' | 'needs-phrase' | 'offline' | 'adopting' | 'ready';
 
 export interface Data {
   ton: bigint;
@@ -23,16 +24,11 @@ export interface Data {
   ready: bigint;
   /** earned, but not in a published root yet: it joins the next one */
   accruing: bigint;
-  /** sent to this account's @username and on its way into the wallet */
-  incoming: { kind: 'ton' | 'egg'; amount: string; status: string }[];
-  /** this wallet sent these to a @username and nobody has collected them yet */
-  waiting: { key: string; kind: 'ton' | 'egg'; amount: string; to: string; time: number }[];
-  refundAfter: number;
   loading: boolean;
   error: string | null;
 }
 
-const empty: Data = { ton: 0n, egg: null, me: null, activity: [], ready: 0n, accruing: 0n, incoming: [], waiting: [], refundAfter: 604800, loading: true, error: null };
+const empty: Data = { ton: 0n, egg: null, me: null, activity: [], ready: 0n, accruing: 0n, loading: true, error: null };
 
 interface Ctx {
   phase: Phase;
@@ -102,9 +98,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const open = useCallback(async (w: string[], created: boolean) => {
+  const open = useCallback(async (w: string[], created: boolean, address?: string) => {
     words.current = w;
-    const p = await TgWalletProvider.fromWords(w);
+    // After a key change the wallet keeps its address, which the phrase alone no longer reveals: use the one saved with the key.
+    const saved = keyStore.localMarker();
+    const derived = await TgWalletProvider.addressOf(w);
+    const at = address ?? (saved && saved.address !== derived ? saved.address : undefined);
+    const p = await TgWalletProvider.fromWords(w, at ? Address.parseRaw(at) : undefined);
     const snap = loadSnap(p.address.toRawString()); // the last known numbers: the wallet opens with something real on screen
     if (snap) setData((d) => ({ ...d, ton: snap.ton, egg: snap.egg, me: snap.me }));
     setProvider(p);
@@ -113,6 +113,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // the marker only matters for settings: do not make the first screen wait for Telegram's storage
     void keyStore.marker().then((m) => { setMarker(m); setBackupOn(m ? m.backup : true); });
   }, []);
+
+  /** Moves a wallet that was prepared for this @username to the key `w` made on this device, then opens it. */
+  const adopt = useCallback(async (w: string[], address: string) => {
+    setPhase('adopting');
+    const keys = await mnemonicToPrivateKey(w);
+    const signature = rotationSignature(Address.parseRaw(address), keys.secretKey).toString('hex');
+    for (let i = 0; i < 80; i++) {
+      const r = await api.adopt(keys.publicKey.toString('hex'), signature).catch(() => null);
+      if (r?.status === 'done') return void (await open(w, true, address));
+      if (r && (r.status === 'taken' || r.status === 'none' || r.status === 'bad-proof')) break;
+      await new Promise((res) => setTimeout(res, 3000));
+    }
+    // could not take it over (or it is not ours): never leave the user without a wallet
+    keyStore.forgetDevice();
+    setPhase('offline');
+  }, [open]);
 
   // ---- boot: adopt a staged rotation, find the wallet of this account, or create it -----------------
   useEffect(() => {
@@ -134,7 +150,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           /* offline: keep both, retry next time */
         }
       }
-      if (loaded.kind === 'ready') return void (await open(loaded.words, false));
+      if (loaded.kind === 'ready') {
+        // Interrupted hand-over of a prepared wallet: the key is here, the wallet may not answer to it yet. Finish it.
+        const saved = keyStore.localMarker();
+        if (saved && api.available() && saved.address !== (await TgWalletProvider.addressOf(loaded.words))) {
+          const m = await api.me().catch(() => null);
+          if (m && !m.address) return void (await adopt(loaded.words, saved.address));
+        }
+        return void (await open(loaded.words, false));
+      }
       if (loaded.kind === 'needs-phrase') {
         setMarker(loaded.marker);
         return setPhase('needs-phrase');
@@ -154,11 +178,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setConflict({ locked: me.address_locked });
         return setPhase('needs-phrase');
       }
+      // Did someone send money to this @username before the first visit? Then a wallet is already waiting: take it over.
+      if (api.available()) {
+        const prep = await api.prepared().catch(() => ({ address: null as string | null }));
+        if (prep.address) {
+          const w = await mnemonicNew(24);
+          await keyStore.save(w, prep.address, true); // the key is stored BEFORE the hand-over starts: a crash cannot lose it
+          return void (await adopt(w, prep.address));
+        }
+      }
       // (storage that does not answer + an account the server knows has no wallet = safe to create one; the server is the authority)
       const w = await keyStore.create(TgWalletProvider.addressOf);
       await open(w, true);
     })();
-  }, [open, bootTry]);
+  }, [open, adopt, bootTry]);
 
   // ---- data ---------------------------------------------------------------
   const refresh = useCallback(async () => {
@@ -203,12 +236,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         acc.me = me;
         push();
-        if (api.available()) {
-          void api.kick();
-          // transfers sent to this account's @username are paid out into this wallet; and what this wallet sent is listed for refunds
-          void api.claimIncoming().then((r) => setData((d) => ({ ...d, incoming: r.incoming }))).catch(() => undefined);
-          void api.sentList().then((r) => setData((d) => ({ ...d, waiting: r.items, refundAfter: r.refundAfter }))).catch(() => undefined);
-        }
+        if (api.available()) void api.kick();
       })().catch(() => undefined),
     ];
     await Promise.all(tasks);
@@ -247,7 +275,16 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     },
     async restore(w) {
       if (!marker) return false;
-      const ok = await keyStore.validate(w, marker.address, TgWalletProvider.addressOf);
+      let ok = await keyStore.validate(w, marker.address, TgWalletProvider.addressOf);
+      if (!ok && w.length === 24 && (await mnemonicValidate(w))) {
+        // a wallet whose key was changed (self-custody / handed over) does not derive its address from the phrase: ask the chain
+        try {
+          const p = await TgWalletProvider.fromWords(w, Address.parseRaw(marker.address));
+          ok = (await p.onchainPublicKey()) === p.publicKeyHex;
+        } catch {
+          ok = false;
+        }
+      }
       if (!ok) {
         haptic.error();
         return false;

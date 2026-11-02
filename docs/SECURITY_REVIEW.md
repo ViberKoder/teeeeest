@@ -21,9 +21,9 @@ Every finding below has a regression test unless marked *doc*.
 * Wallet address depends only on `(owner, minter, code)`; there is no upgrade path, no mint message, no admin function that edits or deletes a root.
 * Server: initData HMAC and freshness, constant-time key comparison, zod validation, body limit, rate limits, idempotent ingest, relay re-derives the wallet and checks the message and value.
 
-## Username transfers (vault)
+## Username transfers (prepared wallets)
 
-Deposits are identified by an on-chain comment `@username`; payout goes only to the verified wallet of the Telegram account whose (platform-verified) username matches, once per deposit (unique `event_key`); refunds only to the depositing wallet after 7 days. The vault is custodial for funds in transit (see `docs/BOT.md`). A username is a mutable handle: if it changes hands before collection, the new owner collects.
+Key = HMAC(master, username); nothing per-user is stored. Hand-over only to the platform-verified owner of that username, only while the wallet still answers to the derived key (or is undeployed), only to a key that signed the rotation proof, and the proof is verified before any transaction is sent. After the key change the derived key no longer works (tested against the real contract). Risks: master-secret leak exposes not-yet-adopted wallets; no refund if nobody ever comes; a username is a mutable handle.
 
 ## Residual risks (known, accepted — decide before mainnet)
 

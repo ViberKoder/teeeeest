@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { eggClaim, eggTransfer, parseAddress, ParsedAddress, tonTransfer, TON_FEE_RESERVE, USERNAME_EGG_FORWARD, USERNAME_RE, USERNAME_TON_FEE } from '../chain/actions';
+import { eggClaim, eggTransfer, parseAddress, ParsedAddress, tonTransfer, TON_FEE_RESERVE, USERNAME_EGG_FORWARD, USERNAME_RE } from '../chain/actions';
+import { api } from '../api/server';
 import { Address } from '@ton/core';
 import { readEgg } from '../chain/egg';
 import { loadVerifiedEntitlement } from '../chain/entitlement';
@@ -44,18 +45,19 @@ export function SendPage({ onClose }: { onClose: () => void }) {
 
   const typed = to.trim();
   const isHandle = typed.startsWith('@');
-  const handleOk = isHandle && USERNAME_RE.test(typed) && Boolean(cfg.vault);
+  const handleOk = isHandle && USERNAME_RE.test(typed) && api.available();
+  const [lookingUp, setLookingUp] = useState(false);
+  const [preparedFor, setPreparedFor] = useState(false); // the recipient has no wallet yet: one is prepared for them
   const parsed = useMemo(() => (typed && !isHandle ? parseAddress(to) : null), [to, typed, isHandle]);
   const amount = useMemo(() => (amountStr ? parseUnits(amountStr, dec) : null), [amountStr]);
   const eggOnChain = data.egg?.balance ?? 0n;
   // what can leave in ONE request: the tokens already on-chain plus what the contract can credit from the published root
-  const tonKeep = TON_FEE_RESERVE + (handle ? USERNAME_TON_FEE : 0n);
-  const available = asset === 'EGG' ? eggOnChain + data.ready : data.ton > tonKeep ? data.ton - tonKeep : 0n;
+  const available = asset === 'EGG' ? eggOnChain + data.ready : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
 
   if (!provider) return null;
   const isSelf = parsed ? parsed.address.equals(provider.address) : false;
   const wrongNet = parsed ? parsed.testOnly && cfg.network !== 'testnet' : false;
-  const toProblem = isHandle ? (!USERNAME_RE.test(typed) ? 'That @username is not valid.' : !cfg.vault ? 'Sending to a @username is not available yet.' : '') : to.trim() && !parsed ? 'This wallet address is invalid.' : isSelf ? 'That’s your own address.' : wrongNet ? 'This is a testnet address.' : '';
+  const toProblem = isHandle ? (!USERNAME_RE.test(typed) ? 'That @username is not valid.' : !api.available() ? 'Sending to a @username works inside Telegram.' : '') : to.trim() && !parsed ? 'This wallet address is invalid.' : isSelf ? 'That’s your own address.' : wrongNet ? 'This is a testnet address.' : '';
   const amountProblem = (() => {
     if (!amount || amount <= 0n) return '';
     if (amount > available) return 'Insufficient funds.';
@@ -69,11 +71,23 @@ export function SendPage({ onClose }: { onClose: () => void }) {
     haptic.tap();
   };
 
-  const pickHandle = (h: string) => {
-    setHandle(h.toLowerCase());
-    setDest({ address: Address.parse(cfg.vault), bounceable: false, testOnly: cfg.network === 'testnet' });
-    setStep('amount');
-    haptic.tap();
+  // @username -> an address: their own wallet if they have one, otherwise the wallet prepared for them (they take it over on their first visit)
+  const pickHandle = async (h: string) => {
+    setLookingUp(true);
+    setErr('');
+    try {
+      const r = await api.walletFor(h);
+      setHandle(h.toLowerCase().replace(/^@/, ''));
+      setPreparedFor(!r.ready);
+      setDest({ address: Address.parseRaw(r.address), bounceable: false, testOnly: cfg.network === 'testnet' });
+      setStep('amount');
+      haptic.tap();
+    } catch {
+      haptic.error();
+      setErr('Could not look that username up. Check your connection and try again.');
+    } finally {
+      setLookingUp(false);
+    }
   };
 
   const paste = async () => {
@@ -90,11 +104,12 @@ export function SendPage({ onClose }: { onClose: () => void }) {
     setErr('');
     try {
       if (asset === 'TON') {
-        await provider.send(tonTransfer({ to: dest, amount: handle ? amount + USERNAME_TON_FEE : amount, comment: handle ?? (comment.trim() || undefined) }));
+        await provider.send(tonTransfer({ to: dest, amount, comment: comment.trim() || undefined }));
       } else {
         if (!masterAddress) throw new Error('EGG is not configured');
-        const note = handle ?? (comment.trim() || undefined);
-        const forwardTon = handle ? USERNAME_EGG_FORWARD : undefined;
+        const note = comment.trim() || undefined;
+        // a prepared wallet has no TON yet: a little travels with the EGG so it can accept the key change on its owner's first visit
+        const forwardTon = preparedFor ? USERNAME_EGG_FORWARD : undefined;
         if (data.ready > 0n) {
           // claim what the blockchain has committed AND send, in a single signed request
           const v = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === provider.address.toRawString());
@@ -141,7 +156,7 @@ export function SendPage({ onClose }: { onClose: () => void }) {
           <div className="row-icon icon-in" style={{ width: 88, height: 88 }}><Check width={44} height={44} /></div>
           <h2 style={{ margin: 0, fontSize: 26 }}>Sent</h2>
           <p className="hint" style={{ fontSize: 16 }}>
-            <b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> {handle ? <>are on their way to <b>@{handle}</b>. They get it the moment they open the wallet; if nobody collects it you can take it back after 7 days.</> : <>have been sent to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.</>}
+            <b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> {handle ? <>are now in the wallet of <b>@{handle}</b>{preparedFor ? '. They have not opened the wallet yet — it is waiting for them there, and becomes theirs alone the moment they do' : ''}.</> : <>have been sent to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.</>}
           </p>
           {handle && <button className="btn link" onClick={onClose}>Done</button>}
         </div>
@@ -161,7 +176,7 @@ export function SendPage({ onClose }: { onClose: () => void }) {
       <Page title={`Send ${asset}`} onBack={step === 'sending' ? () => undefined : () => setStep('to')} bottomSpace>
         <div className="recipient-chip">
           <span className="row-icon icon-soft"><Check width={18} height={18} /></span>
-          <div className="meta"><b>Recipient</b><span className="num">{handle ? `@${handle}` : dest && shortAddr(dest.address.toString({ bounceable: false }), 8, 8)}</span></div>
+          <div className="meta"><b>Recipient</b><span className="num">{handle ? `@${handle}${dest ? ' · ' + shortAddr(dest.address.toString({ bounceable: false }), 4, 4) : ''}` : dest && shortAddr(dest.address.toString({ bounceable: false }), 8, 8)}</span></div>
         </div>
 
         <div className="amount-hero">
@@ -185,8 +200,8 @@ export function SendPage({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        <Section footer={<span className="num">{handle ? `They don’t need to have opened the wallet yet. Delivery fee: ${asset === 'TON' ? '0.05' : '≈ 0.07'} TON.` : `Network fee: ${asset === 'TON' ? '< 0.01' : '≈ 0.01'} TON`}</span>}>
-          {handle ? null : showComment ? (
+        <Section footer={<span className="num">{`Network fee: ${asset === 'TON' ? '< 0.01' : preparedFor ? '≈ 0.07' : '≈ 0.01'} TON${preparedFor ? ' (a little goes with it so the new wallet can be set up)' : ''}`}</span>}>
+          {showComment ? (
             <div className="field"><label>Comment</label><input className="input" maxLength={120} autoFocus value={comment} onChange={(e) => setComment(e.target.value)} /></div>
           ) : (
             <Row onClick={() => setShowComment(true)} title={<span style={{ color: 'var(--accent-text)' }}>Add comment</span>} />
@@ -221,13 +236,13 @@ export function SendPage({ onClose }: { onClose: () => void }) {
           <div className="empty">Recent recipients<br />will appear here</div>
         ) : (
           past.map((a) => {
-            if (USERNAME_RE.test(a)) return <Row key={a} onClick={() => cfg.vault && pickHandle(a)} icon={<span className="row-icon icon-soft">@</span>} title={a} subtitle="Telegram username" />;
+            if (USERNAME_RE.test(a)) return <Row key={a} onClick={() => void pickHandle(a)} icon={<span className="row-icon icon-soft">@</span>} title={a} subtitle="Telegram username" />;
             const p = parseAddress(a);
             return p ? <Row key={a} onClick={() => pickRecipient(p)} icon={<span className={`row-icon ${asset === 'EGG' ? 'icon-egg' : 'icon-ton'}`}>{asset === 'EGG' ? <EggMark /> : <TonMark />}</span>} title={<span className="num">{shortAddr(a, 6, 6)}</span>} subtitle="TON address" /> : null;
           })
         )}
       </Section>
-      <MainButton text="Continue" enabled={Boolean((parsed || handleOk) && !toProblem)} onClick={() => (handleOk ? pickHandle(typed) : parsed && pickRecipient(parsed))} />
+      <MainButton text="Continue" enabled={Boolean((parsed || handleOk) && !toProblem)} loading={lookingUp} onClick={() => (handleOk ? void pickHandle(typed) : parsed && pickRecipient(parsed))} />
     </Page>
   );
 }

@@ -3,7 +3,7 @@ import { Address, beginCell, Cell, SendMode, toNano } from '@ton/core';
 import { keyPairFromSeed, sign as tonSign, signVerify } from '@ton/crypto';
 import { Blockchain } from '@ton/sandbox';
 import { describe, expect, it } from 'vitest';
-import { EggTree, eggMinterCode, minterStateInit, onchainMetadata, proofToCell, publishRootBody, SUBWALLET_ID, tgWalletStateInit, tgWalletCode } from '@egg/sdk';
+import { rotationSignature, externalBoc, sendOne, EggTree, eggMinterCode, minterStateInit, onchainMetadata, proofToCell, publishRootBody, SUBWALLET_ID, tgWalletStateInit, tgWalletCode } from '@egg/sdk';
 // @ts-expect-error plain JS modules written for the Serverless runtime
 import * as ed from '../../app/tgcloud/lib/ed25519.js';
 // @ts-expect-error
@@ -94,5 +94,42 @@ describe('Serverless library == SDK', () => {
     const root = await chain.runGetMethod(minter, 'get_root', [{ type: 'int', value: 1n }]);
     expect(root.stackReader.readBigNumber().toString(16).padStart(64, '0')).toBe(Buffer.from(tree.commitment).toString('hex'));
     void SendMode; void tgWalletCode;
+  });
+
+  it('a wallet prepared by the bot is handed to the user\'s own key: deployed by the bot, then ONLY the new key works', async () => {
+    const chain = await Blockchain.create();
+    chain.now = 1_800_000_000;
+    const sender = await chain.treasury('sender');
+    const botSeed = Buffer.alloc(32, 41);
+    const bot = keyPairFromSeed(botSeed);
+    const user = keyPairFromSeed(Buffer.alloc(32, 42));
+    const { address: wallet } = tgWalletStateInit({ publicKey: bot.publicKey, subwalletId: SUBWALLET_ID.testnet });
+    expect(await walletLib.walletAddress(bot.publicKey, walletLib.SUBWALLET.testnet)).toBe(wallet.toRawString());
+
+    // somebody sent money to the prepared (still undeployed) address
+    await sender.send({ to: wallet, value: toNano('0.5'), bounce: false });
+
+    // the user's device signs the rotation proof; the bot (old key) sends the change, attaching the StateInit
+    const proofSig = rotationSignature(wallet, user.secretKey);
+    expect(await ed.verify(await (walletLib.rotationProof(wallet.toRawString())).hash(), proofSig, user.publicKey)).toBe(true);
+    const boc = await walletLib.changeKeyExternal({
+      wallet: wallet.toRawString(), seed: botSeed, subwalletId: walletLib.SUBWALLET.testnet, seqno: 0, validUntil: 1_800_000_300,
+      newPublicKey: user.publicKey, rotationSignature: proofSig, init: walletLib.stateInit(bot.publicKey, walletLib.SUBWALLET.testnet),
+    });
+    const { loadMessage } = await import('@ton/core');
+    await chain.sendMessage(loadMessage(Cell.fromBoc(Buffer.from(boc))[0].beginParse()));
+    const key = (await chain.runGetMethod(wallet, 'get_public_key')).stackReader.readBigNumber().toString(16).padStart(64, '0');
+    expect(key).toBe(user.publicKey.toString('hex'));
+    const seqno = async () => (await chain.runGetMethod(wallet, 'seqno')).stackReader.readNumber();
+    expect(await seqno()).toBe(1);
+
+    // the bot's derived key no longer works; the user's does
+    const send = (secret: Buffer) => {
+      const body = sendOne({ channel: 'external', secretKey: secret, header: { subwalletId: SUBWALLET_ID.testnet, validUntil: 1_800_000_300, seqno: 1 }, message: { to: sender.address, value: toNano('0.01'), bounce: false }, sendMode: SendMode.PAY_GAS_SEPARATELY | SendMode.IGNORE_ERRORS });
+      return chain.sendMessage(loadMessage(Cell.fromBoc(externalBoc(wallet, body))[0].beginParse()));
+    };
+    await expect(send(bot.secretKey)).rejects.toThrow();
+    await send(user.secretKey);
+    expect(await seqno()).toBe(2);
   });
 });

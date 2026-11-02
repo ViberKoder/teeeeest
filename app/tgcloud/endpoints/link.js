@@ -5,6 +5,7 @@ import { ensureUser } from '../lib/ledger.js';
 import { fromHex } from '../lib/bytes.js';
 import { verify } from '../lib/ed25519.js';
 import { walletAddress, SUBWALLET } from '../lib/wallet.js';
+import { publicKeyOf } from '../lib/chain.js';
 import { NETWORK } from '../lib/config.js';
 
 // Stores "this wallet is mine" and checks it: the address must be the WalletTg of the given key, and the
@@ -20,7 +21,9 @@ export default async function (input, ctx) {
   const pk = fromHex(key);
   const derived = await walletAddress(pk, SUBWALLET[NETWORK]);
   const msg = new TextEncoder().encode(`egg-link:v1:${id}:${address}`);
-  if (derived !== address || !(await verify(msg, fromHex(sig), pk))) throw new EndpointError('bad-proof', { code: 'bad-proof' });
+  if (!(await verify(msg, fromHex(sig), pk))) throw new EndpointError('bad-proof', { code: 'bad-proof' });
+  // the address is this key's wallet either by derivation, or because the wallet was moved to this key (key rotation, address unchanged)
+  if (derived !== address && (await publicKeyOf(address).catch(() => null)) !== key) throw new EndpointError('bad-proof', { code: 'bad-proof' });
 
   await ensureUser(id, Math.floor(Date.now() / 1000));
   const me = await db.select().from(users).where(eq(users.tgId, id)).get();

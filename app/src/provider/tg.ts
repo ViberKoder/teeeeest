@@ -28,16 +28,20 @@ export class TgWalletProvider implements WalletProvider {
   private readonly subwalletId: number;
   private readonly walletInit: ReturnType<typeof tgWalletStateInit>['init'];
 
-  private constructor(keys: KeyPair) {
+  /**
+   * `address` is only given when the wallet's key was changed (self-custody, or a wallet prepared for the user and then handed
+   * over): the address stays what it was, it can no longer be derived from the current key.
+   */
+  private constructor(keys: KeyPair, address?: Address) {
     this.keys = keys;
     this.subwalletId = SUBWALLET_ID[cfg.network];
-    const { init, address } = tgWalletStateInit({ publicKey: keys.publicKey, subwalletId: this.subwalletId });
+    const { init, address: derived } = tgWalletStateInit({ publicKey: keys.publicKey, subwalletId: this.subwalletId });
     this.walletInit = init;
-    this.address = address;
+    this.address = address ?? derived;
   }
 
-  static async fromWords(words: string[]) {
-    return new TgWalletProvider(await mnemonicToPrivateKey(words));
+  static async fromWords(words: string[], address?: Address) {
+    return new TgWalletProvider(await mnemonicToPrivateKey(words), address);
   }
 
   static async addressOf(words: string[]): Promise<string> {
@@ -113,7 +117,7 @@ export class TgWalletProvider implements WalletProvider {
       newPublicKey: next.publicKey,
     });
     await ton().sendFile(externalBoc(this.address, body));
-    return new TgWalletProvider(next);
+    return new TgWalletProvider(next, this.address);
   }
 
   /** The published key of the wallet on-chain (to confirm a rotation went through). */

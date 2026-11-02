@@ -96,6 +96,12 @@ const ROTATION_TAG = BigInt('0x4B45595F524F544154494F4E'); // "KEY_ROTATION"
  * `KeyRotationProofPayload{wallet}`, so a key can never be set that its owner does not hold.
  * `encryptedOldSeed` lets the holder of the new key recompute the old one (for decrypting old data).
  */
+/** What the NEW key signs to take over `wallet`: lets someone else (e.g. the bot holding the old key) send the rotation. */
+export function rotationSignature(wallet: Address, newSecretKey: Buffer): Buffer {
+  const proof = beginCell().storeUint(ROTATION_TAG, 96).storeInt(wallet.workChain, 8).storeBuffer(wallet.hash, 32).endCell();
+  return sign(proof.hash(), newSecretKey);
+}
+
 export function changeKey(p: {
   channel: Channel;
   secretKey: Buffer;

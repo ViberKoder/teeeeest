@@ -20,9 +20,13 @@ Limits worth knowing: the daily cap is per player, not per device (no anti-sybil
 
 ## Sending to a @username (also to people who never opened the wallet)
 
-1. The sender types `@username` in Send. The wallet makes an ordinary transfer to the **vault** (a WalletTg held by the bot) with the comment `@username` — TON (+0.05 TON delivery fee) or EGG (with 0.06 TON travelling along, which pays for the payout). Claim-and-send works here too: one signed request.
-2. The app offers "Tell @username" (a `t.me/<bot>?start=claim` share link); the bot answers with the Open-wallet button. The recipient does not need to be known to the bot.
-3. When the owner of that username opens the wallet, `claimIncoming` (platform-verified `initData.user.username`) pays every deposit with that comment out to *their own* verified wallet, once (one row per deposit in `payouts`).
-4. If nobody collects it, the sender can **take it back after 7 days** (`refund`, only for the wallet that made the deposit).
+A wallet is prepared for every @username that someone sends to, **with no secret stored**: its key is `HMAC-SHA256(master secret, username)`, so the address can be computed on demand.
 
-Trust, honestly: the vault key is in the bot's code, so whoever runs the bot could move what is *in transit*. A username that changes owner before collection goes to its new owner. Nothing else about the wallet changes: balances stay in the player's own self-custodial wallet.
+1. The sender types `@username`; the app asks the bot (`walletFor`) for the address: the person's own wallet if they already have one, otherwise the prepared one.
+2. The sender makes an ordinary transfer to that address (TON, EGG, anything). The app offers "Tell @username" (a `t.me/<bot>?start=claim` link).
+3. On their first visit the bot sees, through the platform-verified `initData`, that this account owns the username and that money may be waiting (`prepared`). The app creates a key **on the user's device** and sends the bot a rotation proof signed by it. The bot — which can derive the old key — deploys the wallet and moves it to the new key (`adopt`; WalletTg key rotation, the address does not change; a few cents of TON from the bot's vault pay for the first request if the wallet has none). From then on the bot's key is worthless: the wallet is the user's alone, and everything sent to it is already there.
+4. The account is linked with a signature by the new key (the server accepts it because the chain shows that key for the address).
+
+Pure-JS tests (`server/tests/cloudlib.test.ts`) run exactly this against the real wallet contract: the bot deploys and rotates, then the bot's key is rejected and the user's key works.
+
+Not covered: if nobody ever opens the wallet, the money stays at that address (a refund path is not built); and until the first visit the bot can derive that wallet's key (the same custody trust as any account recovery) — if the master secret leaks, wallets that were not taken over yet are at risk. A username that changes hands before the first visit goes to its new owner.

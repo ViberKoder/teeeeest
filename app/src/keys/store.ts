@@ -75,6 +75,16 @@ export const keyStore = {
     return { kind: 'none' };
   },
 
+  /** The wallet address this device last saved (synchronous, no network): it differs from the address derived from the phrase after a key change. */
+  localMarker(): Marker | null {
+    try {
+      const raw = dev.get(MARK);
+      return raw ? (JSON.parse(raw) as Marker) : null;
+    } catch {
+      return null;
+    }
+  },
+
   async marker(): Promise<Marker | null> {
     const raw = (await cloud.get(MARK)) ?? dev.get(MARK);
     try {

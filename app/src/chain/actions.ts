@@ -79,9 +79,7 @@ export function eggClaim(p: {
 /** Keeps a little TON behind so the wallet can always pay for its next move. */
 export const TON_FEE_RESERVE = toNano('0.02');
 
-/** Sending to a @username: the vault holds it until that person opens the wallet (see docs/BOT.md). */
+/** Sending to a @username (see docs/BOT.md) */
 export const USERNAME_RE = /^@[A-Za-z][A-Za-z0-9_]{4,31}$/;
-/** TON a TON deposit adds to cover the payout */
-export const USERNAME_TON_FEE = toNano('0.05');
-/** TON that travels with an EGG deposit to pay for its payout */
+/** TON that travels with an EGG sent to a wallet prepared for someone who has not opened the wallet yet */
 export const USERNAME_EGG_FORWARD = toNano('0.06');

@@ -25,9 +25,6 @@ const full: Data = {
   me: { tg_id: 1, address: address.toRawString(), ledger: String(E(12600.5)), entitlement: null, address_locked: true, banned: false, sponsored_left: 3 },
   ready: E(2500),
   accruing: E(120),
-  incoming: [],
-  waiting: [],
-  refundAfter: 604800,
   loading: false,
   error: null,
   activity: [

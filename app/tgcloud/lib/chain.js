@@ -42,3 +42,16 @@ export async function seqnoOf(wallet) {
 export async function sendBoc(base64) {
   await post('sendBoc', { boc: base64 });
 }
+
+/** the key a deployed WalletTg currently answers to (hex), or null when it is not deployed */
+export async function publicKeyOf(wallet) {
+  const s = await get(wallet, 'get_public_key');
+  return s ? num(s[0]).toString(16).padStart(64, '0') : null;
+}
+
+export async function balanceOf(address) {
+  const r = await fetch(`${TONAPI}/accounts/${address}`);
+  if (r.status === 404) return 0n;
+  if (!r.ok) throw new Error(`tonapi account ${r.status}`);
+  return BigInt((await r.json()).balance ?? 0);
+}

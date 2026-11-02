@@ -72,3 +72,13 @@ export const payouts = table('payouts', {
   once: uniqueIndex('uq_payout_event').on(t.eventKey),
   byStatus: index('idx_payout_status').on(t.status, t.id),
 }));
+
+// Wallets prepared for @usernames that have not opened the wallet yet (the key is derived, nothing secret is stored here).
+export const prepared = table('prepared', {
+  username: text('username').primaryKey(),
+  address: text('address').notNull(),
+  issuedAt: integer('issued_at').notNull(),
+  adoptedBy: integer('adopted_by').notNull().default(0),
+  fundedAt: integer('funded_at').notNull().default(0),
+  sentAt: integer('sent_at').notNull().default(0),
+});
