@@ -1,8 +1,9 @@
 import { fetch } from 'sdk';
 import { TONCENTER } from './config.js';
+import { TONCENTER_KEY } from './publisherkey.js';
 
 async function post(method, body) {
-  const r = await fetch(`${TONCENTER}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await fetch(`${TONCENTER}/${method}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': TONCENTER_KEY }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => null);
   if (!j || !j.ok) throw new Error(`toncenter ${method}: ${r.status} ${j?.error ?? ''}`);
   return j.result;
