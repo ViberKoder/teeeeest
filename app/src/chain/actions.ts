@@ -58,6 +58,7 @@ export function eggClaim(p: {
       to: p.state.jettonWallet,
       value: Attach.claim,
       bounce: true,
+      sponsorable: true,
       init: p.state.deployed ? undefined : p.init,
       body: askToClaimBody({ epoch: p.epoch, cumulative: p.cumulative, proof: p.proof }),
     },

@@ -14,7 +14,7 @@ cd .. && npm test                                            # contracts + sdk +
 ## 1. Wallets
 
 ```bash
-npm run gen-wallet -w @egg/server     # run twice: publisher (hot, on the server) and admin (cold, offline / multisig)
+npm run gen-wallet -w @egg/server     # three wallets: publisher (hot), relayer (hot, pays players' first hatches), admin (cold, offline / multisig)
 ```
 Fund the publisher and the deployer with a little TON (testnet faucet on testnet).
 
@@ -36,6 +36,7 @@ Governance later: the admin can `ChangePublisher`, `SetLimits`, `ChangeMetadata`
 
 ```bash
 cd server && cp .env.example .env     # BOT_TOKEN, INGEST_API_KEY, JETTON_MASTER_ADDRESS, PUBLISHER_MNEMONIC, MAX_SUPPLY_UNITS (= the on-chain max)
+                                      # optional gasless first hatches: RELAYER_MNEMONIC (+ RELAY_VALUE, RELAY_MAX_PER_USER); fund that wallet with TON
 npm start                             # SQLite at DB_PATH: persistent volume + backups
 ```
 Your bot credits rewards with `POST /v1/ingest` (`Authorization: Bearer <INGEST_API_KEY>`):
@@ -56,8 +57,7 @@ a dev-dependency of `app/`.
 
 ```bash
 cd app
-cp .env.example .env     # VITE_NETWORK, VITE_JETTON_MASTER, VITE_API_URL, VITE_PUBLIC_URL=https://app<id>.tgcloud.ai
-npm run manifest         # public/tonconnect-manifest.json for that origin
+cp .env.example .env     # VITE_NETWORK, VITE_JETTON_MASTER, VITE_API_URL
 export TGCLOUD_TOKEN='app<id>:…'      # from @BotFather's Serverless section; never commit it
 npm run deploy           # build + `tgcloud push`
 ```
@@ -65,7 +65,7 @@ Without `VITE_JETTON_MASTER` the app is a plain TON wallet (EGG parts are hidden
 `app/tgcloud/` holds a minimal bot handler (`/start` → "Open wallet" button) and a `health` endpoint.
 Add the Mini App origin to `CORS_ORIGINS` on the server. Treat any token you pasted in a chat as burnt and revoke it afterwards.
 
-## 5. "Money" / Telegram's native wallet
+## 5. Money / Telegram's own wallet
 
-There is no public developer documentation for it yet. The app already works with any wallet that speaks TON Connect (welcome screen →
-*Connect Telegram Wallet or another*); if Telegram publishes a dedicated API it plugs in as another `WalletProvider` (`app/src/provider/`).
+The player's wallet follows Telegram's design (see `ARCHITECTURE.md`): the same wallet contract, account-bound keys, "Keys & Backup", a gasless first
+transaction. Telegram's native wallet itself has no public developer API; connecting *other* wallets or dApps through TON Connect is not part of this app.

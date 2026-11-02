@@ -17,6 +17,11 @@ display-name = "EggWallet"
 src = "contracts/EggWallet.tolk"
 depends = []
 
+[contracts.TgWallet]
+display-name = "TgWallet"
+src = "contracts/TgWallet/WalletTg.tolk"
+depends = []
+
 [test]
 
 [fmt]

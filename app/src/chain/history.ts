@@ -11,6 +11,8 @@ export interface Activity {
   peer: string;
   time: number;
   comment?: string;
+  /** set for activity the app knows about itself, e.g. a hatch */
+  label?: 'hatch';
   failed: boolean;
 }
 

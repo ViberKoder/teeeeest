@@ -9,7 +9,6 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5190",
     "test": "vitest run",
-    "manifest": "node scripts/write-manifest.mjs",
     "deploy": "npm run build && tgcloud push",
     "status": "tgcloud status"
   },
@@ -17,7 +16,6 @@
     "@ton/core": "^0.62.0",
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^15.4.0",
-    "@tonconnect/ui": "^2.0.9",
     "buffer": "^6.0.3",
     "qrcode": "^1.5.4",
     "react": "^18.3.1",

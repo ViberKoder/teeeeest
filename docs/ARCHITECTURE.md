@@ -94,9 +94,33 @@ returns as excess.
 | `server/` | ledger, publisher loop (pending → sent → confirmed), public entitlement/epoch API, ban/slash |
 | `app/` | the wallet Mini App; verifies every proof against the chain before sending |
 
-## Wallet app
+## The player's wallet (modelled on Telegram's Money)
 
-* Keys: 24 words, encrypted with AES-256-GCM under PBKDF2-SHA256 (600 000 rounds) of the passcode; keys only in memory while
-  unlocked; auto-lock on idle/hide. A 6-digit passcode stops casual access, not offline brute force of a copied vault.
-* v5r1 wallet contract; or any wallet over TON Connect through the same `WalletProvider` interface.
-* Telegram-native: colours from `--tg-theme-*`, grouped lists, the platform's `MainButton`/`BackButton`, haptics.
+Studied: [`tg-wallet-contract`](https://github.com/ton-blockchain/tg-wallet-contract) (the `WalletTg` contract) and the `Wallet` component of Telegram-iOS.
+
+**Contract.** Every player's wallet is `WalletTg` (MIT, TON Core), deployed *byte for byte* from the published revision 00
+(`contracts/contracts/TgWallet`). Its storage is `seqno, subwalletId, publicKey`; requests are `SignedRequest = signature(512) + request`
+with a replay header `(subwalletId, validUntil, seqno)`; external and internal requests differ only in opcode, so a request
+signed for one channel is useless on the other; the key can be rotated (signed by the old key, proven by the new one) and the
+address stays the same. Telegram runs it behind a "trampoline" that jumps to code stored in the network config (updated by validator voting). EGG can't
+do that, so the same code simply is the account's code.
+
+**No seed phrase on the way in.** Like Money, the wallet is part of the Telegram account: opening the Mini App creates it, nobody is
+asked to write anything down.
+* Keys are generated on the device. The working copy is on the device; the account-bound backup is in Telegram **CloudStorage**, so the wallet
+  opens on every device where the user is signed in. *(Trust: Telegram, and anyone who controls the Telegram account, can restore the wallet — the same as Money with its backup on. The
+  operator of this app can not read it.)*
+* **Keys & Backup** (like Money's screen): *Encrypted Backup* on/off (off ⇒ the Secret Phrase is needed in every new Telegram session), *Show Secret Phrase*, and
+  **Switch to self-custody**, which shows a NEW phrase first, stages it on the device, rotates the wallet's key on-chain, erases Telegram's copy and keeps the address.
+  If the app dies mid-rotation, the staged phrase is adopted once the chain shows the new key.
+
+**First hatch costs the player nothing.** A new wallet has no TON, so the first claim is signed offline as an *internal* request and delivered by the
+server's relayer (`POST /v1/relay`). The relayer only ever forwards *the player's own claim* (it re-derives the wallet from the
+public key, the player's jetton-wallet from the wallet, and checks the message and its value), a few times per Telegram account, and not for players who can pay.
+The change from the claim returns to the player's own wallet, which then pays its own fees with ordinary external requests.
+
+## Wallet app (Mini App)
+
+* Telegram-native: colours from `--tg-theme-*`, grouped lists, the platform's `MainButton`/`BackButton`, haptics. The EGG card, pager, "Hatch" + "Send" buttons and the
+  amount screen with its own keypad follow Money's layout; the identity is EGG's (the egg, a warm card, "nest" progress), with TON as the secondary card for fees.
+* Every proof is checked locally against the on-chain commitment before anything is sent.

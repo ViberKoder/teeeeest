@@ -7,10 +7,12 @@ import { Publisher } from './publisher';
 async function main() {
   const config = loadConfig();
   const db = new Db(config.DB_PATH);
-  const publisher = new Publisher(db, new TonChain({ minter: config.JETTON_MASTER_ADDRESS, network: config.NETWORK, apiKey: config.TONCENTER_KEY, mnemonic: config.PUBLISHER_MNEMONIC }), {
-    maxSupply: config.MAX_SUPPLY_UNITS,
+  const chain = new TonChain({
+    minter: config.JETTON_MASTER_ADDRESS, network: config.NETWORK, apiKey: config.TONCENTER_KEY,
+    mnemonic: config.PUBLISHER_MNEMONIC, relayerMnemonic: config.RELAYER_MNEMONIC,
   });
-  const app = await buildApp({ config, db, publisher });
+  const publisher = new Publisher(db, chain, { maxSupply: config.MAX_SUPPLY_UNITS });
+  const app = await buildApp({ config, db, publisher, chain: config.RELAYER_MNEMONIC ? chain : undefined });
   await app.listen({ port: config.PORT, host: config.HOST });
   console.log(`egg-server listening on :${config.PORT}`);
 

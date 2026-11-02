@@ -13,10 +13,10 @@ bot ─▶ server ledger ─▶ sum-Merkle tree ─▶ root published on-chain �
 
 | Package | What it is |
 |---|---|
-| [`contracts/`](contracts) | **Tolk** minter + wallet, built and tested with **Acton** (14 tests) |
+| [`contracts/`](contracts) | **Tolk** minter + jetton wallet (Acton, 14 tests) and the vendored Telegram wallet contract `WalletTg` |
 | [`sdk/`](sdk) | Tree + proofs, message builders, entitlement client — for the server, the app and *other projects* |
 | [`server/`](server) | Reward ledger, root publisher, public proof API (Fastify + SQLite) |
-| [`app/`](app) | The wallet Mini App, Telegram-native design, deployable to Telegram Serverless |
+| [`app/`](app) | The wallet Mini App: Telegram-native (Money-style), seedless, deployable to Telegram Serverless |
 | [`docs/`](docs) | [Architecture & guarantees](docs/ARCHITECTURE.md) · [Showing EGG elsewhere](docs/INTEGRATIONS.md) · [Deploy](docs/DEPLOY.md) · [Review of v1](docs/RMJ_V1_REVIEW.md) |
 
 ## Quick start

@@ -1,51 +1,72 @@
-import { useMemo, useState } from 'react';
-import { apiErrorText } from '../api/server';
-import { eggTransfer, parseAddress, tonTransfer, TON_FEE_RESERVE } from '../chain/actions';
+import { useEffect, useMemo, useState } from 'react';
+import { eggTransfer, parseAddress, ParsedAddress, tonTransfer, TON_FEE_RESERVE } from '../chain/actions';
 import { readEgg } from '../chain/egg';
 import { cfg } from '../config';
 import { formatUnits, parseUnits, shortAddr } from '../lib/format';
 import { haptic } from '../lib/tg';
+import { NeedTonError } from '../provider/tg';
 import { useWallet } from '../state/wallet';
-import { Burst } from '../ui/Egg';
+import { Burst, EggMark, TonMark } from '../ui/Egg';
 import { Check } from '../ui/Icons';
+import { Keypad } from '../ui/Keypad';
 import { MainButton, Page, Row, Section } from '../ui/native';
 import { Attach } from '@egg/sdk';
 
 type Asset = 'EGG' | 'TON';
-type Step = 'form' | 'review' | 'sending' | 'done';
+type Step = 'to' | 'amount' | 'sending' | 'done';
 const dec = 9;
+const RECENT = 'egg.recipients.v1';
+const recent = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
 
+/** Telegram-style send: pick who, then an amount screen with its own keypad and a single "Send" button. */
 export function SendPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
-  const [asset, setAsset] = useState<Asset>(masterAddress && data.egg && data.egg.balance > 0n ? 'EGG' : 'TON');
+  const [asset, setAsset] = useState<Asset>(masterAddress ? 'EGG' : 'TON');
   const [to, setTo] = useState('');
+  const [dest, setDest] = useState<ParsedAddress | null>(null);
   const [amountStr, setAmountStr] = useState('');
   const [comment, setComment] = useState('');
-  const [step, setStep] = useState<Step>('form');
+  const [showComment, setShowComment] = useState(false);
+  const [step, setStep] = useState<Step>('to');
   const [err, setErr] = useState('');
+  const [past, setPast] = useState<string[]>([]);
+  useEffect(() => setPast(recent()), []);
 
-  const dest = useMemo(() => (to.trim() ? parseAddress(to) : null), [to]);
-  const amount = useMemo(() => parseUnits(amountStr, dec), [amountStr]);
+  const parsed = useMemo(() => (to.trim() ? parseAddress(to) : null), [to]);
+  const amount = useMemo(() => (amountStr ? parseUnits(amountStr, dec) : null), [amountStr]);
   const eggOnChain = data.egg?.balance ?? 0n;
   const available = asset === 'EGG' ? eggOnChain : data.ton > TON_FEE_RESERVE ? data.ton - TON_FEE_RESERVE : 0n;
-  const nestHint = asset === 'EGG' && data.ready > 0n;
-  const isSelf = dest && provider ? dest.address.equals(provider.address) : false;
-  const wrongNet = dest ? dest.testOnly && cfg.network !== 'testnet' : false;
-
-  const problem = (() => {
-    if (to.trim() && !dest) return 'That address doesn’t look right';
-    if (wrongNet) return 'This is a testnet address';
-    if (isSelf) return 'That’s your own address';
-    if (amount === null && amountStr) return 'Enter a valid amount';
-    if (amount !== null && amount <= 0n) return 'Amount must be above zero';
-    if (amount !== null && amount > available) return asset === 'TON' ? 'Not enough TON (a little is kept for fees)' : 'Not enough EGG in your wallet';
-    if (asset === 'EGG' && amount !== null && data.ton < Attach.transfer) return `You need about ${formatUnits(Attach.transfer, 9, 2)} TON to pay the network fee`;
-    return '';
-  })();
-  const ready = Boolean(dest && amount && amount > 0n && !problem);
 
   if (!provider) return null;
+  const isSelf = parsed ? parsed.address.equals(provider.address) : false;
+  const wrongNet = parsed ? parsed.testOnly && cfg.network !== 'testnet' : false;
+  const toProblem = to.trim() && !parsed ? 'This wallet address is invalid.' : isSelf ? 'That’s your own address.' : wrongNet ? 'This is a testnet address.' : '';
+  const amountProblem = (() => {
+    if (!amount || amount <= 0n) return '';
+    if (amount > available) return 'Insufficient funds.';
+    return '';
+  })();
+
+  const pickRecipient = (p: ParsedAddress) => {
+    setDest(p);
+    setStep('amount');
+    haptic.tap();
+  };
+
+  const paste = async () => {
+    try {
+      setTo((await navigator.clipboard.readText()).trim());
+    } catch {
+      /* clipboard blocked: the field still takes typing */
+    }
+  };
 
   const submit = async () => {
     if (!dest || !amount) return;
@@ -59,78 +80,116 @@ export function SendPage({ onClose }: { onClose: () => void }) {
         const state = await readEgg(masterAddress, provider.address);
         await provider.send(eggTransfer({ owner: provider.address, state, to: dest.address, amount, comment: comment.trim() || undefined }));
       }
+      try {
+        const raw = dest.address.toString({ bounceable: false });
+        localStorage.setItem(RECENT, JSON.stringify([raw, ...recent().filter((x) => x !== raw)].slice(0, 5)));
+      } catch {
+        /* private mode */
+      }
       haptic.success();
       setStep('done');
-      setTimeout(() => void w.refresh(), 4000);
+      setTimeout(() => void w.refresh(), 5000);
     } catch (e) {
       haptic.error();
       const m = e instanceof Error ? e.message : '';
-      setErr(/reject|denied|cancel/i.test(m) ? 'The transaction was cancelled' : /locked/i.test(m) ? 'The wallet is locked' : apiErrorText(e));
-      setStep('review');
+      setErr(
+        e instanceof NeedTonError
+          ? `Your wallet needs about ${formatUnits(Attach.transfer, 9, 2)} TON for the network fee.`
+          : /reject|denied|cancel/i.test(m) ? 'The transfer was cancelled.' : 'The transfer could not be sent. Check the balance and network connection, then try again.',
+      );
+      setStep('amount');
     }
   };
 
+  // ----- done -----
   if (step === 'done')
     return (
       <Page onBack={onClose} bottomSpace>
-        <div className="stack center" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 40 }}>
+        <div className="stack center" style={{ alignItems: 'center', gap: 14, position: 'relative', paddingTop: 48 }}>
           <Burst />
-          <div className="row-icon icon-in" style={{ width: 84, height: 84 }}><Check width={42} height={42} /></div>
+          <div className="row-icon icon-in" style={{ width: 88, height: 88 }}><Check width={44} height={44} /></div>
           <h2 style={{ margin: 0, fontSize: 26 }}>Sent</h2>
           <p className="hint" style={{ fontSize: 16 }}>
-            <b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> is on its way to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.
+            <b className="num" style={{ color: 'var(--text)' }}>{amountStr} {asset}</b> have been sent to {dest && shortAddr(dest.address.toString({ bounceable: false }), 5, 5)}.
           </p>
         </div>
         <MainButton text="Done" onClick={onClose} />
       </Page>
     );
 
-  if (step === 'review' || step === 'sending')
+  // ----- amount -----
+  if (step === 'amount' || step === 'sending') {
+    const len = (amountStr || '0').length;
+    const size = len <= 5 ? 68 : len <= 8 ? 54 : len <= 11 ? 42 : 34;
     return (
-      <Page title="Confirm" onBack={step === 'sending' ? () => undefined : () => setStep('form')} bottomSpace>
-        <div className="balance" style={{ paddingTop: 10 }}>
-          <div className="label">You send</div>
-          <div className="amount num">{amountStr}<small>{asset}</small></div>
+      <Page title={`Send ${asset}`} onBack={step === 'sending' ? () => undefined : () => setStep('to')} bottomSpace>
+        <div className="recipient-chip">
+          <span className="row-icon icon-soft"><Check width={18} height={18} /></span>
+          <div className="meta"><b>Recipient</b><span className="num">{dest && shortAddr(dest.address.toString({ bounceable: false }), 8, 8)}</span></div>
         </div>
-        <Section>
-          <Row title={<span className="hint" style={{ fontSize: 17 }}>To</span>} trailing={<span className="num">{dest && shortAddr(dest.address.toString({ bounceable: false }), 6, 6)}</span>} />
-          {comment && <Row title={<span className="hint" style={{ fontSize: 17 }}>Comment</span>} trailing={comment} />}
-          <Row title={<span className="hint" style={{ fontSize: 17 }}>Network fee</span>} trailing={<span className="num">{asset === 'TON' ? '< 0.01' : '≈ 0.01'} TON</span>} />
+
+        <div className="amount-hero">
+          <div className={`val num ${amountStr ? '' : 'empty'}`} style={{ fontSize: size }}>
+            {amountStr || '0'}<span className="u">{asset}</span>
+          </div>
+          <div className="bal-line num">
+            Balance: {formatUnits(available, dec, 4)} {asset}
+            <button onClick={() => setAmountStr(formatUnits(available, dec, 9).replace(/ /g, ''))}>Max</button>
+          </div>
+          {amountProblem && <div className="hint bad" style={{ marginTop: 6 }}>{amountProblem}</div>}
+          {err && <div className="hint bad" style={{ marginTop: 6, padding: '0 20px' }}>{err}</div>}
+        </div>
+
+        {masterAddress && (
+          <div className="seg" style={{ margin: '4px 0 6px' }}>
+            {(['EGG', 'TON'] as Asset[]).map((a) => (
+              <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
+            ))}
+          </div>
+        )}
+
+        <Section footer={<span className="num">Network fee: {asset === 'TON' ? '< 0.01' : '≈ 0.01'} TON</span>}>
+          {showComment ? (
+            <div className="field"><label>Comment</label><input className="input" maxLength={120} autoFocus value={comment} onChange={(e) => setComment(e.target.value)} /></div>
+          ) : (
+            <Row onClick={() => setShowComment(true)} title={<span style={{ color: 'var(--accent-text)' }}>Add comment</span>} />
+          )}
         </Section>
-        {err && <p className="hint bad center" style={{ marginTop: 14 }}>{err}</p>}
-        <MainButton text="Confirm and send" onClick={submit} loading={step === 'sending'} />
+
+        <Keypad value={amountStr} onChange={setAmountStr} decimals={dec} />
+        <MainButton
+          text={amount && amount > 0n ? `Send ${amountStr} ${asset}` : 'Enter an amount'}
+          enabled={Boolean(amount && amount > 0n && !amountProblem)}
+          loading={step === 'sending'}
+          onClick={submit}
+        />
       </Page>
     );
+  }
 
+  // ----- recipient -----
   return (
-    <Page title="Send" onBack={onClose} bottomSpace>
-      {masterAddress && <div className="seg" style={{ marginTop: 6 }}>
-        {(['EGG', 'TON'] as Asset[]).map((a) => (
-          <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
-        ))}
-      </div>}
-
-      <Section>
-        <div className="amount-box">
-          <input className="num" inputMode="decimal" placeholder="0" value={amountStr} onChange={(e) => setAmountStr(e.target.value)} />
-          <div className="unit num">Available {formatUnits(available, dec, 4)} {asset}</div>
-          <button className="max" onClick={() => setAmountStr(formatUnits(available, dec, 9).replace(/ /g, ''))}>Use max</button>
-        </div>
-      </Section>
-      {nestHint && <p className="hint" style={{ padding: '8px 16px 0' }}>{formatUnits(data.ready, 9, 2)} more EGG are ready in the nest — hatch them first to send them.</p>}
-
+    <Page title="Send Money to" onBack={onClose} bottomSpace>
       <Section>
         <div className="field">
-          <label>Recipient</label>
-          <input className="input" placeholder="UQ… or EQ… address" value={to} onChange={(e) => setTo(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+          <label>Wallet address</label>
+          <input className="input" placeholder="UQ… or EQ…" value={to} onChange={(e) => setTo(e.target.value)} autoCapitalize="none" autoCorrect="off" spellCheck={false} />
         </div>
-        <div className="field">
-          <label>Comment (optional)</label>
-          <input className="input" maxLength={120} value={comment} onChange={(e) => setComment(e.target.value)} />
-        </div>
+        <button className="paste" onClick={paste}>Paste from clipboard</button>
       </Section>
-      {problem && <p className="hint bad" style={{ padding: '8px 16px 0' }}>{problem}</p>}
-      <MainButton text="Continue" enabled={ready} onClick={() => { haptic.tap(); setStep('review'); }} />
+      {toProblem && <p className="hint bad" style={{ padding: '8px 16px 0' }}>{toProblem}</p>}
+
+      <Section title="Recent recipients">
+        {past.length === 0 ? (
+          <div className="empty">Recent recipients<br />will appear here</div>
+        ) : (
+          past.map((a) => {
+            const p = parseAddress(a);
+            return p ? <Row key={a} onClick={() => pickRecipient(p)} icon={<span className={`row-icon ${asset === 'EGG' ? 'icon-egg' : 'icon-ton'}`}>{asset === 'EGG' ? <EggMark /> : <TonMark />}</span>} title={<span className="num">{shortAddr(a, 6, 6)}</span>} subtitle="TON address" /> : null;
+          })
+        )}
+      </Section>
+      <MainButton text="Continue" enabled={Boolean(parsed && !toProblem)} onClick={() => parsed && pickRecipient(parsed)} />
     </Page>
   );
 }

@@ -1,9 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
-import { Address, Cell, toNano, TupleReader } from '@ton/core';
+import { Address, Cell, StateInit, toNano, TupleReader } from '@ton/core';
 import { findTransaction } from '@ton/test-utils';
+import { keyPairFromSeed } from '@ton/crypto';
 import {
-  askToClaimBody, Attach, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, topUpBody,
-  verifyEntitlement, walletStateInit,
+  askToClaimBody, Attach, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, sendOne, SUBWALLET_ID, tgWalletStateInit,
+  topUpBody, verifyEntitlement, walletStateInit,
 } from '@egg/sdk';
 import { buildApp } from '../src/app';
 import { Chain } from '../src/chain';
@@ -21,7 +22,24 @@ const E = (n: number) => toNano(String(n));
 class SandboxChain implements Chain {
   sent: Cell[] = [];
   dropNext = false;
-  constructor(private chain: Blockchain, private minter: Address, private publisher: SandboxContract<TreasuryContract>) {}
+  constructor(
+    private chain: Blockchain,
+    private minter: Address,
+    private publisher: SandboxContract<TreasuryContract>,
+    private relayer: SandboxContract<TreasuryContract>,
+  ) {}
+
+  relayed: { to: Address; value: bigint; withInit: boolean }[] = [];
+  async isDeployed(a: Address) {
+    return (await this.chain.getContract(a)).accountState?.type === 'active';
+  }
+  async balance(a: Address) {
+    return (await this.chain.getContract(a)).balance;
+  }
+  async relay(to: Address, body: Cell, value: bigint, init?: StateInit) {
+    this.relayed.push({ to, value, withInit: Boolean(init) });
+    await this.relayer.send({ to, value, body, init, bounce: false });
+  }
 
   async lastEpoch() {
     return Number(new TupleReader((await this.chain.runGetMethod(this.minter, 'get_last_epoch')).stack).readBigNumber());
@@ -47,7 +65,7 @@ class SandboxChain implements Chain {
 async function setup() {
   const chain = await Blockchain.create();
   chain.now = T0;
-  const [admin, publisherW, alice, bob, carol] = await Promise.all(['admin', 'publisher', 'alice', 'bob', 'carol'].map((n) => chain.treasury(n)));
+  const [admin, publisherW, alice, bob, carol, relayerW] = await Promise.all(['admin', 'publisher', 'alice', 'bob', 'carol', 'relayer'].map((n) => chain.treasury(n)));
   const { init, address: minter } = minterStateInit(
     { maxSupply: E(1_000_000), admin: admin.address, publisher: publisherW.address, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
     eggMinterCode,
@@ -62,10 +80,10 @@ async function setup() {
     MAX_EVENT_UNITS: E(10_000).toString(),
   } as unknown as NodeJS.ProcessEnv);
   const db = new Db(':memory:');
-  const sbx = new SandboxChain(chain, minter, publisherW);
+  const sbx = new SandboxChain(chain, minter, publisherW, relayerW);
   const publisher = new Publisher(db, sbx, { maxSupply: config.MAX_SUPPLY_UNITS, now: () => T0 });
-  const app = await buildApp({ config, db, publisher, now: () => T0 });
-  return { chain, minter, alice, bob, carol, app, db, publisher, sbx };
+  const app = await buildApp({ config, db, publisher, chain: sbx, now: () => T0 });
+  return { chain, minter, alice, bob, carol, app, db, publisher, sbx, config };
 }
 
 const tma = (id: number) => ({ authorization: 'tma ' + signInitData({ id, first_name: 'T' }, BOT_TOKEN, T0 - 5) });
@@ -220,3 +238,81 @@ describe('earn → publish → prove → claim on-chain', () => {
     expect(db.issuedTotal()).toBe(E(201));
   });
 });
+
+describe('gasless first hatch (sponsored relay)', () => {
+  const player = keyPairFromSeed(Buffer.alloc(32, 5));
+  const subwalletId = SUBWALLET_ID.testnet;
+  const { init: walletInit, address: tgWallet } = tgWalletStateInit({ publicKey: player.publicKey, subwalletId });
+
+  async function ready() {
+    const env = await setup();
+    await earn(env.app, 7, E(2500));
+    await link(env.app, 7, tgWallet);
+    await env.publisher.tick();
+    await env.publisher.tick();
+    const ent = (await env.app.inject({ method: 'GET', url: `/v1/entitlement/${tgWallet.toString()}` })).json();
+    const egg = walletStateInit(tgWallet, env.minter, eggWalletCode);
+    const request = (o: { to?: Address; channel?: 'internal' | 'external'; validUntil?: number; body?: Cell; value?: bigint } = {}) =>
+      sendOne({
+        channel: o.channel ?? 'internal',
+        secretKey: player.secretKey,
+        header: { subwalletId, validUntil: o.validUntil ?? T0 + 600, seqno: 0 },
+        message: {
+          to: o.to ?? egg.address,
+          value: o.value ?? Attach.claim,
+          bounce: true,
+          init: egg.init,
+          body: o.body ?? askToClaimBody({ epoch: ent.epoch, cumulative: BigInt(ent.cumulative), proof: Cell.fromBase64(ent.proof) }),
+        },
+      });
+    const relay = (body: Cell, publicKey = player.publicKey, headers = tma(7)) =>
+      env.app.inject({ method: 'POST', url: '/v1/relay', headers, payload: { request: body.toBoc().toString('base64'), public_key: publicKey.toString('hex') } });
+    return { ...env, ent, egg, request, relay };
+  }
+
+  it('a player with no TON hatches their first EGG: the server pays, the contract verifies, the player ends up with change', async () => {
+    const { chain, app, request, relay, egg, sbx } = await ready();
+    expect((await app.inject({ method: 'GET', url: '/v1/me', headers: tma(7) })).json().sponsored_left).toBe(3);
+
+    const res = await relay(request());
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, remaining: 2 });
+    expect(sbx.relayed).toHaveLength(1);
+    expect(sbx.relayed[0].withInit).toBe(true); // first request also deploys the player's wallet
+
+    expect(await balanceAt(chain, egg.address)).toBe(E(2500));
+    expect((await chain.getContract(tgWallet)).balance).toBeGreaterThan(toNano('0.05')); // excess came back to the player
+  });
+
+  it('relays only the player\'s own claim, and only a few times', async () => {
+    const { request, relay, app, db } = await ready();
+    const other = new Address(0, Buffer.alloc(32, 3));
+    const plainBody = beginCellOp(0x0f8a7ea5);
+
+    expect((await relay(request({ to: other }))).json().error).toBe('not-a-claim'); // someone else's contract
+    expect((await relay(request({ body: plainBody }))).json().error).toBe('not-a-claim'); // not a claim
+    expect((await relay(request({ value: toNano('5') }))).json().error).toBe('too-much-value');
+    expect((await relay(request({ channel: 'external' }))).json().error).toBe('not-a-send-request');
+    expect((await relay(request({ validUntil: T0 - 5 }))).json().error).toBe('expired');
+    expect((await relay(request(), keyPairFromSeed(Buffer.alloc(32, 6)).publicKey)).json().error).toBe('wrong-wallet'); // not the linked wallet
+    expect((await relay(request(), player.publicKey, tma(8))).json().error).toBe('wallet-not-linked'); // another Telegram account
+    expect((await relay(request(), player.publicKey, {} as never)).statusCode).toBe(401);
+    expect(db.relaysUsed(7)).toBe(0); // refusals cost nothing
+
+    // the allowance is per Telegram account: once it is spent, nothing more is relayed
+    for (let i = 0; i < 3; i++) expect(db.takeRelaySlot(7, 3, T0)).toBe(true);
+    expect((await relay(request())).json().error).toBe('sponsorship-used-up');
+    expect((await app.inject({ method: 'GET', url: '/v1/me', headers: tma(7) })).json().sponsored_left).toBe(0);
+  });
+
+  it('does not sponsor someone who can already pay', async () => {
+    const { request, relay, chain } = await ready();
+    const rich = await chain.treasury('rich');
+    await rich.send({ to: tgWallet, value: toNano('1'), bounce: false });
+    expect((await relay(request())).json().error).toBe('pay-yourself');
+  });
+});
+
+function beginCellOp(op: number): Cell {
+  return new (require('@ton/core').Builder)().storeUint(op, 32).storeUint(0, 64).endCell();
+}

@@ -5,6 +5,8 @@ import { Address } from '@ton/core';
 import { timingSafeEqual } from 'crypto';
 import { z } from 'zod';
 import { EggTree } from '@egg/sdk';
+import { Chain } from './chain';
+import { checkRelayRequest } from './relay';
 import { Config } from './config';
 import { Db } from './db';
 import { Publisher } from './publisher';
@@ -14,6 +16,8 @@ export interface Deps {
   config: Config;
   db: Db;
   publisher: Publisher;
+  /** needed only for the gasless relay */
+  chain?: Chain;
   /** injectable clock (unix seconds) */
   now?: () => number;
 }
@@ -24,7 +28,7 @@ function safeEqual(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-export async function buildApp({ config, db, publisher, now = () => Math.floor(Date.now() / 1000) }: Deps) {
+export async function buildApp({ config, db, publisher, chain, now = () => Math.floor(Date.now() / 1000) }: Deps) {
   const app = Fastify({ logger: false, bodyLimit: 16 * 1024 });
   await app.register(cors, { origin: config.CORS_ORIGINS === '*' ? true : config.CORS_ORIGINS.split(',').map((s) => s.trim()) });
   await app.register(rateLimit, { max: 240, timeWindow: '1 minute' });
@@ -188,7 +192,37 @@ export async function buildApp({ config, db, publisher, now = () => Math.floor(D
       entitlement: e,
       address_locked: row.frozen_at !== null,
       banned: Boolean(row.banned),
+      /** sponsored requests still available (0 when relaying is off) */
+      sponsored_left: chain ? Math.max(0, config.RELAY_MAX_PER_USER - db.relaysUsed(u.id)) : 0,
     };
+  });
+
+  /**
+   * Gasless first hatch. The player signs a request offline; we pay to deliver it. Only the player's own claim is ever
+   * relayed, a few times per Telegram account, and not to anyone who can already pay for themselves.
+   */
+  const Relay = z.object({ request: z.string().min(100).max(4000), public_key: z.string().regex(/^[0-9a-fA-F]{64}$/) });
+  app.post('/v1/relay', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
+    const u = requireUser(req, reply);
+    if (!u) return;
+    if (!chain) return reply.code(503).send({ error: 'relay-unavailable' });
+    const body = Relay.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: 'bad-request' });
+    const row = db.ensureUser(u.id, now());
+    if (row.banned) return reply.code(403).send({ error: 'banned' });
+    if (!row.address) return reply.code(409).send({ error: 'wallet-not-linked' });
+
+    const check = checkRelayRequest(Buffer.from(body.data.request, 'base64'), Buffer.from(body.data.public_key, 'hex'), row.address, {
+      minter: Address.parse(config.JETTON_MASTER_ADDRESS), network: config.NETWORK, maxForward: config.RELAY_MAX_FORWARD, now: now(),
+    });
+    if (!check.ok) return reply.code(422).send({ error: check.reason });
+
+    if ((await chain.balance(check.wallet)) >= config.RELAY_SELF_PAY_BALANCE) return reply.code(409).send({ error: 'pay-yourself' });
+    if (!db.takeRelaySlot(u.id, config.RELAY_MAX_PER_USER, now())) return reply.code(429).send({ error: 'sponsorship-used-up' });
+
+    const deployed = await chain.isDeployed(check.wallet);
+    await chain.relay(check.wallet, check.body, config.RELAY_VALUE, deployed ? undefined : check.init);
+    return { ok: true, remaining: Math.max(0, config.RELAY_MAX_PER_USER - db.relaysUsed(u.id)) };
   });
 
   const Link = z.object({ address: z.string().min(10).max(128) });

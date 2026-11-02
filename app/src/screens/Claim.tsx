@@ -1,5 +1,5 @@
-import { Address, toNano } from '@ton/core';
-import { verifyEntitlement } from '@egg/sdk';
+import { Address } from '@ton/core';
+import { Attach, verifyEntitlement } from '@egg/sdk';
 import { useState } from 'react';
 import { api, apiErrorText, entitlementCache, proofCell } from '../api/server';
 import { eggClaim } from '../chain/actions';
@@ -10,8 +10,8 @@ import { haptic } from '../lib/tg';
 import { useWallet } from '../state/wallet';
 import { Burst, Egg, EggState } from '../ui/Egg';
 import { MainButton, Page } from '../ui/native';
+import { NeedTonError } from '../provider/tg';
 
-const NEED_TON = toNano('0.1');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type Status = 'idle' | 'working' | 'done' | 'error';
@@ -31,7 +31,8 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
   const [moved, setMoved] = useState(0n);
   if (!provider || !masterAddress) return null;
 
-  const lowTon = data.ton < NEED_TON;
+  const sponsored = (data.me?.sponsored_left ?? 0) > 0;
+  const lowTon = data.ton < Attach.claim && !sponsored;
   const egg: EggState = status === 'working' ? 'cracking' : status === 'done' ? 'hatched' : 'idle';
 
   const run = async () => {
@@ -60,6 +61,7 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
 
       setStep(2);
       await provider.send(eggClaim({ state, epoch: ent.epoch, cumulative, proof: proofCell(ent), init: init.init }));
+      w.addLocalActivity({ id: `hatch-${ent.epoch}-${Date.now()}`, kind: 'egg', direction: 'in', amount: cumulative - state.claimed, symbol: 'EGG', decimals: cfg.token.decimals, peer: '', time: Math.floor(Date.now() / 1000), label: 'hatch', failed: false });
 
       setStep(3);
       for (let i = 0; i < 40; i++) {
@@ -80,15 +82,17 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
             ? 'That update is not on the blockchain yet. Try again in a minute.'
             : m === 'already-claimed'
               ? 'Everything committed so far is already in your wallet.'
-              : /reject|denied|cancel/i.test(m)
-                ? 'The transaction was cancelled.'
-                : apiErrorText(e),
+              : e instanceof NeedTonError
+                ? 'Your free hatches are used up. Add about 0.1 TON to your wallet to cover the network fee.'
+                : /reject|denied|cancel/i.test(m)
+                  ? 'The transaction was cancelled.'
+                  : apiErrorText(e),
       );
       setStatus('error');
     }
   };
 
-  const steps = ['Checking the proof against the blockchain', 'Confirm the transaction', 'Moving EGG to your wallet'];
+  const steps = ['Checking the proof against the blockchain', 'Signing your request', 'Moving EGG to your wallet'];
 
   return (
     <Page title={status === 'done' ? undefined : 'Hatch'} onBack={status === 'working' ? () => undefined : onClose} bottomSpace>
@@ -118,7 +122,8 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
             <p className="hint" style={{ fontSize: 16, maxWidth: 330 }}>
               Your amount is committed in a public root on the blockchain. Hatching asks the token contract itself to verify your proof — the server cannot take it back or change it.
             </p>
-            {lowTon && <p className="hint bad">You need about {formatUnits(NEED_TON, 9, 2)} TON for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
+            {sponsored && data.ton < Attach.claim && <p className="hint" style={{ color: 'var(--good)' }}>This one is on us — we cover the network fee for your first hatches.</p>}
+            {lowTon && <p className="hint bad">You need about {formatUnits(Attach.claim, 9, 2)} TON for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
             {status === 'error' && <p className="hint bad">{err}</p>}
           </>
         )}

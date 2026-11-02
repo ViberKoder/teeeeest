@@ -6,16 +6,12 @@ export interface OutMessage {
   body?: Cell;
   init?: StateInit;
   bounce: boolean;
+  /** this message is the player's own claim — the one thing the server will pay to deliver for a player with no TON */
+  sponsorable?: boolean;
 }
 
-/**
- * Anything that can sign and broadcast messages for one address:
- * the built-in self-custody wallet, or an external wallet over TON Connect
- * (Telegram Wallet and any other TON Connect wallet).
- * The app builds messages once; providers only differ in who signs them.
- */
+/** Anything that can sign and broadcast messages for one wallet address. */
 export interface WalletProvider {
-  readonly kind: 'builtin' | 'tonconnect';
   readonly address: Address;
   send(messages: OutMessage[]): Promise<void>;
 }

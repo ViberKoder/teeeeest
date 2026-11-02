@@ -6,6 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 mkdirSync(join(root, 'artifacts'), { recursive: true });
+// The Telegram wallet is shipped as the upstream, published revision (not a local rebuild), byte for byte.
+{
+  const { Cell } = await import('@ton/core');
+  const boc = readFileSync(join(root, 'contracts', 'TgWallet', 'WalletTg-rev00.boc'));
+  const cell = Cell.fromBoc(boc)[0];
+  writeFileSync(join(root, 'artifacts', 'TgWallet.json'), JSON.stringify({ name: 'TgWallet', hash: cell.hash().toString('hex'), codeBoc64: boc.toString('base64') }, null, 2) + '\n');
+  console.log('exported TgWallet (upstream rev00)', cell.hash().toString('hex').slice(0, 16));
+}
 for (const name of ['EggMinter', 'EggWallet']) {
   const { code_boc64, hash } = JSON.parse(readFileSync(join(root, 'build', `${name}.json`), 'utf8'));
   writeFileSync(join(root, 'artifacts', `${name}.json`), JSON.stringify({ name, hash: hash.toLowerCase(), codeBoc64: code_boc64 }, null, 2) + '\n');

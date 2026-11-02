@@ -6,13 +6,12 @@ import { Activity, loadActivity } from '../chain/history';
 import { EggState, readEgg } from '../chain/egg';
 import { ton } from '../chain/client';
 import { cfg } from '../config';
-import { attempts, decryptPhrase, encryptPhrase, vaultStore } from '../crypto/vault';
-import { BuiltinProvider } from '../provider/builtin';
-import { TonConnectProvider, tonConnect } from '../provider/tonconnect';
-import type { WalletProvider } from '../provider/types';
+import { keyStore, Marker, pendingKey } from '../keys/store';
 import { haptic } from '../lib/tg';
+import { TgWalletProvider } from '../provider/tg';
+import type { WalletProvider } from '../provider/types';
 
-export type Phase = 'boot' | 'welcome' | 'locked' | 'ready';
+export type Phase = 'boot' | 'needs-phrase' | 'ready';
 
 export interface Data {
   ton: bigint;
@@ -34,18 +33,23 @@ interface Ctx {
   provider: WalletProvider | null;
   data: Data;
   masterAddress: Address | null;
-  lockedAddress: string | null;
+  marker: Marker | null;
+  /** the wallet was created in this session: show the short "how it works" once */
+  firstRun: boolean;
+  backupOn: boolean;
   refresh: () => Promise<void>;
-  createWallet: (words: string[], passcode: string) => Promise<void>;
-  newMnemonic: () => Promise<string[]>;
-  validateMnemonic: (words: string[]) => Promise<boolean>;
-  unlock: (passcode: string) => Promise<'ok' | 'wrong' | 'throttled'>;
-  lock: () => void;
-  revealPhrase: (passcode: string) => Promise<string[] | null>;
-  useExternal: () => void;
-  signOut: () => Promise<void>;
+  /** enter the secret phrase of a wallet that exists for this account but has no cloud backup */
+  restore: (words: string[]) => Promise<boolean>;
+  setBackup: (on: boolean) => Promise<void>;
+  /** the current secret phrase — only handed out when the user asked to see it */
+  secretPhrase: () => string[] | null;
+  newPhrase: () => Promise<string[]>;
+  /** give the wallet a new key whose phrase only the user knows; Telegram's backup is erased */
+  selfCustody: (words: string[]) => Promise<void>;
+  dismissIntro: () => void;
+  addLocalActivity: (a: Activity) => void;
   /** demo fixtures only: jump straight to a screen */
-  setDemo: (phase: Phase, p?: WalletProvider, d?: Data) => void;
+  setDemo: (phase: Phase, p?: WalletProvider, d?: Data, marker?: Marker | null) => void;
 }
 
 const WalletCtx = createContext<Ctx | null>(null);
@@ -55,14 +59,25 @@ export const useWallet = () => {
   return c;
 };
 
-const AUTO_LOCK_MS = 5 * 60_000;
+const LOCAL_ACT = 'egg.activity.v1';
+const readLocalActivity = (): Activity[] => {
+  try {
+    return (JSON.parse(localStorage.getItem(LOCAL_ACT) ?? '[]') as (Omit<Activity, 'amount'> & { amount: string })[]).map((a) => ({ ...a, amount: BigInt(a.amount) }));
+  } catch {
+    return [];
+  }
+};
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<Phase>('boot');
   const [provider, setProvider] = useState<WalletProvider | null>(null);
   const [data, setData] = useState<Data>(empty);
   const [demo, setDemoState] = useState(false);
-  const lastActive = useRef(Date.now());
+  const [marker, setMarker] = useState<Marker | null>(null);
+  const [backupOn, setBackupOn] = useState(true);
+  const [firstRun, setFirstRun] = useState(false);
+  const [localAct, setLocalAct] = useState<Activity[]>(() => readLocalActivity());
+  const words = useRef<string[] | null>(null);
 
   const masterAddress = useMemo(() => {
     try {
@@ -72,43 +87,65 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const blob = vaultStore.read();
-  const lockedAddress = blob?.address ?? null;
+  const open = useCallback(async (w: string[], created: boolean) => {
+    words.current = w;
+    const p = await TgWalletProvider.fromWords(w);
+    setProvider(p);
+    setFirstRun(created);
+    const m = await keyStore.marker();
+    setMarker(m);
+    setBackupOn(m ? m.backup : true);
+    setPhase('ready');
+  }, []);
 
-  // ---- boot: external wallet session > encrypted vault > welcome ----------
+  // ---- boot: adopt a staged rotation, find the wallet of this account, or create it -----------------
   useEffect(() => {
     if (cfg.demo) return;
-    const u = tonConnect();
-    void u.connectionRestored.then(() => {
-      const ext = TonConnectProvider.fromConnected();
-      if (ext) {
-        setProvider(ext);
-        setPhase('ready');
-      } else setPhase(vaultStore.read() ? 'locked' : 'welcome');
-    });
-    return u.onStatusChange((w) => {
-      if (!w) return;
-      const ext = TonConnectProvider.fromConnected();
-      if (ext) {
-        setProvider(ext);
-        setPhase('ready');
+    void (async () => {
+      const staged = pendingKey.read();
+      const loaded = await keyStore.load();
+      if (staged && loaded.kind === 'ready') {
+        // a rotation was interrupted: if the chain already shows the staged key, finish it; otherwise drop it
+        try {
+          const cur = await TgWalletProvider.fromWords(loaded.words);
+          const next = await TgWalletProvider.fromWords(staged);
+          if ((await cur.onchainPublicKey()) === next.publicKeyHex) {
+            await keyStore.save(staged, next.address.toRawString(), false);
+            pendingKey.clear();
+            return void (await open(staged, false));
+          }
+        } catch {
+          /* offline: keep both, retry next time */
+        }
       }
-    });
-  }, []);
+      if (loaded.kind === 'ready') return void (await open(loaded.words, false));
+      if (loaded.kind === 'needs-phrase') {
+        setMarker(loaded.marker);
+        return setPhase('needs-phrase');
+      }
+      const w = await keyStore.create(TgWalletProvider.addressOf);
+      await open(w, true);
+    })();
+  }, [open]);
 
   // ---- data ---------------------------------------------------------------
   const refresh = useCallback(async () => {
     if (demo || !provider) return;
     setData((d) => ({ ...d, loading: true, error: null }));
     try {
-      const [balance, egg, me, activity] = await Promise.all([
+      const raw = provider.address.toRawString();
+      let me = api.available() ? await api.me().catch(() => null) : null;
+      // the wallet belongs to the Telegram account: tell the server which address that is (once, quietly)
+      if (me && me.address !== raw && !me.address_locked) {
+        await api.link(raw).catch(() => undefined);
+        me = await api.me().catch(() => me);
+      }
+      const [balance, egg, activity] = await Promise.all([
         ton().getBalance(provider.address),
         masterAddress ? readEgg(masterAddress, provider.address) : Promise.resolve(null),
-        api.available() ? api.me().catch(() => null) : Promise.resolve(null),
         loadActivity(provider.address, masterAddress).catch(() => [] as Activity[]),
       ]);
-      // Only count the ledger when it belongs to this wallet.
-      const mine = me ? (me.address ? me.address === provider.address.toRawString() : true) : false;
+      const mine = me ? (me.address ? me.address === raw : true) : false;
       const claimed = egg?.claimed ?? 0n;
       const committed = me && mine && me.entitlement ? BigInt(me.entitlement.cumulative) : 0n;
       const ready = committed > claimed ? committed - claimed : 0n;
@@ -128,94 +165,76 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(t);
   }, [phase, refresh]);
 
-  // ---- auto-lock ----------------------------------------------------------
-  const lock = useCallback(() => {
-    if (provider instanceof BuiltinProvider) provider.lock();
-    if (provider?.kind === 'builtin') {
-      setProvider(null);
-      setData(empty);
-      setPhase('locked');
-    }
-  }, [provider]);
-
-  useEffect(() => {
-    if (phase !== 'ready' || provider?.kind !== 'builtin') return;
-    const touch = () => (lastActive.current = Date.now());
-    const events = ['pointerdown', 'keydown', 'touchstart'] as const;
-    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
-    const t = setInterval(() => {
-      if (Date.now() - lastActive.current > AUTO_LOCK_MS) lock();
-    }, 10_000);
-    const vis = () => document.hidden && lock();
-    document.addEventListener('visibilitychange', vis);
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, touch));
-      clearInterval(t);
-      document.removeEventListener('visibilitychange', vis);
-    };
-  }, [phase, provider, lock]);
-
-  // ---- actions ------------------------------------------------------------
-  const openWith = async (words: string[]) => {
-    const p = await BuiltinProvider.fromMnemonic(words);
-    setProvider(p);
-    setPhase('ready');
-    lastActive.current = Date.now();
-    return p;
-  };
-
   const value: Ctx = {
     phase,
     provider,
-    data,
+    data: { ...data, activity: [...localAct, ...data.activity].sort((a, b) => b.time - a.time) },
     masterAddress,
-    lockedAddress,
+    marker,
+    firstRun,
+    backupOn,
     refresh,
-    newMnemonic: () => mnemonicNew(24),
-    validateMnemonic: (w) => mnemonicValidate(w),
-    async createWallet(words, passcode) {
-      const p = await openWith(words);
-      vaultStore.write(await encryptPhrase(words, passcode, p.address.toString({ bounceable: false })));
-      attempts.reset();
-      haptic.success();
-    },
-    async unlock(passcode) {
-      const b = vaultStore.read();
-      if (!b) return 'wrong';
-      if (attempts.state().until > Date.now()) return 'throttled';
-      const words = await decryptPhrase(b, passcode);
-      if (!words) {
-        attempts.fail();
+    async restore(w) {
+      if (!marker) return false;
+      const ok = await keyStore.validate(w, marker.address, TgWalletProvider.addressOf);
+      if (!ok) {
         haptic.error();
-        return 'wrong';
+        return false;
       }
-      attempts.reset();
-      await openWith(words);
-      return 'ok';
+      await keyStore.save(w, marker.address, marker.backup);
+      await open(w, false);
+      haptic.success();
+      return true;
     },
-    lock,
-    async revealPhrase(passcode) {
-      const b = vaultStore.read();
-      return b ? decryptPhrase(b, passcode) : null;
+    async setBackup(on) {
+      if (!provider || !words.current) return;
+      await keyStore.setBackup(words.current, provider.address.toRawString(), on);
+      setBackupOn(on);
+      setMarker({ address: provider.address.toRawString(), backup: on });
     },
-    useExternal() {
-      void tonConnect().openModal();
+    secretPhrase: () => words.current,
+    newPhrase: () => mnemonicNew(24),
+    async selfCustody(newWords) {
+      if (!(provider instanceof TgWalletProvider) || !words.current) throw new Error('wallet not ready');
+      pendingKey.stage(newWords); // stage BEFORE sending: a crash can not lose the new key
+      const next = await provider.rotateKey(newWords);
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 3000));
+        if ((await next.onchainPublicKey().catch(() => '')) === next.publicKeyHex) {
+          await keyStore.save(newWords, next.address.toRawString(), false);
+          pendingKey.clear();
+          words.current = newWords;
+          setProvider(next);
+          setBackupOn(false);
+          setMarker({ address: next.address.toRawString(), backup: false });
+          haptic.success();
+          return;
+        }
+      }
+      throw new Error('rotation-pending');
     },
-    async signOut() {
-      if (provider instanceof BuiltinProvider) provider.lock();
-      if (provider instanceof TonConnectProvider) await provider.disconnect().catch(() => undefined);
-      vaultStore.wipe();
-      setProvider(null);
-      setData(empty);
-      setPhase('welcome');
+    dismissIntro: () => {
+      setFirstRun(false);
     },
-    setDemo(ph, p, d) {
+    addLocalActivity(a) {
+      const next = [a, ...localAct].slice(0, 30);
+      setLocalAct(next);
+      try {
+        localStorage.setItem(LOCAL_ACT, JSON.stringify(next.map((x) => ({ ...x, amount: x.amount.toString() }))));
+      } catch {
+        /* private mode */
+      }
+    },
+    setDemo(ph, p, d, m) {
       setDemoState(true);
       if (p) setProvider(p);
       if (d) setData(d);
+      if (m !== undefined) setMarker(m);
       setPhase(ph);
     },
   };
 
   return <WalletCtx.Provider value={value}>{children}</WalletCtx.Provider>;
 }
+
+export { mnemonicValidate };

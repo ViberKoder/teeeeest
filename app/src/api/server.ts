@@ -12,6 +12,8 @@ export interface Me {
   entitlement: Entitlement | null;
   address_locked: boolean;
   banned: boolean;
+  /** sponsored (gasless) requests this account can still use */
+  sponsored_left: number;
 }
 
 export class ApiError extends Error {
@@ -35,6 +37,8 @@ export const api = {
   me: () => call<Me>('/v1/me'),
   link: (address: string) => call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address }) }),
   /** public: the same answer any wallet or explorer would get */
+  relay: (request: string, publicKey: string) =>
+    call<{ ok: true; remaining: number }>('/v1/relay', { method: 'POST', body: JSON.stringify({ request, public_key: publicKey }) }),
   entitlement: (rawAddress: string) => call<Entitlement>(`/v1/entitlement/${encodeURIComponent(rawAddress)}`),
 };
 
@@ -69,6 +73,8 @@ const messages: Record<string, string> = {
   banned: 'This account is restricted',
   unauthorized: 'Open the wallet from Telegram to sync EGG',
   'no-entitlement': 'Nothing is committed on-chain for you yet',
+  'sponsorship-used-up': 'Your free hatches are used up — add a little TON for fees',
+  'pay-yourself': 'Your wallet can pay its own fee',
 };
 export const apiErrorText = (e: unknown) =>
   e instanceof ApiError ? messages[e.code] ?? 'Server is busy, try again' : 'Network error, try again';

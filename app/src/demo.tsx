@@ -1,6 +1,6 @@
 /**
  * Design / e2e fixtures. Only bundled when VITE_DEMO=1 (see main.tsx).
- * `?demo=welcome|locked|home|empty` jumps straight to a screen; sends just resolve.
+ * `?demo=restore|home|empty` jumps straight to a screen; sends just resolve.
  */
 import { Address } from '@ton/core';
 import { useEffect } from 'react';
@@ -13,7 +13,6 @@ const E = (n: number) => BigInt(Math.round(n * 1e9));
 const now = Math.floor(Date.now() / 1000);
 
 const provider: WalletProvider = {
-  kind: 'builtin',
   address,
   send: () => new Promise((r) => setTimeout(r, 900)),
 };
@@ -22,7 +21,7 @@ const peer = (b: string) => '0:' + b.repeat(64).slice(0, 64);
 const full: Data = {
   ton: E(3.482),
   egg: { jettonWallet: address, deployed: true, balance: E(9980.5), claimed: E(9980.5), lockedUntil: 0 },
-  me: { tg_id: 1, address: address.toRawString(), ledger: String(E(12600.5)), entitlement: null, address_locked: true, banned: false },
+  me: { tg_id: 1, address: address.toRawString(), ledger: String(E(12600.5)), entitlement: null, address_locked: true, banned: false, sponsored_left: 3 },
   ready: E(2500),
   accruing: E(120),
   loading: false,
@@ -38,10 +37,9 @@ export default function Demo() {
   const w = useWallet();
   useEffect(() => {
     const mode = new URLSearchParams(location.search).get('demo') ?? 'home';
-    if (mode === 'welcome') w.setDemo('welcome');
-    else if (mode === 'locked') w.setDemo('locked');
+    if (mode === 'restore') w.setDemo('needs-phrase', undefined, undefined, { address: address.toRawString(), backup: false });
     else if (mode === 'empty')
-      w.setDemo('ready', provider, { ...full, ready: 0n, accruing: 0n, activity: [], egg: { ...full.egg!, balance: 0n, claimed: 0n }, me: null, ton: E(0.4) });
+      w.setDemo('ready', provider, { ...full, ready: 0n, accruing: 0n, activity: [], egg: { ...full.egg!, balance: 0n, claimed: 0n }, me: null, ton: 0n });
     else w.setDemo('ready', provider, full);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

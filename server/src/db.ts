@@ -60,6 +60,11 @@ export class Db {
         created_at INTEGER NOT NULL,
         sent_at    INTEGER
       );
+      CREATE TABLE IF NOT EXISTS relays (
+        tg_id   INTEGER PRIMARY KEY,
+        count   INTEGER NOT NULL DEFAULT 0,
+        last_at INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       INSERT OR IGNORE INTO meta(key, value) VALUES ('issued_total', '0');
     `);
@@ -117,6 +122,22 @@ export class Db {
       this.raw.prepare('UPDATE users SET address = ? WHERE tg_id = ?').run(address, tgId);
       return { ok: true as const };
     })();
+  }
+
+  /** Atomically takes one sponsored-request slot for a player; false when their allowance is used up. */
+  takeRelaySlot(tgId: number, max: number, now: number): boolean {
+    return this.raw.transaction(() => {
+      this.raw.prepare('INSERT OR IGNORE INTO relays(tg_id) VALUES (?)').run(tgId);
+      const r = this.raw.prepare('SELECT count FROM relays WHERE tg_id = ?').get(tgId) as { count: number };
+      if (r.count >= max) return false;
+      this.raw.prepare('UPDATE relays SET count = count + 1, last_at = ? WHERE tg_id = ?').run(now, tgId);
+      return true;
+    })();
+  }
+
+  relaysUsed(tgId: number): number {
+    const r = this.raw.prepare('SELECT count FROM relays WHERE tg_id = ?').get(tgId) as { count: number } | undefined;
+    return r?.count ?? 0;
   }
 
   setBan(tgId: number, banned: boolean, now: number) {
