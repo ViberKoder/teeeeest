@@ -63,7 +63,7 @@ npm run deploy           # build + `tgcloud push`
 ```
 Without `VITE_JETTON_MASTER` the app is a plain TON wallet (EGG parts are hidden) — that is how the first deployment runs.
 `app/tgcloud/` holds a minimal bot handler (`/start` → "Open wallet" button) and a `health` endpoint.
-Add the Mini App origin to `CORS_ORIGINS` on the server. Swap opens STON.fi for the EGG/TON pair (the link parameters are unverified). Matter font: see `app/public/fonts/README.md`.
+Add the Mini App origin to `CORS_ORIGINS` on the server. Swap opens STON.fi for the EGG/TON pair (the link parameters are unverified).
 Treat any token you pasted in a chat as burnt and revoke it afterwards.
 
 ## 5. Money / Telegram's own wallet

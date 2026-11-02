@@ -75,15 +75,17 @@ export function Home() {
       <section className="home-hero">
         <div className="bg" />
         <div className="bar">
-          <button className="pill glass" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.tap(); toast('Address copied'); }}>
-            <span className="dot" /><span className="num">{shortAddr(addr, 4, 4)}</span>
-            {cfg.network === 'testnet' && <span className="badge">TESTNET</span>}
-          </button>
           <button className="round glass" aria-label="Keys & Backup" onClick={() => setOpen('settings')}><Gear width={20} height={20} /></button>
+          <div className="ttl">
+            <b>{eggOn ? 'Egg' : 'Wallet'}<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden><path fill="#2f9bff" d="M12 1.8l2.4 1.7 2.9-.1 1 2.8 2.4 1.7-.9 2.8.9 2.8-2.4 1.7-1 2.7-2.9-.1L12 22.2l-2.4-1.7-2.9.1-1-2.7-2.4-1.7.9-2.8-.9-2.8 2.4-1.7 1-2.8 2.9.1z" /><path d="M8.2 12.2l2.7 2.7 5-5.4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg></b>
+            <button className="sub num" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.tap(); toast('Address copied'); }}>
+              {cfg.network === 'testnet' ? 'testnet · ' : 'mini app · '}{shortAddr(addr, 4, 4)}
+            </button>
+          </div>
+          <span className="round ghost" aria-hidden><EggMark /></span>
         </div>
         <div className="shadow" />
         <div className="stage"><Egg3D energy={data.ready > 0n ? 1 : 0.15} burst={burst} shaking={false} /></div>
-        <div className="hint">Drag to spin · pinch to zoom · tap for sparkles</div>
       </section>
 
       <section className="counter">
@@ -91,13 +93,18 @@ export function Home() {
         {first ? (
           <div className="skeleton" style={{ height: 56, width: 190, margin: '8px auto 0' }} />
         ) : eggOn ? (
-          <div className="count num">{whole}{frac && <span className="frac">.{frac}</span>}<span className="unit">EGG</span></div>
+          <div className="count num">{whole}{frac && <span className="frac">.{frac}</span>}</div>
         ) : (
-          <div className="count num">{formatUnits(data.ton, 9, 3)}<span className="unit">TON</span></div>
+          <div className="count num">{formatUnits(data.ton, 9, 3)}<span className="frac"> TON</span></div>
         )}
-        {eggOn && nest > 0n && (
-          <div className="chip num"><i />{data.ready > 0n ? `${formatUnits(data.ready, D, 2)} ready to hatch` : `${formatUnits(data.accruing, D, 2)} hatching`}</div>
-        )}
+        <div className="chips">
+          {eggOn && nest > 0n && (
+            <span className={`chip num ${data.ready > 0n ? 'good' : ''}`}>{data.ready > 0n ? `+${formatUnits(data.ready, D, 2)} ready to hatch` : `${formatUnits(data.accruing, D, 2)} hatching`}</span>
+          )}
+          {eggOn && (
+            <span className="island num" title="TON pays network fees"><span className="ti"><TonMark /></span>{formatUnits(data.ton, 9, 3)} TON</span>
+          )}
+        </div>
       </section>
 
       <div className="actions4">
@@ -112,29 +119,22 @@ export function Home() {
         <button className="act" onClick={swap}><span className="ic"><Swap /></span>Swap</button>
       </div>
 
-      {eggOn && nest > 0n && (
-        <div className="nest-card">
-          <div className="head">
-            <span className="row-icon hatch-ic"><EggMark /></span>
-            <div className="grow" style={{ minWidth: 0 }}>
-              <div className="t num">{formatUnits(nest, D, 2)} EGG in the nest</div>
-              <div className="s">{data.ready > 0n ? `${formatUnits(data.ready, D, 2)} verified on-chain, ready to hatch` : 'Joins the blockchain with the next update'}</div>
-            </div>
+      {eggOn && (
+        <button className="banner" onClick={() => (data.ready > 0n ? setOpen('claim') : setOpen('intro'))}>
+          <div className="bt">
+            <b>{nest > 0n ? `${formatUnits(nest, D, 2)} EGG in the nest` : 'Your eggs hatch while you play'}</b>
+            <span>{data.ready > 0n ? 'Verified on-chain — tap to hatch' : nest > 0n ? 'Joins the blockchain with the next update' : 'How hatching works'} ›</span>
+            {nest > 0n && <div className="meter"><i style={{ width: `${progress}%` }} /></div>}
           </div>
-          <div className="meter"><i style={{ width: `${progress}%` }} /></div>
-        </div>
+          <div className="bi"><EggMark /></div>
+        </button>
       )}
 
-      <Section title="Assets">
-        {eggOn && <Row icon={<span className="row-icon icon-egg"><EggMark /></span>} title="EGG" subtitle="Egg token" trailing={<span className="num">{formatUnits(eggBalance, D, 2)}</span>} />}
-        <Row icon={<span className="row-icon icon-ton"><TonMark /></span>} title="TON" subtitle="Pays network fees" trailing={<span className="num">{formatUnits(data.ton, 9, 3)}</span>} />
-      </Section>
-
       {groups.length === 0 ? (
-        <Section title="Transactions"><div className="empty">{data.loading ? 'Loading…' : 'Your transfers and hatches will show up here'}</div></Section>
+        <Section title="Recent"><div className="empty">{data.loading ? 'Loading…' : 'Your transfers and hatches will show up here'}</div></Section>
       ) : (
         groups.map((g, gi) => (
-          <Section key={g.day} title={gi === 0 ? `Transactions · ${g.day}` : g.day}>
+          <Section key={g.day} title={gi === 0 ? `Recent · ${g.day}` : g.day}>
             {g.items.map((a) => (
               <Row
                 key={a.id}

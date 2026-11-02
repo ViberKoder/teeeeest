@@ -124,7 +124,7 @@ The change from the claim returns to the player's own wallet, which then pays it
 * Telegram-native: colours from `--tg-theme-*`, grouped lists, the platform's `MainButton`/`BackButton`, haptics. The EGG card, pager, "Hatch" + "Send" buttons and the
   amount screen with its own keypad follow Money's layout; the identity is EGG's (the egg, a warm card, "nest" progress), with TON as the secondary card for fees.
 * Every proof is checked locally against the on-chain commitment before anything is sent.
-* **Home hero.** A real-time 3D egg (raw WebGL, no 3D library): drag to rotate with inertia, pinch / wheel to zoom, idle spin, tap for a burst of sparkles
+* **Home hero.** A real-time 3D egg (raw WebGL, no 3D library): drag to rotate with inertia, pinch / wheel to zoom (it always eases back to its resting pose and zoom on release), idle spin, tap for a burst of sparkles
   (point-sprite particles, Telegram-Premium style). Below it the egg counter (count-up), then Hatch / Send / Receive / Swap.
 * **Launch splash.** The `egghatch.tgs` sticker (gzip Lottie, played with `lottie-web` light) while the wallet opens; it falls back to the SVG egg where unsupported.
-* **Font.** Matter is a commercial font and is not bundled: put `Matter-*.woff2` into `app/public/fonts/` (see the README there); until then the system font is used.
+* **Font.** Onest (open licence, bundled through `@fontsource-variable/onest`, Latin + Cyrillic).

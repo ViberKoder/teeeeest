@@ -271,6 +271,7 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
     let q: Q = REST;
     let wx = 0, wy = 0; // angular velocity (rad/s) about world X and Y
     let zoom = 1, zoomTarget = 1;
+    let spin = 0, releasedAt = performance.now(), zoomTouched = 0;
     let squash = 0, squashV = 0;
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinch = 0;
@@ -282,7 +283,7 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
     const onDown = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      dragging = true; moved = 0; wx = 0; wy = 0;
+      dragging = true; moved = 0; wx = 0; wy = 0; releasedAt = Infinity;
       lastMove = performance.now();
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
@@ -297,6 +298,7 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
+        zoomTouched = performance.now();
         if (lastPinch) zoomTarget = Math.min(1.3, Math.max(0.65, zoomTarget * (d / lastPinch)));
         lastPinch = d;
         return;
@@ -313,10 +315,10 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
       pointers.delete(e.pointerId);
       if (pointers.size < 2) lastPinch = 0;
       if (pointers.size === 0) {
-        dragging = false;
+        dragging = false; releasedAt = performance.now(); zoomTouched = releasedAt;
         const now = performance.now();
         if (moved < 6) {
-          if (now - lastTap < 320) { zoomTarget = 1; q = REST; wx = wy = 0; } // double tap: reset
+          if (now - lastTap < 320) { zoomTarget = 1; q = REST; spin = 0; wx = wy = 0; } // double tap: reset
           else { fireBurst(true); haptic.tap(); }
           lastTap = now;
         }
@@ -326,6 +328,7 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      zoomTouched = performance.now();
       zoomTarget = Math.min(1.3, Math.max(0.65, zoomTarget * Math.exp(-e.deltaY * 0.0015)));
     };
     canvas.addEventListener('pointerdown', onDown);
@@ -376,16 +379,21 @@ export function Egg3D({ energy = 0, burst = 0, shaking = false, className }: Egg
         const speed = Math.hypot(wx, wy);
         if (speed < idle) wy += (idle - wy) * Math.min(1, dt * 1.5); // settle into the slow idle turn
         q = qNorm(qMul(qMul(qAxis([0, 1, 0], wy * dt), qAxis([1, 0, 0], wx * dt)), q));
-        // gently return the pitch towards upright so the egg never ends up lying on its side for long
-        const [x, y, z, ww] = q;
-        const ux = 2 * (x * y - z * ww), uy = 1 - 2 * (x * x + z * z), uz = 2 * (y * z + x * ww); // image of the model's Y axis
-        const tilt = Math.atan2(Math.hypot(ux, uz), uy);
-        if (tilt > 0.5 && speed < idle * 1.5) {
-          const ax: V3 = [uz, 0, -ux];
-          const al = Math.hypot(ax[0], ax[1], ax[2]) || 1;
-          q = qNorm(qMul(qAxis([ax[0] / al, 0, ax[2] / al], -Math.min(0.6, (tilt - 0.5) * 0.9) * dt * 2), q));
+        // after the finger lets go the egg always comes back to its resting pose (and the idle turn carries on from there)
+        spin += idle * dt;
+        if (now - releasedAt > 450) {
+          const target: Q = qMul(qAxis([1, 0, 0], -0.16), qAxis([0, 1, 0], 0.55 + spin));
+          const dot = q[0] * target[0] + q[1] * target[1] + q[2] * target[2] + q[3] * target[3];
+          const sg = dot < 0 ? -1 : 1;
+          const k = 1 - Math.exp(-dt * 3.2);
+          q = qNorm([
+            q[0] + (sg * target[0] - q[0]) * k, q[1] + (sg * target[1] - q[1]) * k,
+            q[2] + (sg * target[2] - q[2]) * k, q[3] + (sg * target[3] - q[3]) * k,
+          ]);
+          wx *= 0.9; wy = wy * 0.9 + idle * 0.1;
         }
       }
+      if (!dragging && now - zoomTouched > 700) zoomTarget = 1;
       if (L.shaking) {
         q = qNorm(qMul(qAxis([0, 0, 1], Math.sin(time * 38) * 0.02), q));
       }
