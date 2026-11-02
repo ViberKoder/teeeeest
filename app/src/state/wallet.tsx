@@ -72,6 +72,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [phase, setPhase] = useState<Phase>('boot');
   const [provider, setProvider] = useState<WalletProvider | null>(null);
   const [data, setData] = useState<Data>(empty);
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const [demo, setDemoState] = useState(false);
   const [marker, setMarker] = useState<Marker | null>(null);
   const [backupOn, setBackupOn] = useState(true);
@@ -140,11 +142,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         await provider.linkToAccount().catch(() => undefined);
         me = await api.me().catch(() => me);
       }
-      const [balance, egg, activity] = await Promise.all([
+      // each source stands on its own: a slow or throttled one must not blank what the others know
+      const [b, e, a] = await Promise.allSettled([
         ton().getBalance(provider.address),
         masterAddress ? readEgg(masterAddress, provider.address) : Promise.resolve(null),
-        loadActivity(provider.address, masterAddress).catch(() => [] as Activity[]),
+        loadActivity(provider.address, masterAddress),
       ]);
+      const prev = dataRef.current;
+      const balance = b.status === 'fulfilled' ? b.value : prev.ton;
+      const egg = e.status === 'fulfilled' ? e.value : prev.egg;
+      const activity = a.status === 'fulfilled' ? a.value : prev.activity;
+      const chainDown = b.status === 'rejected' || (masterAddress != null && e.status === 'rejected');
       const mine = me ? (me.address ? me.address === raw : true) : false;
       const claimed = egg?.claimed ?? 0n;
       const committed = me && mine && me.entitlement ? BigInt(me.entitlement.cumulative) : 0n;
@@ -152,7 +160,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const owed = me && mine ? BigInt(me.ledger) : 0n;
       const known = claimed > committed ? claimed : committed;
       const accruing = owed > known ? owed - known : 0n;
-      setData({ ton: balance, egg, me, activity, ready, accruing, loading: false, error: null });
+      setData({ ton: balance, egg, me, activity, ready, accruing, loading: false, error: chainDown ? 'Network is busy — retrying' : null });
     } catch {
       setData((d) => ({ ...d, loading: false, error: 'Network is unavailable' }));
     }
