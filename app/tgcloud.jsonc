@@ -1,5 +1,8 @@
 {
-  // Telegram Serverless: the built Mini App is served from https://app<id>.tgcloud.ai/
-  // Run `npm run build` first — `tgcloud push` uploads this folder as it is.
-  "source": "dist"
+  // The built Mini App (run `npm run build` first) is served at https://app<id>.tgcloud.ai/
+  "static": {
+    "source": "dist",
+    "spa": true
+  },
+  "$schema": "./node_modules/@tgcloud/cli/schema/tgcloud.json"
 }

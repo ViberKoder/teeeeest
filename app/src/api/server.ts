@@ -40,6 +40,29 @@ export const api = {
 
 export const proofCell = (e: Entitlement) => Cell.fromBase64(e.proof);
 
+/**
+ * The last verified entitlement is kept on the device. A proof is self-contained and stays valid against the
+ * on-chain root forever, so the user can still hatch if the API is gone — the contract, not the server, decides.
+ */
+const CACHE_KEY = 'egg.entitlement.v1';
+export const entitlementCache = {
+  read(owner: string): Entitlement | null {
+    try {
+      const e = JSON.parse(localStorage.getItem(CACHE_KEY) ?? 'null') as Entitlement | null;
+      return e && e.owner === owner ? e : null;
+    } catch {
+      return null;
+    }
+  },
+  write(e: Entitlement) {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(e));
+    } catch {
+      /* private mode: fine, the API is still the normal path */
+    }
+  },
+};
+
 const messages: Record<string, string> = {
   'address-locked': 'This Telegram account is already bound to another wallet',
   'address-taken': 'This wallet belongs to another Telegram account',

@@ -22,6 +22,7 @@ export function Home() {
   if (!provider) return null;
 
   const D = cfg.token.decimals;
+  const eggOn = Boolean(w.masterAddress); // EGG is shown only when a token master is configured
   const eggBalance = data.egg?.balance ?? 0n;
   const nest = data.ready + data.accruing;
   const total = eggBalance + nest;
@@ -44,26 +45,28 @@ export function Home() {
         <div className="label">Balance</div>
         {first ? (
           <div className="skeleton" style={{ height: 50, width: 200, margin: '8px auto' }} />
-        ) : (
+        ) : eggOn ? (
           <div className="amount num">{formatUnits(total, D, 2)}<small>EGG</small></div>
+        ) : (
+          <div className="amount num">{formatUnits(data.ton, 9, 3)}<small>TON</small></div>
         )}
         <div className="sub num">
-          {nest > 0n ? `${formatUnits(eggBalance, D, 2)} in wallet · ${formatUnits(nest, D, 2)} in the nest` : `${formatUnits(data.ton, 9, 3)} TON for fees`}
+          {!eggOn ? 'Self-custody TON wallet' : nest > 0n ? `${formatUnits(eggBalance, D, 2)} in wallet · ${formatUnits(nest, D, 2)} in the nest` : `${formatUnits(data.ton, 9, 3)} TON for fees`}
         </div>
       </div>
 
-      <div className="tiles">
+      <div className="tiles" style={eggOn ? undefined : { gridTemplateColumns: 'repeat(2, 1fr)' }}>
         <button className="tile" onClick={() => setOpen('send')}><span className="tile-ic"><Send width={18} height={18} /></span>Send</button>
         <button className="tile" onClick={() => setOpen('receive')}><span className="tile-ic"><Receive width={18} height={18} /></span>Receive</button>
-        <button
+        {eggOn && <button
           className={`tile ${data.ready > 0n ? 'hot' : ''}`}
           onClick={() => (data.ready > 0n ? setOpen('claim') : toast(nest > 0n ? 'Still hatching — it joins the next blockchain update' : 'Nothing in the nest yet'))}
         >
           <span className="tile-ic"><Sparkle width={18} height={18} /></span>Hatch
-        </button>
+        </button>}
       </div>
 
-      {nest > 0n && (
+      {eggOn && nest > 0n && (
         <button className="nest" onClick={() => data.ready > 0n && setOpen('claim')}>
           <Egg size={34} />
           <div className="grow" style={{ minWidth: 0 }}>
@@ -84,12 +87,12 @@ export function Home() {
       )}
 
       <Section title="Assets">
-        <Row
+        {eggOn && <Row
           icon={<span className="row-icon icon-egg"><EggMark /></span>}
           title="EGG"
           subtitle={nest > 0n ? `+ ${formatUnits(nest, D, 2)} in the nest` : 'Egg token'}
           trailing={<span className="num">{formatUnits(eggBalance, D, 2)}</span>}
-        />
+        />}
         <Row
           icon={<span className="row-icon icon-ton"><TonMark /></span>}
           title="TON"

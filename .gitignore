@@ -12,3 +12,6 @@ coverage/
 .vscode/
 .idea/
 *.tsbuildinfo
+
+# Telegram Serverless CLI state (credentials, snapshot)
+.tgcloud/

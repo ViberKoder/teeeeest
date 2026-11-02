@@ -9,7 +9,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5190",
     "test": "vitest run",
-    "manifest": "node scripts/write-manifest.mjs"
+    "manifest": "node scripts/write-manifest.mjs",
+    "deploy": "npm run build && tgcloud push",
+    "status": "tgcloud status"
   },
   "dependencies": {
     "@ton/core": "^0.62.0",
@@ -32,6 +34,7 @@
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.4.5",
     "vite": "^5.3.3",
-    "vitest": "^2.0.5"
+    "vitest": "^2.0.5",
+    "@tgcloud/cli": "0.2.0"
   }
 }

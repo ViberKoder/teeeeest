@@ -18,7 +18,7 @@ const dec = 9;
 export function SendPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
-  const [asset, setAsset] = useState<Asset>(data.egg && data.egg.balance > 0n ? 'EGG' : 'TON');
+  const [asset, setAsset] = useState<Asset>(masterAddress && data.egg && data.egg.balance > 0n ? 'EGG' : 'TON');
   const [to, setTo] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [comment, setComment] = useState('');
@@ -104,11 +104,11 @@ export function SendPage({ onClose }: { onClose: () => void }) {
 
   return (
     <Page title="Send" onBack={onClose} bottomSpace>
-      <div className="seg" style={{ marginTop: 6 }}>
+      {masterAddress && <div className="seg" style={{ marginTop: 6 }}>
         {(['EGG', 'TON'] as Asset[]).map((a) => (
           <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
         ))}
-      </div>
+      </div>}
 
       <Section>
         <div className="amount-box">

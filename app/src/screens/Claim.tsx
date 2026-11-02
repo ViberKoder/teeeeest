@@ -1,7 +1,7 @@
 import { Address, toNano } from '@ton/core';
 import { verifyEntitlement } from '@egg/sdk';
 import { useState } from 'react';
-import { api, apiErrorText, proofCell } from '../api/server';
+import { api, apiErrorText, entitlementCache, proofCell } from '../api/server';
 import { eggClaim } from '../chain/actions';
 import { onchainCommitment, readEgg, walletInit } from '../chain/egg';
 import { cfg } from '../config';
@@ -42,10 +42,15 @@ export function ClaimPage({ onClose }: { onClose: () => void }) {
       const raw = provider.address.toRawString();
       setStep(1);
       if (data.me?.address !== raw) await api.link(raw);
-      const ent = await api.entitlement(raw);
+      const ent = await api.entitlement(raw).catch((e: unknown) => {
+        const cached = entitlementCache.read(raw);
+        if (cached) return cached; // the server is unreachable, but a verified proof is still good
+        throw e;
+      });
       const commitment = await onchainCommitment(masterAddress, ent.epoch);
       if (!commitment) throw new Error('epoch-not-on-chain');
       if (!verifyEntitlement(ent, commitment)) throw new Error('proof-mismatch');
+      entitlementCache.write(ent);
       setEpoch(ent.epoch);
 
       const cumulative = BigInt(ent.cumulative);
