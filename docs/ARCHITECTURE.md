@@ -64,6 +64,8 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
 | A compromised publisher key can raise the promised total by at most `maxGrowth` per period | the minter's growth window (a claim whose root raises `maxTotal` must fit it) |
 | After a key rotation the old key can promise nothing new | `legacyCap` |
 | Two different roots can not share a `seq` | the last-slot check at claim time |
+| **A cheating publisher is caught on-chain** | `ProveFraud`: anyone submits two roots the key signed that an honest publisher never would (same `seq` / smaller later total / an owner's amount going down, with Merkle proofs). The contract checks it and **freezes the key**: it can no longer raise the promised total until the admin rotates it. Everything already promised stays claimable |
+| **No single wallet can be handed a fortune** | per-wallet ceiling: a claim is refused if the wallet's amount exceeds `walletBurst + walletDaily × days since launch` (1000 EGG/day on testnet), whatever the key signed |
 | Admin can not mint, and can only tighten limits | contract code |
 | `totalSupply` on-chain is truthful | minted at claim time; burns subtract |
 
@@ -71,7 +73,8 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
 
 * **Who is in the tree and for how much** is the publisher's decision: the contract bounds the total, not the allocation.
 * **Amounts earned but not yet in a signed root** (seconds, or until the player's next request) are the bot's promise, shown as "hatching".
-* **Equivocation.** The publisher *can* sign two different roots at different `seq` values; the contract bounds the total they can promise, and the public log of every signed root (`roots` table, mirrored) makes it detectable by anyone. It can not be prevented on-chain without publishing every root.
+* **Fake players.** The publisher could invent Telegram accounts. The growth limit and the per-wallet ceiling bound what that can create; every leaf is a wallet that signed its own link, and the stats beacon and the explorer make the numbers public.
+* **Omission.** Not including someone in *new* roots can not be proven on-chain (an earlier root still pays them, forever).
 * **Data availability.** To build a proof one needs the leaf set; the wallet app caches the last verified (signed root + proof) on the device and a signed root never expires.
 * **A failed claim keeps its TON** in the user's wallet contract (bounced messages return there). The app avoids it by verifying locally first.
 * **Not externally audited.**

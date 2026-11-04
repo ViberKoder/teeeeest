@@ -246,8 +246,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (phase !== 'ready') return;
     void refresh();
-    const t = setInterval(() => void refresh(), 20_000);
-    return () => clearInterval(t);
+    // refresh while the wallet is on screen; a hidden Mini App does not poll (battery, rate limits)
+    const t = setInterval(() => { if (!document.hidden) void refresh(); }, 20_000);
+    const onShow = () => { if (!document.hidden) void refresh(); };
+    document.addEventListener('visibilitychange', onShow);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); };
   }, [phase, refresh]);
 
   const value: Ctx = {

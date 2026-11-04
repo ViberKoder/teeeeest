@@ -86,6 +86,8 @@ export const api = {
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string, replace = false) =>
     call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),
+  /** the bot pays a new player's first network fee (once per account) */
+  gas: () => call<{ status: 'sent' | 'enough' }>('/v1/gas', { method: 'POST', body: '{}' }),
   /** live project numbers (explorer inside Telegram) */
   stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
   /** internal data for a wallet or @username, to compare with the chain */

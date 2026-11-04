@@ -18,7 +18,7 @@ async function sendLink(chatId, private_, who, amount) {
   // web_app buttons work only in private chats; elsewhere a link brings the user to the bot first
   const markup = private_
     ? openWallet(label, q)
-    : { inline_keyboard: [[{ text: label, url: `https://t.me/${BOT_USERNAME}?start=send_${who}_${amount || ''}` }]] };
+    : { inline_keyboard: [[{ text: label, url: `https://t.me/${BOT_USERNAME}?start=send-${who}-${(amount || '').replace('.', 'p')}` }]] };
   return say(chatId, `Confirm in your wallet — it is signed by your own key.`, markup);
 }
 
@@ -42,9 +42,10 @@ export default async function (m) {
   if (cmd === '/start') {
     const p = args[0] ?? '';
     if (p.startsWith('ref_')) await setReferrer(m.from.id, Number(p.slice(4)), now);
-    if (p.startsWith('send_')) {
-      const [, who, amount] = p.split('_');
-      if (USER.test(who ?? '')) return sendLink(m.chat.id, true, who, /^\d+(\.\d+)?$/.test(amount ?? '') ? amount : '');
+    if (p.startsWith('send-')) {
+      const [, who, raw] = p.split('-');
+      const amount = (raw ?? '').replace('p', '.');
+      if (USER.test(who ?? '')) return sendLink(m.chat.id, true, who, /^\d+(\.\d+)?$/.test(amount) ? amount : '');
     }
     return say(
       m.chat.id,

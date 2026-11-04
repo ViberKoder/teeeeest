@@ -5,7 +5,7 @@ import { chats } from '../schema.js';
 import { REWARD } from '../lib/config.js';
 import { hatchEgg, parseEggData } from '../lib/eggs.js';
 import { balanceOf, credit, fmtEgg } from '../lib/ledger.js';
-import { countHatch, POST_DATA, publishPost } from '../lib/posts.js';
+import { countHatch, findPost, POST_DATA, publishPost } from '../lib/posts.js';
 import { answer, isAdmin } from '../lib/telegram.js';
 import { maybeBeacon } from '../lib/beacon.js';
 
@@ -31,6 +31,8 @@ export default async function (q) {
   if (q.data === POST_DATA && q.message) {
     const chat = q.message.chat;
     if (chat.type === 'private') return answer(q, 'This egg is retired — hatch eggs under channel posts or ones friends send you.', true);
+    // only posts the bot published (or adopted) in a channel one of our admins connected pay anything
+    if (!(await findPost(chat.id, q.message.message_id))) return answer(q, 'This post is not part of the game.');
     const r = await credit({ tgId: q.from.id, amount: REWARD.post, kind: 'post', ref: `post:${chat.id}:${q.message.message_id}:${q.from.id}`, now });
     if (r === 'cap') return answer(q, 'Daily limit reached — come back tomorrow!', true);
     if (r === 'again') return answer(q, 'You already hatched this egg. Watch the channel for the next one!');

@@ -25,5 +25,10 @@ export const PAIR_DAILY_CAP = 3; // the same sender + hatcher pair earns at most
 export const MULTI_MAX = 100; // a multi egg can be hatched by up to this many people
 export const SENDS_PER_DAY = 200; // eggs one player can send in a day
 
+// ---- the first claim's network fee, paid by the bot (once per account, only for players who earned something)
+export const GAS_AMOUNT = 100000000n; // 0.1 TON: a claim attaches 0.08 and gets most of it back
+export const GAS_MIN_EARNED = 3n * EGG;
+export const GAS_DAILY_BUDGET = 50; // accounts per day
+
 // ---- public stats beacon (written on-chain by the vault, read by hatch.tg) ----
 export const BEACON_EVERY = 300; // seconds, at most; only when something changed

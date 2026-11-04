@@ -36,6 +36,6 @@ export default async function (input, ctx) {
   const owner = await db.select().from(users).where(eq(users.address, address)).get();
   if (owner && owner.tgId !== id) throw new EndpointError('address-taken', { code: 'address-taken' });
   await db.update(users).set({ address, publicKey: key, linkSig: sig, verified: 1 }).where(eq(users.tgId, id)).run();
-  await invalidate(); // a new wallet link changes who is in the next root
+  if (me.address !== address || !me.verified) await invalidate(); // a new wallet link changes who is in the next root
   return { ok: true, address };
 }

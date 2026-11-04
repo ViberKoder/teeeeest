@@ -22,6 +22,19 @@ What the contract still enforces on its own: the signature on the root, that the
 
 What it gives up: roots are no longer public on-chain objects, so **equivocation** (different roots at different `seq` values) is *bounded and detectable* (public log), not prevented. Tests: `claims.test.tolk` (bad signature, other minter, lying total, growth, permanence of old roots, disjoint roots vs the cap, same-`seq` fork, key rotation + legacy cap).
 
+## Audit of v4 (contract + bot + app) — found and fixed
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 7 | **High** | Two concurrent requests could sign **two different roots with the same `seq`**; anyone holding both could freeze the key with `ProveFraud`. | Only the root stored in the log is ever returned; a losing concurrent build is discarded. Totals never go down between roots. |
+| 8 | **High** | Anyone could add the bot as admin to their own channel and post `#hatch` posts to farm EGG. | Channels count only if one of the project's admins made the bot an administrator; a Hatch tap pays only on posts the bot published or adopted. |
+| 9 | Medium | Daily cap checked before the insert: simultaneous taps could exceed it. | Cap and insert are one SQL statement. |
+| 10 | Medium | Wallet linking rewrote the timestamps of the whole root log. | Only the newest root is marked stale; history is untouched. |
+| 11 | Medium | Every wallet open aggregated the whole ledger. | A signed root is reused for 3 s without touching the ledger. |
+| 12 | Medium | New players without TON could not claim at all (the sponsor server was gone). | `gas`: the bot pays the first fee once per account, only after 3 EGG earned, 50 accounts/day. |
+| 13 | Low | `/start send_…` broke on usernames with `_`; a send link reopened on every reload; the wallet polled while hidden; all screens loaded up front. | `send-<user>-<amount>`, the URL is cleared, polling pauses when hidden, secondary screens are lazy. |
+| 14 | Low | The stats beacon could get stuck after a failed send. | The slot is released on failure. |
+
 ## Checked and fine
 
 * Claims verify a proof against a root the minter itself stores; the wallet accepts credit only from the minter; leaf/node/root hashes carry distinct tags and lengths (no second-preimage reuse of a node as a leaf); sums are `uint128` and range-checked on serialisation; proof depth is capped (64 steps).

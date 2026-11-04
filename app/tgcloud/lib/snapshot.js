@@ -35,9 +35,10 @@ async function chainLimits(now) {
 /** The newest signed root, rebuilt when the ledger moved (at most every few seconds). */
 export async function currentRoot(now) {
   const last = await db.select().from(roots).orderBy(desc(roots.seq)).limit(1).get();
-  const fresh = last && now - last.createdAt < REBUILD_EVERY;
+  // a root is reused for a few seconds without even looking at the ledger (opening the wallet must stay cheap)
+  if (last && last.version !== 'stale' && now - last.createdAt < REBUILD_EVERY) return last;
   const { leaves, version } = await ledger();
-  if (last && (fresh || last.version === version)) return last;
+  if (last && last.version === version) return last;
   if (!leaves.length) return last ?? null;
 
   // never sign what the contract would refuse: the growth budget for the total, and the per-wallet ceiling for each leaf
@@ -52,7 +53,10 @@ export async function currentRoot(now) {
     seq, version, treeRoot: hex(tree.treeRoot), total: tree.total.toString(), signature: hex(signature), createdAt: now,
     leaves: JSON.stringify(tree.leaves.map((l) => [l.owner, l.cumulative.toString()])),
   };
-  await db.insert(roots).values(row).onConflictDoNothing().run();
+  // Two requests may build seq N at the same moment. Only the stored one is ever handed out: a second, different root for the
+  // same seq would be provable fraud (ProveFraud) and freeze the key.
+  const stored = await db.insert(roots).values(row).onConflictDoNothing().returning().run();
+  if (!stored.length) return db.select().from(roots).where(eq(roots.seq, seq)).get();
   await db.update(roots).set({ leaves: '' }).where(lt(roots.seq, seq)).run(); // only the newest keeps its leaf set
   return row;
 }
@@ -73,8 +77,8 @@ export async function entitlementFor(address, now) {
   };
 }
 
-/** Marks the newest root stale (the ledger's wallet links changed): the next request signs a fresh one. */
+/** Marks the newest root stale (the ledger's wallet links changed): the next request signs a fresh one. History is not touched. */
 export async function invalidate() {
-  await db.update(roots).set({ version: 'stale', createdAt: 0 }).run();
+  const last = await db.select().from(roots).orderBy(desc(roots.seq)).limit(1).get();
+  if (last) await db.update(roots).set({ version: 'stale' }).where(eq(roots.seq, last.seq)).run();
 }
-void eq;

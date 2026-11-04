@@ -1,6 +1,6 @@
 // Channel posts with a Hatch button: publishing (admins only), counting, and their public view counter.
 import { api, db, fetch } from 'sdk';
-import { and, eq, lt } from 'sdk/db';
+import { and, eq, lt, sql } from 'sdk/db';
 import { posts } from '../schema.js';
 import { APP_URL } from './config.js';
 import { quietly } from './telegram.js';
@@ -27,12 +27,14 @@ export async function adoptPost({ chatId, messageId, username, now }) {
   await db.insert(posts).values({ chatId, messageId, username: username ?? null, createdBy: 0, createdAt: now }).onConflictDoNothing().run();
 }
 
+export const findPost = (chatId, messageId) => db.select().from(posts).where(and(eq(posts.chatId, chatId), eq(posts.messageId, messageId))).get();
+
 /** One more hatch on a post; the button's counter is updated at most every few seconds (Telegram limits edits). */
 export async function countHatch({ chatId, messageId, now }) {
-  await db.insert(posts).values({ chatId, messageId, createdBy: 0, createdAt: now }).onConflictDoNothing().run();
-  const p = await db.select().from(posts).where(and(eq(posts.chatId, chatId), eq(posts.messageId, messageId))).get();
+  const p = await findPost(chatId, messageId);
+  if (!p) return 0;
   const n = p.hatches + 1;
-  await db.update(posts).set({ hatches: n }).where(eq(posts.id, p.id)).run();
+  await db.update(posts).set({ hatches: sql`${posts.hatches} + 1` }).where(eq(posts.id, p.id)).run();
   if (now - p.editedAt >= 4) {
     const claimed = await db.update(posts).set({ editedAt: now }).where(and(eq(posts.id, p.id), lt(posts.editedAt, now - 3))).returning().run();
     if (claimed.length) await quietly(api.editMessageReplyMarkup({ chat_id: chatId, message_id: messageId, reply_markup: hatchKeyboard(n) }));

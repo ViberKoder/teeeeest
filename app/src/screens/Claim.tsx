@@ -1,7 +1,7 @@
 import { Address } from '@ton/core';
 import { Attach } from '@egg/sdk';
 import { useState } from 'react';
-import { apiErrorText } from '../api/server';
+import { api, apiErrorText } from '../api/server';
 import { loadVerifiedEntitlement } from '../chain/entitlement';
 import { eggClaim } from '../chain/actions';
 import { readEgg } from '../chain/egg';
@@ -14,6 +14,7 @@ import { FRAMES } from '../lib/sticker';
 import { Sticker, StickerMode } from '../ui/Sticker';
 import { MainButton, Page } from '../ui/native';
 import { NeedTonError } from '../provider/tg';
+import { askForGas } from '../chain/gas';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -34,14 +35,15 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
   const [moved, setMoved] = useState(0n);
   if (!provider || !masterAddress) return null;
 
-  const sponsored = (data.me?.sponsored_left ?? 0) > 0;
+  // a player who never got TON: the bot pays their first network fee (api.gas), so the button stays enabled inside Telegram
+  const sponsored = data.ton < Attach.claim && api.available();
   const lowTon = data.ton < Attach.claim && !sponsored;
   const mode: StickerMode =
     status === 'working' ? { kind: 'loop', from: FRAMES.egg, to: FRAMES.cracked, speed: 1.4 }
     : status === 'done' ? { kind: 'play', from: FRAMES.cracked, to: FRAMES.hatched + 8 }
     : { kind: 'still', frame: FRAMES.egg };
 
-  const run = async () => {
+  const run = async (retried = false): Promise<void> => {
     setStatus('working');
     setErr('');
     setMoved(data.ready);
@@ -67,6 +69,8 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
       haptic.success();
       setStatus('done');
     } catch (e) {
+      // no TON yet for the network fee: the bot pays a new player's first one, then we simply try again
+      if (e instanceof NeedTonError && !retried && provider && (await askForGas(provider))) return run(true);
       haptic.error();
       const m = e instanceof Error ? e.message : '';
       setErr(
@@ -77,7 +81,7 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
             : m === 'already-claimed'
               ? 'Everything committed so far is already in your wallet.'
               : e instanceof NeedTonError
-                ? 'Your free hatches are used up. Add about 0.1 TON to your wallet to cover the network fee.'
+                ? 'Add about 0.1 TON to your wallet to cover the network fee (the bot pays only the first one).'
                 : /reject|denied|cancel/i.test(m)
                   ? 'The transaction was cancelled.'
                   : apiErrorText(e),
@@ -116,7 +120,7 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
             <p className="hint" style={{ fontSize: 16, maxWidth: 330 }}>
               Your amount is committed in a public root on the blockchain. Hatching asks the token contract itself to verify your proof — the server cannot take it back or change it.
             </p>
-            {sponsored && data.ton < Attach.claim && <p className="hint" style={{ color: 'var(--good)' }}>This one is on us — we cover the network fee for your first hatches.</p>}
+            {sponsored && <p className="hint" style={{ color: 'var(--good)' }}>Your first network fee is on us — the bot sends a little TON, then hatching continues by itself.</p>}
             {lowTon && <p className="hint bad">You need about {formatUnits(Attach.claim, 9, 2)} TON for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
             {status === 'error' && <p className="hint bad">{err}</p>}
           </>
@@ -126,7 +130,7 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
       {status === 'done' ? (
         <MainButton text="Done" onClick={() => onClose(true)} />
       ) : (
-        <MainButton text={status === 'error' ? 'Try again' : 'Hatch to my wallet'} onClick={run} enabled={!lowTon} loading={status === 'working'} />
+        <MainButton text={status === 'error' ? 'Try again' : 'Hatch to my wallet'} onClick={() => void run()} enabled={!lowTon} loading={status === 'working'} />
       )}
     </Page>
   );

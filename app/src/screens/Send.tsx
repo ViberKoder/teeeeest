@@ -8,6 +8,7 @@ import { cfg } from '../config';
 import { formatUnits, parseUnits, shortAddr } from '../lib/format';
 import { haptic, shareLink } from '../lib/tg';
 import { NeedTonError } from '../provider/tg';
+import { askForGas } from '../chain/gas';
 import { useWallet } from '../state/wallet';
 import { Burst, EggMark, TonMark } from '../ui/Egg';
 import { Check } from '../ui/Icons';
@@ -106,7 +107,7 @@ export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () =>
     }
   };
 
-  const submit = async () => {
+  const submit = async (retried = false): Promise<void> => {
     if (!dest || !amount) return;
     setStep('sending');
     setErr('');
@@ -144,6 +145,8 @@ export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () =>
       setStep('done');
       setTimeout(() => void w.refresh(), 5000);
     } catch (e) {
+      // a new player's first network fee is paid by the bot; then the very same request is sent again
+      if (e instanceof NeedTonError && !retried && (await askForGas(provider))) return submit(true);
       haptic.error();
       const m = e instanceof Error ? e.message : '';
       setErr(
@@ -221,7 +224,7 @@ export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () =>
           text={amount && amount > 0n ? `Send ${amountStr} ${asset}` : 'Enter an amount'}
           enabled={Boolean(amount && amount > 0n && !amountProblem)}
           loading={step === 'sending'}
-          onClick={submit}
+          onClick={() => void submit()}
         />
       </Page>
     );

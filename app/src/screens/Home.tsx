@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { cfg, endpoints } from '../config';
 import { formatUnits, shortAddr } from '../lib/format';
 import { haptic, openExternal } from '../lib/tg';
@@ -10,11 +10,12 @@ import { Row, Section } from '../ui/native';
 import { useToast } from '../ui/toast';
 import { useCountUp } from '../ui/useCountUp';
 import type { Activity } from '../chain/history';
-import { ClaimPage } from './Claim';
-import { IntroPage } from './Intro';
-import { ReceivePage } from './Receive';
-import { SendPage } from './Send';
-import { SettingsPage } from './Settings';
+// secondary screens load on first use: the wallet opens without waiting for them
+const ClaimPage = lazy(() => import('./Claim').then((m) => ({ default: m.ClaimPage })));
+const IntroPage = lazy(() => import('./Intro').then((m) => ({ default: m.IntroPage })));
+const ReceivePage = lazy(() => import('./Receive').then((m) => ({ default: m.ReceivePage })));
+const SendPage = lazy(() => import('./Send').then((m) => ({ default: m.SendPage })));
+const SettingsPage = lazy(() => import('./Settings').then((m) => ({ default: m.SettingsPage })));
 
 type Open = null | 'send' | 'receive' | 'claim' | 'settings' | 'intro';
 
@@ -44,7 +45,10 @@ export function Home() {
   // a "send" link from the bot (/send @user 10) opens the Send screen prefilled — the user still confirms it with their own key
   const [prefill] = useState(() => {
     const q = new URLSearchParams(location.search);
-    return q.get('send') ? { to: q.get('send') ?? '', amount: q.get('amount') ?? '' } : null;
+    if (!q.get('send')) return null;
+    const p = { to: q.get('send') ?? '', amount: q.get('amount') ?? '' };
+    history.replaceState(null, '', location.pathname + location.hash); // once: a reload must not reopen it
+    return p;
   });
   const [open, setOpen] = useState<Open>(prefill ? 'send' : w.firstRun ? 'intro' : null);
   const [burst, setBurst] = useState(0);
@@ -165,11 +169,13 @@ export function Home() {
       <button className="btn link" style={{ marginTop: 4 }} onClick={() => setOpen('intro')}>How does it work?</button>
       {data.error && <p className="hint bad center" style={{ marginTop: 10 }}>{data.error}</p>}
 
+      <Suspense fallback={null}>
       {open === 'send' && <SendPage onClose={close} initialTo={prefill?.to} initialAmount={prefill?.amount} />}
       {open === 'receive' && <ReceivePage onClose={close} />}
       {open === 'claim' && <ClaimPage onClose={(hatched?: boolean) => { close(); if (hatched) setBurst((b) => b + 1); }} />}
       {open === 'settings' && <SettingsPage onClose={close} />}
       {open === 'intro' && <IntroPage onClose={close} />}
+      </Suspense>
     </div>
   );
 }

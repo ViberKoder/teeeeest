@@ -43,13 +43,19 @@ export async function maybeBeacon(now) {
     if (h === s.lastCommitment) return 'unchanged';
     const got = await db.update(state).set({ lastPublishAt: now, lastCommitment: h }).where(and(eq(state.id, ROW), lt(state.lastPublishAt, now - BEACON_EVERY + 1))).returning().run();
     if (!got.length) return 'busy';
-    const seqno = await seqnoOf(VAULT);
-    if (seqno === null) return 'no-wallet';
-    const boc = await externalSend({ wallet: VAULT, seed: fromHex(VAULT_SEED), subwalletId: SUBWALLET[NETWORK], seqno, validUntil: now + 240, to: VAULT, value: 1000000n, body: commentCell(`egg-stats:v1 ${json}`), bounce: false });
-    await sendBoc(toBase64(boc));
-    return 'sent';
+    try {
+      const seqno = await seqnoOf(VAULT);
+      if (seqno === null) throw new Error('vault not deployed');
+      const boc = await externalSend({ wallet: VAULT, seed: fromHex(VAULT_SEED), subwalletId: SUBWALLET[NETWORK], seqno, validUntil: now + 240, to: VAULT, value: 1000000n, body: commentCell(`egg-stats:v1 ${json}`), bounce: false });
+      await sendBoc(toBase64(boc));
+      return 'sent';
+    } catch (e) {
+      // not sent: let the next activity try again
+      await db.update(state).set({ lastPublishAt: s.lastPublishAt, lastCommitment: s.lastCommitment }).where(eq(state.id, ROW)).run();
+      throw e;
+    }
   } catch (e) {
     console.warn('beacon', String(e?.message ?? e));
-    return 'error';
+    return `error: ${String(e?.message ?? e)}`;
   }
 }

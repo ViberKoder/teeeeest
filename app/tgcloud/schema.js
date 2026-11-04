@@ -13,6 +13,8 @@ export const users = table('users', {
   linkSig: text('link_sig'),
   // who invited this player (set once, from /start ref_<id>)
   referrer: integer('referrer'),
+  // when the bot paid this player's first network fee (once per account)
+  gasAt: integer('gas_at').notNull().default(0),
   // 1 once the signature was checked (ed25519) and the address was derived from that key
   verified: integer('verified').notNull().default(0),
   // 1 once this address was included in a root sent on-chain: from then on it is the account's wallet for good
