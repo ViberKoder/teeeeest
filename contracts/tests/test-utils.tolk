@@ -37,7 +37,7 @@ struct Env {
     kp: KeyPair
 }
 
-fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY): Env {
+fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY, walletDaily: coins = MAX_SUPPLY, walletBurst: coins = MAX_SUPPLY): Env {
     testing.setNow(1800000000);
     val admin = testing.treasury("admin");
     val kp = crypto.seedToKeyPair(1234567);
@@ -48,13 +48,16 @@ fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY): E
         adminAddress: admin.address,
         nextAdminAddress: null,
     };
-    val keys: Keys = { publisherKey: kp.publicKey, legacyKey: 0, legacyCap: 0 };
+    val keys: Keys = { publisherKey: kp.publicKey, legacyKey: 0, legacyCap: 0, frozen: false };
     val limits: Limits = {
         maxGrowth,
         periodSeconds: 3600,
         windowStart: 0,
         windowGrowth: 0,
         maxTotal: 0,
+        walletDaily,
+        walletBurst,
+        launchAt: 1800000000,
     };
     val minter = EggMinter.fromStorage({
         totalSupply: 0,

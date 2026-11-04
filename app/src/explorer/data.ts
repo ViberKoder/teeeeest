@@ -1,0 +1,97 @@
+import { Address } from '@ton/core';
+import { SignedRoot, verifySignedRoot } from '@egg/sdk';
+import { runGetter, tonapiFetch } from '../chain/tonapi';
+import { cfg } from '../config';
+
+/** What the token contract itself says (read through TonAPI, nothing from our bot). */
+export interface Chain {
+  supply: bigint;
+  holders: number;
+  maxSupply: bigint;
+  maxTotal: bigint;
+  maxGrowth: bigint;
+  periodSeconds: number;
+  windowGrowth: bigint;
+  walletDaily: bigint;
+  frozen: boolean;
+  publisherKey: Buffer;
+}
+
+const minter = () => Address.parse(cfg.master);
+
+export async function readChain(): Promise<Chain> {
+  const raw = minter().toRawString();
+  const [jetton, limits, key, max] = await Promise.all([
+    tonapiFetch(`/v2/jettons/${raw}`).then((r) => r.json() as Promise<{ total_supply?: string; holders_count?: number }>),
+    runGetter(raw, 'get_limits'),
+    runGetter(raw, 'get_publisher_key'),
+    runGetter(raw, 'get_max_supply'),
+  ]);
+  const l = limits ?? [];
+  return {
+    supply: BigInt(jetton.total_supply ?? '0'),
+    holders: jetton.holders_count ?? 0,
+    maxSupply: max?.[0] ?? 0n,
+    maxGrowth: l[0] ?? 0n,
+    periodSeconds: Number(l[1] ?? 0n),
+    windowGrowth: l[3] ?? 0n,
+    maxTotal: l[4] ?? 0n,
+    walletDaily: l[5] ?? 0n,
+    frozen: (l[8] ?? 0n) !== 0n,
+    publisherKey: Buffer.from((key?.[0] ?? 0n).toString(16).padStart(64, '0'), 'hex'),
+  };
+}
+
+/** Claims seen by the minter (each is one player proving their share against a signed root). */
+export interface ClaimTx { t: number; hash: string; wallet: string; ok: boolean }
+export async function recentClaims(): Promise<ClaimTx[]> {
+  const r = await tonapiFetch(`/v2/blockchain/accounts/${minter().toRawString()}/transactions?limit=30`);
+  if (!r.ok) return [];
+  const j = (await r.json()) as { transactions: { utime: number; hash: string; success: boolean; in_msg?: { op_code?: string; source?: { address: string } } }[] };
+  return j.transactions
+    .filter((t) => t.in_msg?.op_code === '0x87a42c7c')
+    .map((t) => ({ t: t.utime, hash: t.hash, wallet: t.in_msg?.source?.address ?? '', ok: t.success }));
+}
+
+/** The public stats beacon: comments the bot's own wallet writes to itself. Only that wallet's key can write them. */
+export interface Beacon { t: number; u: number; w: number; p: string; e: number; po: number; vi: number; eg: number; r: [number, string, string, string] | null; tx: string }
+export async function readBeacons(): Promise<Beacon[]> {
+  if (!cfg.vault) return [];
+  const vault = Address.parse(cfg.vault).toRawString();
+  const r = await tonapiFetch(`/v2/accounts/${vault}/events?limit=100`);
+  if (!r.ok) return [];
+  const j = (await r.json()) as { events: { event_id: string; actions: { type: string; TonTransfer?: { sender: { address: string }; recipient: { address: string }; comment?: string } }[] }[] };
+  const out: Beacon[] = [];
+  for (const ev of j.events) {
+    for (const a of ev.actions) {
+      const t = a.TonTransfer;
+      if (a.type !== 'TonTransfer' || !t?.comment?.startsWith('egg-stats:v1 ')) continue;
+      // written BY the bot's wallet (anyone can send a comment TO it; only the bot can send FROM it)
+      if (Address.parseRaw(t.sender.address).toRawString() !== vault) continue;
+      try {
+        out.push({ ...(JSON.parse(t.comment.slice(13)) as Omit<Beacon, 'tx'>), tx: ev.event_id });
+      } catch {
+        /* not ours */
+      }
+    }
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
+
+export const rootFromTuple = (r: [number, string, string, string]): SignedRoot => ({ seq: String(r[0]), total: r[1], treeRoot: r[2], signature: r[3] });
+
+/** A root is the publisher's only if the key stored in the token contract signed it. */
+export const rootIsSigned = (root: SignedRoot, key: Buffer) => verifySignedRoot(minter(), root, key);
+
+/** One wallet as the chain sees it: its EGG and how much it has claimed. */
+export async function walletOnChain(owner: Address): Promise<{ balance: bigint; claimed: bigint }> {
+  const r = await tonapiFetch(`/v2/accounts/${owner.toRawString()}/jettons/${minter().toRawString()}`);
+  if (!r.ok) return { balance: 0n, claimed: 0n };
+  const j = (await r.json()) as { balance?: string; wallet_address?: { address: string } };
+  let claimed = 0n;
+  if (j.wallet_address?.address) {
+    const cs = await runGetter(j.wallet_address.address, 'get_claim_state').catch(() => null);
+    claimed = cs?.[0] ?? 0n;
+  }
+  return { balance: BigInt(j.balance ?? '0'), claimed };
+}

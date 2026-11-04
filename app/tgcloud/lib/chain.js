@@ -60,6 +60,9 @@ export async function balanceOf(address) {
 export async function limitsOf(minter) {
   const s = await get(minter, 'get_limits');
   if (!s) throw new Error('minter is not reachable');
-  const [maxGrowth, periodSeconds, windowStart, windowGrowth, maxTotal] = s.map(num);
-  return { maxGrowth, periodSeconds: Number(periodSeconds), windowStart: Number(windowStart), windowGrowth, maxTotal };
+  const [maxGrowth, periodSeconds, windowStart, windowGrowth, maxTotal, walletDaily, walletBurst, launchAt, frozen] = s.map(num);
+  return {
+    maxGrowth, periodSeconds: Number(periodSeconds), windowStart: Number(windowStart), windowGrowth, maxTotal,
+    walletDaily, walletBurst, launchAt: Number(launchAt), frozen: (frozen ?? 0n) !== 0n,
+  };
 }

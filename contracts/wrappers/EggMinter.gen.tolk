@@ -132,19 +132,43 @@ fun EggMinter.sendChangePublisherKey(
     return net.send(from, genericMsg);
 }
 
-fun EggMinter.sendSetLimits(
+fun EggMinter.sendProveFraud(
     self,
     from: address,
     queryId: uint64,
-    maxGrowth: coins,
-    periodSeconds: uint32,
+    a: cell,
+    b: cell,
+    owner: address?,
+    cumA: coins,
+    cumB: coins,
+    proofA: cell?,
+    proofB: cell?,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: SetLimits { queryId, maxGrowth, periodSeconds },
+        body: ProveFraud { queryId, a, b, owner, cumA, cumB, proofA, proofB },
+    });
+    return net.send(from, genericMsg);
+}
+
+fun EggMinter.sendSetLimits(
+    self,
+    from: address,
+    queryId: uint64,
+    maxGrowth: coins,
+    periodSeconds: uint32,
+    walletDaily: coins,
+    walletBurst: coins,
+    config: SendParams = {},
+): SendResultList {
+    val genericMsg = createMessage({
+        bounce: config.bounce,
+        value: config.value,
+        dest: self.address,
+        body: SetLimits { queryId, maxGrowth, periodSeconds, walletDaily, walletBurst },
     });
     return net.send(from, genericMsg);
 }

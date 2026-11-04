@@ -4,7 +4,7 @@ import { keyPairFromSeed } from '@ton/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   askToClaimBody, Attach, burnBody, commentPayload, EggTree, eggMinterCode, eggWalletCode, Err, minterStateInit,
-  onchainMetadata, signRoot, signedRootCell, verifyEntitlement, changePublisherKeyBody, transferBody, transferIntent, verifyProof, walletStateInit,
+  onchainMetadata, signRoot, signedRootCell, verifyEntitlement, changePublisherKeyBody, proveFraudBody, transferBody, transferIntent, verifyProof, walletStateInit,
 } from '../src';
 
 const T0 = 1_800_000_000;
@@ -209,3 +209,23 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
   });
 });
 void Cell;
+
+describe('fraud proofs built by the SDK', () => {
+  it('a later root that lowers an owner\'s amount freezes the key; the SDK message is what the contract parses', async () => {
+    const chain = await Blockchain.create();
+    chain.now = T0;
+    const [admin, alice, bob] = await Promise.all(['admin', 'alice', 'bob'].map((n) => chain.treasury(n)));
+    const pub = keyPairFromSeed(Buffer.alloc(32, 77));
+    const { init, address: minter } = minterStateInit({ maxSupply: E(1_000_000), admin: admin.address, publisherKey: pub.publicKey, launchAt: T0, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) }, eggMinterCode);
+    await admin.send({ to: minter, value: toNano('1'), init, bounce: false, body: beginCell().storeUint(0xd372158c, 32).endCell() });
+    const t1 = new EggTree([{ owner: alice.address, cumulative: E(10) }, { owner: bob.address, cumulative: E(5) }]);
+    const t2 = new EggTree([{ owner: alice.address, cumulative: E(9) }, { owner: bob.address, cumulative: E(50) }]);
+    const r = (t: EggTree, seq: bigint) => signedRootCell(signRoot(minter, t.treeRoot, t.total, seq, pub.secretKey));
+    const res = await bob.send({ to: minter, value: toNano('0.1'), body: proveFraudBody({ a: r(t1, 1n), b: r(t2, 2n), owner: alice.address, cumA: E(10), cumB: E(9), proofA: t1.proof(alice.address)!, proofB: t2.proof(alice.address)! }) });
+    const tx = res.transactions.find((t) => t.inMessage?.info.dest?.toString() === minter.toString());
+    expect((tx!.description as any).computePhase.exitCode).toBe(0);
+    const l = new TupleReader((await chain.runGetMethod(minter, 'get_limits')).stack);
+    for (let i = 0; i < 8; i++) l.readBigNumber();
+    expect(l.readBoolean()).toBe(true);
+  });
+});

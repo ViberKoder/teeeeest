@@ -122,6 +122,24 @@ struct (0x0cc58dbc) SetLimits {
     queryId: uint64
     maxGrowth: coins
     periodSeconds: uint32
+    walletDaily: coins
+    walletBurst: coins
+}
+
+/// Anyone -> minter: two roots signed by the CURRENT key that an honest publisher can never produce together.
+/// Proven fraud freezes the key: it can no longer raise the promised total (everything already promised stays claimable).
+///   - the same `seq` with two different roots;
+///   - a later root (`b.seq > a.seq`) that promises a smaller total;
+///   - a later root in which some owner's amount went DOWN (`owner`, `cumA` + `proofA` in `a`, `cumB` + `proofB` in `b`).
+struct (0x5fa0d0f1) ProveFraud {
+    queryId: uint64
+    a: cell
+    b: cell
+    owner: address?
+    cumA: coins
+    cumB: coins
+    proofA: cell?
+    proofB: cell?
 }
 
 struct (0x6501f354) ChangeMinterAdmin {

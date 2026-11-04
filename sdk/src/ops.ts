@@ -15,6 +15,7 @@ export const Op = {
   claimCredit: 0x49e1974f,
   // governance
   changePublisherKey: 0x4b2e9d11,
+  proveFraud: 0x5fa0d0f1,
   setLimits: 0x0cc58dbc,
   changeAdmin: 0x6501f354,
   claimAdmin: 0xfb88e119,
@@ -38,6 +39,9 @@ export const Err = {
   legacyCap: 89,
   equivocation: 79,
   zeroKey: 78,
+  keyFrozen: 77,
+  walletRate: 76,
+  noFraud: 75,
   proofMismatch: 91,
   proofTooDeep: 92,
   claimInProgress: 93,

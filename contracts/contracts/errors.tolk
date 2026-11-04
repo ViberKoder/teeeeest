@@ -16,6 +16,9 @@ enum Errors {
     LegacyCap = 89
     Equivocation = 79
     ZeroKey = 78
+    KeyFrozen = 77
+    WalletRate = 76
+    NoFraud = 75
 
     // claims
     ProofMismatch = 91

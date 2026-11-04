@@ -92,8 +92,25 @@ export const topUpBody = (): Cell => beginCell().storeUint(Op.topUp, 32).endCell
 export const changePublisherKeyBody = (newKey: Buffer): Cell =>
   beginCell().storeUint(Op.changePublisherKey, 32).storeUint(0, 64).storeBuffer(newKey, 32).endCell();
 
-export const setLimitsBody = (p: { maxGrowth: bigint; periodSeconds: number }): Cell =>
-  beginCell().storeUint(Op.setLimits, 32).storeUint(0, 64).storeCoins(p.maxGrowth).storeUint(p.periodSeconds, 32).endCell();
+export const setLimitsBody = (p: { maxGrowth: bigint; periodSeconds: number; walletDaily: bigint; walletBurst: bigint }): Cell =>
+  beginCell().storeUint(Op.setLimits, 32).storeUint(0, 64).storeCoins(p.maxGrowth).storeUint(p.periodSeconds, 32).storeCoins(p.walletDaily).storeCoins(p.walletBurst).endCell();
+
+/**
+ * Proof that the publisher key signed two roots an honest publisher never would (same seq / smaller later total / an owner's amount going
+ * down). Anyone can send it; the minter checks it and freezes the key.
+ */
+export const proveFraudBody = (p: { a: Cell; b: Cell; owner?: Address | null; cumA?: bigint; cumB?: bigint; proofA?: Cell | null; proofB?: Cell | null }): Cell =>
+  beginCell()
+    .storeUint(Op.proveFraud, 32)
+    .storeUint(0, 64)
+    .storeRef(p.a)
+    .storeRef(p.b)
+    .storeAddress(p.owner ?? null)
+    .storeCoins(p.cumA ?? 0n)
+    .storeCoins(p.cumB ?? 0n)
+    .storeMaybeRef(p.proofA ?? null)
+    .storeMaybeRef(p.proofB ?? null)
+    .endCell();
 
 export const changeMetadataBody = (metadata: Cell): Cell =>
   beginCell().storeUint(Op.changeMetadata, 32).storeUint(0, 64).storeRef(metadata).endCell();

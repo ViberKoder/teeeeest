@@ -292,9 +292,9 @@ get fun `test governance: the signing key rotates, the old key keeps only what i
     expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS + 1000000000);
 
     // limits only tighten
-    val looser = env.minter.sendSetLimits(env.admin.address, 0, MAX_SUPPLY + 1, 3600, { value: grams("0.05") });
+    val looser = env.minter.sendSetLimits(env.admin.address, 0, MAX_SUPPLY + 1, 3600, MAX_SUPPLY, MAX_SUPPLY, { value: grams("0.05") });
     expect(looser).toHaveFailedTx<SetLimits>({ to: env.minter.address, exitCode: Errors.LimitsLoosened });
-    val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, { value: grams("0.05") });
+    val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, MAX_SUPPLY, MAX_SUPPLY, { value: grams("0.05") });
     expect(tighter).toHaveSuccessfulTx<SetLimits>({ to: env.minter.address });
 
     // a dropped admin is final
@@ -361,4 +361,78 @@ get fun `test claim and send: asking for more than the balance still credits the
     }.toCell();
     aw.sendAskToClaim(env.alice.address, 0, ALICE_EGGS, t.aliceProof, signRoot(env, 1, t.root, t.total), intent, { value: grams("0.3") });
     expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
+}
+
+get fun `test fraud: conflicting roots signed by the key are provable on-chain and freeze it`() {
+    val env = setupMinter();
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val r1 = signRoot(env, 1, t1.root, t1.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    claim(aw, env.alice.address, r1, ALICE_EGGS, t1.aliceProof);
+
+    // an honest pair (later root, everyone's amount grows) is NOT fraud
+    val t2 = twoLeafTree(env.alice.address, ALICE_EGGS + 1000000000, env.bob.address, BOB_EGGS);
+    val r2 = signRoot(env, 2, t2.root, t2.total);
+    val honest = env.minter.sendProveFraud(env.bob.address, 0, r1, r2, env.alice.address, ALICE_EGGS, ALICE_EGGS + 1000000000, t1.aliceProof, t2.aliceProof, { value: grams("0.1") });
+    expect(honest).toHaveFailedTx<ProveFraud>({ to: env.minter.address, exitCode: Errors.NoFraud });
+
+    // a later root that lowers alice's amount: anyone can prove it
+    val t3 = twoLeafTree(env.alice.address, ALICE_EGGS - 1000000000, env.bob.address, BOB_EGGS + 2000000000);
+    val r3 = signRoot(env, 3, t3.root, t3.total);
+    val proven = env.minter.sendProveFraud(env.bob.address, 0, r1, r3, env.alice.address, ALICE_EGGS, ALICE_EGGS - 1000000000, t1.aliceProof, t3.aliceProof, { value: grams("0.1") });
+    expect(proven).toHaveSuccessfulTx<ProveFraud>({ to: env.minter.address });
+    expect(env.minter.getLimits().frozen).toEqual(true);
+
+    // a frozen key can not raise the promised total any more ...
+    val t4 = twoLeafTree(env.alice.address, ALICE_EGGS + 5000000000, env.bob.address, BOB_EGGS);
+    expect(claim(aw, env.alice.address, signRoot(env, 4, t4.root, t4.total), ALICE_EGGS + 5000000000, t4.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.KeyFrozen,
+    });
+    // ... but what it promised before stays claimable
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(bw, env.bob.address, r1, BOB_EGGS, t1.bobProof);
+    expect(bw.getWalletData().jettonBalance).toEqual(BOB_EGGS);
+
+    // a key rotation lifts the freeze
+    val newKp = crypto.seedToKeyPair(5551);
+    env.minter.sendChangePublisherKey(env.admin.address, 0, newKp.publicKey, { value: grams("0.05") });
+    expect(env.minter.getLimits().frozen).toEqual(false);
+}
+
+get fun `test fraud: a smaller total in a later root is fraud`() {
+    val env = setupMinter();
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val smaller = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, 1);
+    expect(env.minter.sendProveFraud(env.bob.address, 0, signRoot(env, 1, t1.root, t1.total), signRoot(env, 2, smaller.root, smaller.total), null, 0, 0, null, null, { value: grams("0.1") })).toHaveSuccessfulTx<ProveFraud>({ to: env.minter.address });
+    expect(env.minter.getLimits().frozen).toEqual(true);
+}
+
+get fun `test fraud: two roots for one seq are fraud; roots not signed by the key prove nothing`() {
+    val env2 = setupMinter();
+    val t1 = twoLeafTree(env2.alice.address, ALICE_EGGS, env2.bob.address, BOB_EGGS);
+    val smaller = twoLeafTree(env2.alice.address, ALICE_EGGS, env2.bob.address, 1);
+    val other = twoLeafTree(env2.admin.address, ALICE_EGGS, env2.bob.address, BOB_EGGS);
+    val fork = env2.minter.sendProveFraud(env2.bob.address, 0, signRoot(env2, 7, t1.root, t1.total), signRoot(env2, 7, other.root, other.total), null, 0, 0, null, null, { value: grams("0.1") });
+    expect(fork).toHaveSuccessfulTx<ProveFraud>({ to: env2.minter.address });
+    // roots NOT signed by the key prove nothing
+    val stranger = crypto.seedToKeyPair(4242);
+    val fake = env2.minter.sendProveFraud(env2.bob.address, 0, signRoot(env2, 1, t1.root, t1.total), signRootWith(stranger.privateKey, env2.minter.address, 2, smaller.root, smaller.total), null, 0, 0, null, null, { value: grams("0.1") });
+    expect(fake).toHaveFailedTx<ProveFraud>({ to: env2.minter.address, exitCode: Errors.BadSignature });
+}
+
+get fun `test limits: no wallet can be owed more than the game could have paid it`() {
+    // 10 EGG per day per wallet, 20 EGG at launch
+    val env = setupMinter(MAX_SUPPLY, MAX_SUPPLY, 10000000000, 20000000000);
+    val t = twoLeafTree(env.alice.address, 30000000000, env.bob.address, BOB_EGGS);
+    val root = signRoot(env, 1, t.root, t.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    expect(claim(aw, env.alice.address, root, 30000000000, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.WalletRate,
+    });
+    // a day later the allowance has grown to 30 EGG
+    testing.setNow(testing.getNow() + 86400);
+    claim(aw, env.alice.address, root, 30000000000, t.aliceProof);
+    expect(aw.getWalletData().jettonBalance).toEqual(30000000000);
 }

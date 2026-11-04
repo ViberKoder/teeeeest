@@ -1,24 +1,43 @@
-// A tap on "Hatch" is the like: +1 EGG, once per player per egg, with a daily cap.
-import { api } from 'sdk';
-import { DAILY_CAP, HATCH_DATA, fmt, total } from '../lib/game.js';
-import { countOf, hatchOnce, postCount } from '../lib/ledger.js';
-
-const safe = async (p) => { try { await p; } catch { /* the egg is already credited; a failed toast must not undo it */ } };
+// Buttons: Hatch under a channel post, Hatch on an egg sent in a chat, and the admin's "post to …" choice.
+import { api, db } from 'sdk';
+import { eq } from 'sdk/db';
+import { chats } from '../schema.js';
+import { REWARD } from '../lib/config.js';
+import { hatchEgg, parseEggData } from '../lib/eggs.js';
+import { balanceOf, credit, fmtEgg } from '../lib/ledger.js';
+import { countHatch, POST_DATA, publishPost } from '../lib/posts.js';
+import { answer, isAdmin } from '../lib/telegram.js';
+import { maybeBeacon } from '../lib/beacon.js';
 
 export default async function (q) {
-  if (q.data !== HATCH_DATA || !q.message || !q.from) return safe(api.answerCallbackQuery({ callback_query_id: q.id }));
   const now = Math.floor(Date.now() / 1000);
-  const r = await hatchOnce({ chatId: q.message.chat.id, messageId: q.message.message_id, tgId: q.from.id, now, cap: DAILY_CAP });
+  if (!q.from || !q.data) return answer(q);
 
-  if (r === 'cap') return safe(api.answerCallbackQuery({ callback_query_id: q.id, text: `Daily limit reached (${DAILY_CAP}). Come back tomorrow!`, show_alert: true }));
-  if (r === 'again') return safe(api.answerCallbackQuery({ callback_query_id: q.id, text: 'You already hatched this egg. Get another with /hatch' }));
+  if (q.data.startsWith('e:')) {
+    const egg = await parseEggData(q.data);
+    if (!egg) return answer(q, 'This egg is not valid.');
+    await hatchEgg(q, egg, now);
+    return maybeBeacon(now);
+  }
 
-  const mine = await countOf(q.from.id);
-  await safe(api.answerCallbackQuery({ callback_query_id: q.id, text: `+1 EGG · you have ${fmt(total(mine))}` }));
-  const n = await postCount(q.message.chat.id, q.message.message_id);
-  await safe(api.editMessageReplyMarkup({
-    chat_id: q.message.chat.id,
-    message_id: q.message.message_id,
-    reply_markup: { inline_keyboard: [[{ text: `🥚 Hatch · ${n}`, callback_data: HATCH_DATA }]] },
-  }));
+  if (q.data.startsWith('pp:')) {
+    if (!isAdmin(q.from.id)) return answer(q, 'Admins only.');
+    const chat = await db.select().from(chats).where(eq(chats.chatId, Number(q.data.slice(3)))).get();
+    if (!chat) return answer(q, 'Unknown chat.');
+    await publishPost({ chatId: chat.chatId, username: chat.username, caption: null, by: q.from.id, now });
+    return answer(q, `Posted to ${chat.title ?? chat.chatId}`);
+  }
+
+  if (q.data === POST_DATA && q.message) {
+    const chat = q.message.chat;
+    if (chat.type === 'private') return answer(q, 'This egg is retired — hatch eggs under channel posts or ones friends send you.', true);
+    const r = await credit({ tgId: q.from.id, amount: REWARD.post, kind: 'post', ref: `post:${chat.id}:${q.message.message_id}:${q.from.id}`, now });
+    if (r === 'cap') return answer(q, 'Daily limit reached — come back tomorrow!', true);
+    if (r === 'again') return answer(q, 'You already hatched this egg. Watch the channel for the next one!');
+    await answer(q, `+1 EGG · you have ${fmtEgg(await balanceOf(q.from.id))}`);
+    await countHatch({ chatId: chat.id, messageId: q.message.message_id, now });
+    return maybeBeacon(now);
+  }
+  return answer(q);
 }
+void api;

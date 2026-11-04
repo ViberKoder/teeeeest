@@ -25,6 +25,8 @@ struct Keys {
     publisherKey: uint256
     legacyKey: uint256
     legacyCap: coins
+    /// set by a proven fraud (`ProveFraud`): the key may no longer raise the promised total; only a key rotation lifts it
+    frozen: bool
 }
 
 /// Brakes on the publisher. However many roots it signs, the amount that can ever be created is bounded:
@@ -36,6 +38,11 @@ struct Limits {
     windowStart: uint32
     windowGrowth: coins
     maxTotal: coins
+    /// No single wallet can ever be owed more than `walletBurst + walletDaily x days since launchAt`:
+    /// the publisher (or a stolen key) can not hand one wallet a fortune, whatever it signs.
+    walletDaily: coins
+    walletBurst: coins
+    launchAt: uint32
 }
 
 /// A root the publisher signed (the contract checks the signature; nothing has to be published on-chain).
@@ -114,4 +121,8 @@ struct LimitsReply {
     windowStart: uint32
     windowGrowth: coins
     maxTotal: coins
+    walletDaily: coins
+    walletBurst: coins
+    launchAt: uint32
+    frozen: bool
 }

@@ -41,7 +41,12 @@ const dayLabel = (t: number) => {
 export function Home() {
   const w = useWallet();
   const toast = useToast();
-  const [open, setOpen] = useState<Open>(w.firstRun ? 'intro' : null);
+  // a "send" link from the bot (/send @user 10) opens the Send screen prefilled — the user still confirms it with their own key
+  const [prefill] = useState(() => {
+    const q = new URLSearchParams(location.search);
+    return q.get('send') ? { to: q.get('send') ?? '', amount: q.get('amount') ?? '' } : null;
+  });
+  const [open, setOpen] = useState<Open>(prefill ? 'send' : w.firstRun ? 'intro' : null);
   const [burst, setBurst] = useState(0);
   const { data, provider } = w;
   const D = cfg.token.decimals;
@@ -160,7 +165,7 @@ export function Home() {
       <button className="btn link" style={{ marginTop: 4 }} onClick={() => setOpen('intro')}>How does it work?</button>
       {data.error && <p className="hint bad center" style={{ marginTop: 10 }}>{data.error}</p>}
 
-      {open === 'send' && <SendPage onClose={close} />}
+      {open === 'send' && <SendPage onClose={close} initialTo={prefill?.to} initialAmount={prefill?.amount} />}
       {open === 'receive' && <ReceivePage onClose={close} />}
       {open === 'claim' && <ClaimPage onClose={(hatched?: boolean) => { close(); if (hatched) setBurst((b) => b + 1); }} />}
       {open === 'settings' && <SettingsPage onClose={close} />}

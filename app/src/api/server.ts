@@ -16,6 +16,19 @@ export interface Me {
   sponsored_left: number;
 }
 
+export interface Stats {
+  t: number; users: number; wallets: number; newUsersToday: number; lastUserAt: number;
+  promised: string; events: number; lastEventAt: number; today: string; eventsToday: number; hatchesLastHour: number;
+  posts: number; views: number; postHatches: number; eggs: number; eggHatches: number;
+  root: { seq: number; treeRoot: string; total: string; signature: string; at: number } | null;
+}
+export interface StatsReply {
+  stats: Stats;
+  recent: { kind: string; amount: string; t: number; who: string }[];
+  days: { egg: { d: number; egg: string; n: number }[]; users: { d: number; n: number }[] } | null;
+}
+export interface LookupReply { found: boolean; address?: string | null; ledger?: string; since?: number; entitlement?: Entitlement | null }
+
 export class ApiError extends Error {
   constructor(readonly code: string, readonly status: number) {
     super(code);
@@ -73,6 +86,10 @@ export const api = {
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string, replace = false) =>
     call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),
+  /** live project numbers (explorer inside Telegram) */
+  stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
+  /** internal data for a wallet or @username, to compare with the chain */
+  lookup: (q: string) => call<LookupReply>('/v1/lookup', { method: 'POST', body: JSON.stringify({ q }) }),
   /** public: the same answer any wallet or explorer would get */
   relay: (request: string, publicKey: string) =>
     call<{ ok: true; remaining: number }>('/v1/relay', { method: 'POST', body: JSON.stringify({ request, public_key: publicKey }) }),

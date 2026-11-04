@@ -11,6 +11,8 @@ export const users = table('users', {
   username: text('username'),
   publicKey: text('public_key'),
   linkSig: text('link_sig'),
+  // who invited this player (set once, from /start ref_<id>)
+  referrer: integer('referrer'),
   // 1 once the signature was checked (ed25519) and the address was derived from that key
   verified: integer('verified').notNull().default(0),
   // 1 once this address was included in a root sent on-chain: from then on it is the account's wallet for good
@@ -93,4 +95,55 @@ export const roots = table('roots', {
   signature: text('signature').notNull(),
   leaves: text('leaves').notNull().default(''),
   createdAt: integer('created_at').notNull(),
+});
+
+// The ledger: every EGG a player was ever promised, one row per event. `ref` makes each event count once
+// (e.g. "post:<chat>:<msg>:<user>", "egg:<key>:<user>"). There is no balance column: a balance is SUM(amount).
+export const ledger = table('ledger', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tgId: integer('tg_id').notNull(),
+  amount: integer('amount').notNull(), // jetton units (1 EGG = 1e9)
+  kind: text('kind').notNull(), // post | inline | sender | ref | legacy
+  ref: text('ref').notNull(),
+  ts: integer('ts').notNull(),
+}, (t) => ({
+  once: uniqueIndex('uq_ledger_ref').on(t.ref),
+  byUser: index('idx_ledger_user').on(t.tgId, t.ts),
+  byTime: index('idx_ledger_ts').on(t.ts),
+}));
+
+// Channel posts with a Hatch button (published by an admin).
+export const posts = table('posts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chatId: integer('chat_id').notNull(),
+  messageId: integer('message_id').notNull(),
+  username: text('username'), // public channel username, for views
+  createdBy: integer('created_by').notNull(),
+  createdAt: integer('created_at').notNull(),
+  hatches: integer('hatches').notNull().default(0),
+  views: integer('views').notNull().default(0),
+  viewsAt: integer('views_at').notNull().default(0),
+  editedAt: integer('edited_at').notNull().default(0),
+}, (t) => ({
+  once: uniqueIndex('uq_post').on(t.chatId, t.messageId),
+}));
+
+// Eggs sent into chats through inline mode (created at the first hatch).
+export const eggs = table('eggs', {
+  key: text('key').primaryKey(), // sender:nonce
+  sender: integer('sender').notNull(),
+  max: integer('max').notNull(),
+  hatched: integer('hatched').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+  editedAt: integer('edited_at').notNull().default(0),
+});
+
+// Channels and groups where the bot is an administrator (it can publish there).
+export const chats = table('chats', {
+  chatId: integer('chat_id').primaryKey(),
+  title: text('title'),
+  username: text('username'),
+  kind: text('kind'),
+  isAdmin: integer('is_admin').notNull().default(0),
+  updatedAt: integer('updated_at').notNull(),
 });

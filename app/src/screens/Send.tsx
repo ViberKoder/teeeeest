@@ -28,20 +28,28 @@ const recent = (): string[] => {
 };
 
 /** Telegram-style send: pick who, then an amount screen with its own keypad and a single "Send" button. */
-export function SendPage({ onClose }: { onClose: () => void }) {
+export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () => void; initialTo?: string; initialAmount?: string }) {
   const w = useWallet();
   const { provider, data, masterAddress } = w;
   const [asset, setAsset] = useState<Asset>(masterAddress ? 'EGG' : 'TON');
-  const [to, setTo] = useState('');
+  const [to, setTo] = useState(initialTo ?? '');
   const [dest, setDest] = useState<ParsedAddress | null>(null);
   const [handle, setHandle] = useState<string | null>(null); // @username: delivered through the vault when its owner opens the wallet
-  const [amountStr, setAmountStr] = useState('');
+  const [amountStr, setAmountStr] = useState(/^\d+(\.\d{1,9})?$/.test(initialAmount ?? '') ? initialAmount! : '');
   const [comment, setComment] = useState('');
   const [showComment, setShowComment] = useState(false);
   const [step, setStep] = useState<Step>('to');
   const [err, setErr] = useState('');
   const [past, setPast] = useState<string[]>([]);
   useEffect(() => setPast(recent()), []);
+  // opened from a link: go straight to the amount once the recipient is resolved
+  useEffect(() => {
+    const t = (initialTo ?? '').trim();
+    if (!t) return;
+    if (USERNAME_RE.test(t) && api.available()) void pickHandle(t);
+    else { const p = parseAddress(t); if (p) pickRecipient(p); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const typed = to.trim();
   const isHandle = typed.startsWith('@');

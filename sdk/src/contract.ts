@@ -30,18 +30,26 @@ export interface MinterConfig {
   /** most that may be newly promised per `periodSeconds` (default: the whole cap) */
   maxGrowth?: bigint;
   periodSeconds?: number;
+  /** no wallet can be owed more than `walletBurst + walletDaily x days since launchAt` (defaults: the whole cap, i.e. off) */
+  walletDaily?: bigint;
+  walletBurst?: bigint;
+  /** unix seconds; defaults to now */
+  launchAt?: number;
 }
 
 /** Initial data of the minter — mirrors `MinterStorage` / `Governance` / `Keys` / `Limits`. */
 export function minterInitData(c: MinterConfig): Cell {
   const governance = beginCell().storeAddress(c.admin).storeAddress(null).endCell();
-  const keys = beginCell().storeBuffer(c.publisherKey, 32).storeUint(0, 256).storeCoins(0).endCell();
+  const keys = beginCell().storeBuffer(c.publisherKey, 32).storeUint(0, 256).storeCoins(0).storeBit(false).endCell();
   const limits = beginCell()
     .storeCoins(c.maxGrowth ?? c.maxSupply)
     .storeUint(c.periodSeconds ?? 3600, 32)
     .storeUint(0, 32) // windowStart
     .storeCoins(0) // windowGrowth
     .storeCoins(0) // maxTotal
+    .storeCoins(c.walletDaily ?? c.maxSupply)
+    .storeCoins(c.walletBurst ?? c.maxSupply)
+    .storeUint(c.launchAt ?? Math.floor(Date.now() / 1000), 32)
     .endCell();
   return beginCell()
     .storeCoins(0) // totalSupply

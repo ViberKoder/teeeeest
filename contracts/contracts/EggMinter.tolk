@@ -19,12 +19,19 @@ type AllowedMessageToMinter =
     | BurnNotificationForMinter
     | RequestWalletAddress
     | ChangePublisherKey
+    | ProveFraud
     | SetLimits
     | ChangeMinterAdmin
     | ClaimMinterAdmin
     | DropMinterAdmin
     | ChangeMinterMetadata
     | TopUpGrams
+
+/// The digest of a signed root, and whether the CURRENT publisher key signed it.
+fun signedByCurrentKey(sr: SignedRoot, keys: Keys): (int, bool) {
+    val digest = signedRootDigest(contract.getAddress(), sr.treeRoot, sr.total, sr.seq);
+    return (digest, isSignatureValid(digest, sr.signature as slice, keys.publisherKey));
+}
 
 fun assertSenderIsAdmin(senderAddress: address, adminAddress: address?) {
     // a dropped admin is null: `!` throws, so no admin operation is possible any more
@@ -79,6 +86,7 @@ fun onInternalMessage(in: InMessage) {
             // 4. limits: a root that promises more than anything seen before may raise `maxTotal`, but only within the growth budget
             var limits = storage.limits.load();
             if (sr.total > limits.maxTotal) {
+                assert (!keys.frozen) throw Errors.KeyFrozen;
                 assert (sr.total <= storage.maxSupply) throw Errors.SupplyExceeded;
                 val now = blockchain.now();
                 if (now >= limits.windowStart + limits.periodSeconds) {
@@ -91,7 +99,11 @@ fun onInternalMessage(in: InMessage) {
                 storage.limits = limits.toCell();
             }
 
-            // 5. new supply = only what this wallet has not been credited yet
+            // 5. no wallet can be owed more than the game could ever have paid it
+            val days = blockchain.now() > limits.launchAt ? (blockchain.now() - limits.launchAt) : 0;
+            assert (msg.cumulative <= limits.walletBurst + mulDivFloor(limits.walletDaily, days, 86400)) throw Errors.WalletRate;
+
+            // 6. new supply = only what this wallet has not been credited yet
             if (msg.cumulative > msg.claimedAtWallet) {
                 val delta = msg.cumulative - msg.claimedAtWallet;
                 assert (storage.totalSupply + delta <= storage.maxSupply) throw Errors.SupplyExceeded;
@@ -183,6 +195,7 @@ fun onInternalMessage(in: InMessage) {
             keys.legacyKey = keys.publisherKey;
             keys.legacyCap = limits.maxTotal;
             keys.publisherKey = msg.newKey;
+            keys.frozen = false;
             var next = storage;
             next.keys = keys.toCell();
             next.save();
@@ -196,8 +209,11 @@ fun onInternalMessage(in: InMessage) {
             // limits can only be tightened: a compromised admin must not be able to open the tap
             assert (msg.maxGrowth <= limits.maxGrowth) throw Errors.LimitsLoosened;
             assert (msg.periodSeconds >= limits.periodSeconds) throw Errors.LimitsLoosened;
+            assert (msg.walletDaily <= limits.walletDaily && msg.walletBurst <= limits.walletBurst) throw Errors.LimitsLoosened;
             limits.maxGrowth = msg.maxGrowth;
             limits.periodSeconds = msg.periodSeconds;
+            limits.walletDaily = msg.walletDaily;
+            limits.walletBurst = msg.walletBurst;
             var next = storage;
             next.limits = limits.toCell();
             next.save();
@@ -240,6 +256,35 @@ fun onInternalMessage(in: InMessage) {
             val gov = storage.governance.load();
             assertSenderIsAdmin(in.senderAddress, gov.adminAddress);
             storage.metadata = msg.newMetadata;
+            storage.save();
+        }
+
+        ProveFraud => {
+            var storage = lazy MinterStorage.load();
+            var keys = storage.keys.load();
+            val a = SignedRoot.fromCell(msg.a);
+            val b = SignedRoot.fromCell(msg.b);
+            val (da, okA) = signedByCurrentKey(a, keys);
+            val (db, okB) = signedByCurrentKey(b, keys);
+            assert (okA && okB) throw Errors.BadSignature;
+
+            var fraud = false;
+            if (a.seq == b.seq) {
+                fraud = da != db;
+            } else if (a.seq < b.seq) {
+                if (b.total < a.total) {
+                    fraud = true;
+                } else if (msg.owner != null && msg.proofA != null && msg.proofB != null && msg.cumB < msg.cumA) {
+                    val owner = msg.owner!;
+                    val (rootA, totalA) = foldProof(leafHash(owner, msg.cumA), msg.cumA, msg.proofA!);
+                    val (rootB, totalB) = foldProof(leafHash(owner, msg.cumB), msg.cumB, msg.proofB!);
+                    fraud = rootA == a.treeRoot && totalA == a.total && rootB == b.treeRoot && totalB == b.total;
+                }
+            }
+            assert (fraud) throw Errors.NoFraud;
+
+            keys.frozen = true;
+            storage.keys = keys.toCell();
             storage.save();
         }
 
@@ -295,7 +340,10 @@ get fun get_max_total(): int {
 get fun get_limits(): LimitsReply {
     val storage = lazy MinterStorage.load();
     val l = storage.limits.load();
-    return { maxGrowth: l.maxGrowth, periodSeconds: l.periodSeconds, windowStart: l.windowStart, windowGrowth: l.windowGrowth, maxTotal: l.maxTotal };
+    return {
+        maxGrowth: l.maxGrowth, periodSeconds: l.periodSeconds, windowStart: l.windowStart, windowGrowth: l.windowGrowth, maxTotal: l.maxTotal,
+        walletDaily: l.walletDaily, walletBurst: l.walletBurst, launchAt: l.launchAt, frozen: storage.keys.load().frozen,
+    };
 }
 
 get fun get_last_seq(): int {

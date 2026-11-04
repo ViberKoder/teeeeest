@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { cfg, endpoints } from '../config';
-import { confirmNative, haptic, openExternal } from '../lib/tg';
+import { confirmNative, haptic, openExternal, shareLink, tgUserId } from '../lib/tg';
 import { NeedTonError } from '../provider/tg';
 import { useWallet } from '../state/wallet';
 import { Copy, External, Key, Lock } from '../ui/Icons';
@@ -133,6 +133,11 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
         <div className="addr" style={{ padding: '14px 16px' }}>{addr}</div>
         <Row onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }} icon={ic(<Copy width={18} height={18} />)} title="Copy address" />
         <Row onClick={() => openExternal(`${endpoints.explorer}/${addr}`)} icon={ic(<External width={18} height={18} />)} title="View in explorer" />
+      </Section>
+
+      <Section title="EGG" footer="Friends you invite earn as usual; you get 25% on top of what they earn.">
+        <Row onClick={() => shareLink(`https://t.me/${cfg.bot}?start=ref_${tgUserId()}`, 'Hatch eggs with me and earn EGG 🥚')} icon={ic(<span>🤝</span>)} title="Invite friends" subtitle="+25% of what they earn" />
+        <Row onClick={() => location.assign('/explorer/')} icon={ic(<span>📊</span>)} title="Project explorer" subtitle="Live numbers, checkable against the blockchain" />
       </Section>
 
       <Section

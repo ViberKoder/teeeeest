@@ -2,8 +2,7 @@ import { db } from 'sdk';
 import { eq } from 'sdk/db';
 import { users } from '../schema.js';
 import { entitlementFor } from '../lib/snapshot.js';
-import { countOf, ensureUser } from '../lib/ledger.js';
-import { total } from '../lib/game.js';
+import { balanceOf, ensureUser } from '../lib/ledger.js';
 
 export default async function (_input, ctx) {
   const id = ctx.initData.user.id;
@@ -17,7 +16,7 @@ export default async function (_input, ctx) {
   return {
     tg_id: id,
     address,
-    ledger: total(await countOf(id)),
+    ledger: await balanceOf(id),
     entitlement: e,
     address_locked: Boolean(u.locked),
     banned: false,

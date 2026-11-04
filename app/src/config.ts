@@ -7,6 +7,8 @@ export const cfg = {
   network: ((env.VITE_NETWORK as string) === 'testnet' ? 'testnet' : 'mainnet') as Network,
   master: (env.VITE_JETTON_MASTER as string) || '',
   bot: (env.VITE_BOT_USERNAME as string) || 'hatchapp',
+  /** the bot's own wallet: it writes the public stats beacon the explorer reads */
+  vault: (env.VITE_VAULT_ADDRESS as string) || '',
   toncenterKey: (env.VITE_TONCENTER_KEY as string) || '',
   tonapiKey: (env.VITE_TONAPI_KEY as string) || '',
   publicUrl: ((env.VITE_PUBLIC_URL as string) || '').replace(/\/$/, ''),

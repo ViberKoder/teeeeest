@@ -11,24 +11,25 @@ import { toBoc } from './cell.js';
 import { limitsOf } from './chain.js';
 import { MINTER } from './config.js';
 import { sign } from './ed25519.js';
-import { REWARD_UNITS } from './game.js';
 import { PUBLISHER_SEED } from './publisherkey.js';
 import { buildTree, proofCell, signedRootDigest } from './tree.js';
 
 const REBUILD_EVERY = 3; // seconds: a root is reused for this long, whatever happens in the ledger
 
 async function ledger() {
-  const rows = await db.all(sql`SELECT u.address AS address, COUNT(h.id) AS n, MAX(h.id) AS m FROM users u JOIN hatches h ON h.tg_id = u.tg_id WHERE u.verified = 1 AND u.address IS NOT NULL GROUP BY u.tg_id`);
-  const leaves = rows.map((r) => ({ owner: r.address, cumulative: BigInt(r.n) * REWARD_UNITS }));
-  const version = `${rows.length}:${rows.reduce((a, r) => a + Number(r.n), 0)}:${rows.reduce((a, r) => Math.max(a, Number(r.m)), 0)}`;
+  const rows = await db.all(sql`SELECT u.address AS address, CAST(SUM(l.amount) AS TEXT) AS s, MAX(l.id) AS m FROM users u JOIN ledger l ON l.tg_id = u.tg_id WHERE u.verified = 1 AND u.address IS NOT NULL GROUP BY u.tg_id`);
+  const leaves = rows.map((r) => ({ owner: r.address, cumulative: BigInt(r.s) }));
+  const version = `${rows.length}:${rows.reduce((a, r) => Math.max(a, Number(r.m)), 0)}:${leaves.reduce((a, l) => a + l.cumulative, 0n)}`;
   return { leaves, version };
 }
 
-/** How much the minter would still let a new root promise. */
-async function allowedTotal(now) {
+/** What the minter would accept from a new root right now: the total it may promise, and the most one wallet may be owed. */
+async function chainLimits(now) {
   const l = await limitsOf(MINTER);
   const used = now >= l.windowStart + l.periodSeconds ? 0n : l.windowGrowth;
-  return l.maxTotal + (l.maxGrowth > used ? l.maxGrowth - used : 0n);
+  const total = l.frozen ? l.maxTotal : l.maxTotal + (l.maxGrowth > used ? l.maxGrowth - used : 0n);
+  const days = BigInt(Math.max(0, now - l.launchAt));
+  return { total, perWallet: l.walletBurst + (l.walletDaily * days) / 86400n };
 }
 
 /** The newest signed root, rebuilt when the ledger moved (at most every few seconds). */
@@ -39,9 +40,12 @@ export async function currentRoot(now) {
   if (last && (fresh || last.version === version)) return last;
   if (!leaves.length) return last ?? null;
 
-  const tree = await buildTree(leaves);
-  // never sign what the contract would refuse: a root can raise the highest total only within the growth budget
-  if (tree.total > (await allowedTotal(now))) return last ?? null;
+  // never sign what the contract would refuse: the growth budget for the total, and the per-wallet ceiling for each leaf
+  const lim = await chainLimits(now);
+  const capped = leaves.map((l) => (l.cumulative > lim.perWallet ? { ...l, cumulative: lim.perWallet } : l));
+  const tree = await buildTree(capped);
+  if (tree.total > lim.total) return last ?? null;
+  if (last && BigInt(last.total) > tree.total) return last; // totals only grow (a smaller one would be provable fraud)
   const seq = (last?.seq ?? 0) + 1;
   const signature = await sign(await signedRootDigest(MINTER, tree.treeRoot, tree.total, seq), fromHex(PUBLISHER_SEED));
   const row = {
