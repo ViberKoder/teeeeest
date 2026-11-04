@@ -24,36 +24,35 @@ export function walletStateInit(owner: Address, minter: Address, walletCode: Cel
 export interface MinterConfig {
   maxSupply: bigint;
   admin: Address;
-  publisher: Address;
+  /** ed25519 public key that signs roots */
+  publisherKey: Buffer;
   metadata: Cell;
   /** most that may be newly promised per `periodSeconds` (default: the whole cap) */
   maxGrowth?: bigint;
   periodSeconds?: number;
-  /** minimum seconds between two published roots */
-  minInterval?: number;
 }
 
-/** Initial data of the minter — mirrors `MinterStorage` / `Governance` / `Limits`. */
+/** Initial data of the minter — mirrors `MinterStorage` / `Governance` / `Keys` / `Limits`. */
 export function minterInitData(c: MinterConfig): Cell {
-  const governance = beginCell().storeAddress(c.admin).storeAddress(null).storeAddress(c.publisher).endCell();
+  const governance = beginCell().storeAddress(c.admin).storeAddress(null).endCell();
+  const keys = beginCell().storeBuffer(c.publisherKey, 32).storeUint(0, 256).storeCoins(0).endCell();
   const limits = beginCell()
     .storeCoins(c.maxGrowth ?? c.maxSupply)
     .storeUint(c.periodSeconds ?? 3600, 32)
-    .storeUint(c.minInterval ?? 0, 32)
     .storeUint(0, 32) // windowStart
     .storeCoins(0) // windowGrowth
-    .storeUint(0, 32) // lastPublishedAt
-    .storeCoins(0) // lastTotal
+    .storeCoins(0) // maxTotal
     .endCell();
   return beginCell()
     .storeCoins(0) // totalSupply
     .storeCoins(c.maxSupply)
-    .storeUint(0, 32) // lastEpoch
     .storeRef(c.metadata)
-    .storeBit(0) // roots: empty map
     .storeRef(governance)
+    .storeRef(keys)
     .storeRef(limits)
     .storeCoins(0) // totalMinted
+    .storeUint(0, 64) // lastSeq
+    .storeUint(0, 256) // lastRoot
     .endCell();
 }
 

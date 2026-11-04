@@ -1,9 +1,9 @@
 // The Serverless publisher is pure JS (no npm in that runtime). These tests pin it to the SDK and to the real contracts.
-import { Address, beginCell, Cell, SendMode, toNano } from '@ton/core';
+import { Address, beginCell, Cell, SendMode, toNano, TupleReader } from '@ton/core';
 import { keyPairFromSeed, sign as tonSign, signVerify } from '@ton/crypto';
 import { Blockchain } from '@ton/sandbox';
 import { describe, expect, it } from 'vitest';
-import { rotationSignature, externalBoc, sendOne, EggTree, eggMinterCode, minterStateInit, onchainMetadata, proofToCell, publishRootBody, SUBWALLET_ID, tgWalletStateInit, tgWalletCode } from '@egg/sdk';
+import { askToClaimBody, Attach, rotationSignature, externalBoc, sendOne, EggTree, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, proofToCell, signedRootCell, signedRootDigest, SUBWALLET_ID, tgWalletStateInit, verifySignedRoot, walletStateInit } from '@egg/sdk';
 // @ts-expect-error plain JS modules written for the Serverless runtime
 import * as ed from '../../app/tgcloud/lib/ed25519.js';
 // @ts-expect-error
@@ -63,37 +63,35 @@ describe('Serverless library == SDK', () => {
     expect(await walletLib.walletAddress(kp.publicKey, walletLib.SUBWALLET.testnet)).toBe(address.toRawString());
   });
 
-  it('a root published by the Serverless code is accepted by the real minter, through the real wallet contract', async () => {
+  it('a root signed by the Serverless code is accepted by the real minter: signature, proof and claim, nothing published', async () => {
     const chain = await Blockchain.create();
     chain.now = 1_800_000_000;
     const admin = await chain.treasury('admin');
-    const kp = keyPairFromSeed(Buffer.alloc(32, 21));
-    const { init: wInit, address: wallet } = tgWalletStateInit({ publicKey: kp.publicKey, subwalletId: SUBWALLET_ID.testnet });
+    const alice = await chain.treasury('alice');
+    const pub = keyPairFromSeed(Buffer.alloc(32, 21));
     const { init, address: minter } = minterStateInit(
-      { maxSupply: toNano('1000000'), admin: admin.address, publisher: wallet, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
+      { maxSupply: toNano('1000000'), admin: admin.address, publisherKey: pub.publicKey, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
       eggMinterCode,
     );
     await admin.send({ to: minter, value: toNano('1'), init, bounce: false, body: beginCell().storeUint(0xd372158c, 32).endCell() });
-    // deploy the wallet with some TON
-    await admin.send({ to: wallet, value: toNano('2'), init: wInit, bounce: false });
 
-    const leaves = [{ owner: addr(1).toRawString(), cumulative: 5_000_000_000n }, { owner: addr(2).toRawString(), cumulative: 3_000_000_000n }];
+    const leaves = [{ owner: alice.address.toRawString(), cumulative: 5_000_000_000n }, { owner: addr(2).toRawString(), cumulative: 3_000_000_000n }];
     const tree = await treeLib.buildTree(leaves);
-    const body = treeLib.publishRootBody(1, tree.treeRoot, tree.total);
-    expect(Buffer.from(await body.hash())).toEqual(publishRootBody({ epoch: 1, treeRoot: Buffer.from(tree.treeRoot), total: tree.total }).hash());
+    const seq = 7n;
+    const digest = await treeLib.signedRootDigest(minter.toRawString(), tree.treeRoot, tree.total, seq);
+    expect(Buffer.from(digest)).toEqual(signedRootDigest(minter, Buffer.from(tree.treeRoot), tree.total, seq));
+    const signature = await ed.sign(digest, pub.secretKey.subarray(0, 32));
+    const root = { treeRoot: Buffer.from(tree.treeRoot).toString('hex'), total: tree.total.toString(), seq: seq.toString(), signature: Buffer.from(signature).toString('hex') };
+    expect(verifySignedRoot(minter, root, pub.publicKey)).toBe(true);
 
-    const boc = await walletLib.externalSend({
-      wallet: wallet.toRawString(), seed: kp.secretKey.subarray(0, 32), subwalletId: walletLib.SUBWALLET.testnet,
-      seqno: 0, validUntil: 1_800_000_300, to: minter.toRawString(), value: toNano('0.05'), body,
-    });
-    const msg = Cell.fromBoc(Buffer.from(boc))[0];
-    const { loadMessage } = await import('@ton/core');
-    await chain.sendMessage(loadMessage(msg.beginParse()));
-    const r = await chain.runGetMethod(minter, 'get_last_epoch');
-    expect(r.stackReader.readBigNumber()).toBe(1n);
-    const root = await chain.runGetMethod(minter, 'get_root', [{ type: 'int', value: 1n }]);
-    expect(root.stackReader.readBigNumber().toString(16).padStart(64, '0')).toBe(Buffer.from(tree.commitment).toString('hex'));
-    void SendMode; void tgWalletCode;
+    const proof = Cell.fromBoc(Buffer.from(await cellLib.toBoc(treeLib.proofCell(tree, alice.address.toRawString()))))[0];
+    const { init: wi, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
+    const res = await alice.send({ to: wallet, value: Attach.claim, init: wi, body: askToClaimBody({ cumulative: 5_000_000_000n, proof, root: signedRootCell(root) }) });
+    const bal = new TupleReader((await chain.runGetMethod(wallet, 'get_wallet_data')).stack).readBigNumber();
+    expect(bal).toBe(5_000_000_000n);
+    expect(res.transactions.length).toBeGreaterThan(3);
+    const supply = new TupleReader((await chain.runGetMethod(minter, 'get_jetton_data')).stack).readBigNumber();
+    expect(supply).toBe(5_000_000_000n);
   });
 
   it('a wallet prepared by the bot is handed to the user\'s own key: deployed by the bot, then ONLY the new key works', async () => {

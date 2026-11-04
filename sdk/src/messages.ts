@@ -53,14 +53,17 @@ export function burnBody(p: { queryId?: bigint; amount: bigint; responseTo: Addr
     .endCell();
 }
 
-/** Ask your own jetton-wallet to claim `cumulative` from the root published for `epoch`. */
-export function askToClaimBody(p: { queryId?: bigint; epoch: number; cumulative: bigint; proof: Cell; next?: Cell | null }): Cell {
+/**
+ * Ask your own jetton-wallet to claim `cumulative`. `root` is the publisher-signed root the proof opens to
+ * (see `signedRootCell`); the minter checks the signature and the proof itself.
+ */
+export function askToClaimBody(p: { queryId?: bigint; cumulative: bigint; proof: Cell; root: Cell; next?: Cell | null }): Cell {
   return beginCell()
     .storeUint(Op.askToClaim, 32)
     .storeUint(p.queryId ?? 0n, 64)
-    .storeUint(p.epoch, 32)
     .storeCoins(p.cumulative)
     .storeRef(p.proof)
+    .storeRef(p.root)
     .storeMaybeRef(p.next ?? null)
     .endCell();
 }
@@ -86,20 +89,11 @@ export const topUpBody = (): Cell => beginCell().storeUint(Op.topUp, 32).endCell
 
 // ----------------------------------------------------------------- minter
 
-export const publishRootBody = (p: { queryId?: bigint; epoch: number; treeRoot: Buffer; total: bigint }): Cell =>
-  beginCell()
-    .storeUint(Op.publishRoot, 32)
-    .storeUint(p.queryId ?? 0n, 64)
-    .storeUint(p.epoch, 32)
-    .storeBuffer(p.treeRoot, 32)
-    .storeCoins(p.total)
-    .endCell();
+export const changePublisherKeyBody = (newKey: Buffer): Cell =>
+  beginCell().storeUint(Op.changePublisherKey, 32).storeUint(0, 64).storeBuffer(newKey, 32).endCell();
 
-export const changePublisherBody = (publisher: Address): Cell =>
-  beginCell().storeUint(Op.changePublisher, 32).storeUint(0, 64).storeAddress(publisher).endCell();
-
-export const setLimitsBody = (p: { maxGrowth: bigint; periodSeconds: number; minInterval: number }): Cell =>
-  beginCell().storeUint(Op.setLimits, 32).storeUint(0, 64).storeCoins(p.maxGrowth).storeUint(p.periodSeconds, 32).storeUint(p.minInterval, 32).endCell();
+export const setLimitsBody = (p: { maxGrowth: bigint; periodSeconds: number }): Cell =>
+  beginCell().storeUint(Op.setLimits, 32).storeUint(0, 64).storeCoins(p.maxGrowth).storeUint(p.periodSeconds, 32).endCell();
 
 export const changeMetadataBody = (metadata: Cell): Cell =>
   beginCell().storeUint(Op.changeMetadata, 32).storeUint(0, 64).storeRef(metadata).endCell();

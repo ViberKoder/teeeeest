@@ -14,6 +14,14 @@ Every finding below has a regression test unless marked *doc*.
 | 6 | **High** | **Two wallets for one Telegram account → the same EGG claimed twice.** A second device that did not find the key (slow or failed Telegram CloudStorage) created a *different* wallet and silently re-linked the account to it. The ledger is per account, but each wallet's leaf from an older root stays claimable forever, so both wallets could claim the same amount. | (a) An address becomes the account's wallet **for good** the moment it enters a root that is sent (`users.locked`); the server refuses any other address afterwards. (b) A verified address is never replaced silently; replacing is possible only before it was ever published. (c) The app never creates a wallet before asking the account whether it already has one, and treats "Telegram storage did not answer" as *unknown*, not *none*; `create` re-reads the backup right before writing. (d) A device whose wallet differs from the account's shows "This account already has a wallet — enter its Secret Phrase". |
 | 5 | Doc | The README/architecture claimed "a publisher cannot promise more than it declares". True only for what an honest auditor recomputes from the public leaf set; on-chain, the binding bound is #1's. | Docs corrected. |
 
+## v3: signed roots instead of published roots
+
+Why: publishing a root on-chain every few seconds costs the project continuously and grows the minter's storage without bound. The root is now signed off-chain and travels in the player's claim.
+
+What the contract still enforces on its own: the signature on the root, that the proof opens to *that* root, the growth window (`maxGrowth` per period for raising the highest total), `totalMinted ≤ maxTotal ≤ maxSupply`, one root per `seq`, no mint, tighten-only limits. A signed root never expires; a rotated-out key keeps only `legacyCap`.
+
+What it gives up: roots are no longer public on-chain objects, so **equivocation** (different roots at different `seq` values) is *bounded and detectable* (public log), not prevented. Tests: `claims.test.tolk` (bad signature, other minter, lying total, growth, permanence of old roots, disjoint roots vs the cap, same-`seq` fork, key rotation + legacy cap).
+
 ## Checked and fine
 
 * Claims verify a proof against a root the minter itself stores; the wallet accepts credit only from the minter; leaf/node/root hashes carry distinct tags and lengths (no second-preimage reuse of a node as a leaf); sums are `uint128` and range-checked on serialisation; proof depth is capped (64 steps).

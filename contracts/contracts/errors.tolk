@@ -9,16 +9,15 @@ enum Errors {
 
     // governance / publication
     NotAdmin = 80
-    NotPublisher = 81
-    EpochOutOfOrder = 82
-    TotalDecreased = 83
     SupplyExceeded = 84
     GrowthLimit = 85
-    PublishTooSoon = 86
     LimitsLoosened = 87
+    BadSignature = 88
+    LegacyCap = 89
+    Equivocation = 79
+    ZeroKey = 78
 
     // claims
-    UnknownEpoch = 90
     ProofMismatch = 91
     ProofTooDeep = 92
     ClaimInProgress = 93

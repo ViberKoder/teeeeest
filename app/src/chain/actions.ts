@@ -45,12 +45,12 @@ export function eggTransfer(p: { owner: Address; state: EggState; to: Address; a
   ];
 }
 
-/** The claim: ask your own jetton-wallet to verify `proof` against the root the minter has published for `epoch`. */
+/** The claim: ask your own jetton-wallet to prove `proof` against a root the publisher signed (the minter checks both). */
 export function eggClaim(p: {
   state: EggState;
-  epoch: number;
   cumulative: bigint;
   proof: Cell;
+  root: Cell;
   init?: StateInit;
   /** claim AND send in the same request: pass `amount` on to `to` as soon as the claim is credited */
   thenSend?: { owner: Address; to: Address; amount: bigint; comment?: string; forwardTon?: bigint };
@@ -71,7 +71,7 @@ export function eggClaim(p: {
       bounce: true,
       sponsorable: true,
       init: p.state.deployed ? undefined : p.init,
-      body: askToClaimBody({ epoch: p.epoch, cumulative: p.cumulative, proof: p.proof, next }),
+      body: askToClaimBody({ cumulative: p.cumulative, proof: p.proof, root: p.root, next }),
     },
   ];
 }

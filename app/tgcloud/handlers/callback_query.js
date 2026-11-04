@@ -2,7 +2,6 @@
 import { api } from 'sdk';
 import { DAILY_CAP, HATCH_DATA, fmt, total } from '../lib/game.js';
 import { countOf, hatchOnce, postCount } from '../lib/ledger.js';
-import { tickSafe } from '../lib/publisher.js';
 
 const safe = async (p) => { try { await p; } catch { /* the egg is already credited; a failed toast must not undo it */ } };
 
@@ -22,5 +21,4 @@ export default async function (q) {
     message_id: q.message.message_id,
     reply_markup: { inline_keyboard: [[{ text: `🥚 Hatch · ${n}`, callback_data: HATCH_DATA }]] },
   }));
-  await tickSafe(); // after answering: publish what was just earned (rate-limited, one root at a time)
 }

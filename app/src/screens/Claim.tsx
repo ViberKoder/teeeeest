@@ -48,14 +48,14 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
     try {
       const raw = provider.address.toRawString();
       setStep(1);
-      const { ent, cumulative, proof, state, init } = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === raw);
-      setEpoch(ent.epoch);
+      const { ent, cumulative, proof, root, state, init } = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === raw);
+      setEpoch(Number(ent.root.seq));
       if (cumulative <= state.claimed) throw new Error('already-claimed');
       setMoved(cumulative - state.claimed);
 
       setStep(2);
-      await provider.send(eggClaim({ state, epoch: ent.epoch, cumulative, proof, init: init.init }));
-      w.addLocalActivity({ id: `hatch-${ent.epoch}-${Date.now()}`, kind: 'egg', direction: 'in', amount: cumulative - state.claimed, symbol: 'EGG', decimals: cfg.token.decimals, peer: '', time: Math.floor(Date.now() / 1000), label: 'hatch', failed: false });
+      await provider.send(eggClaim({ state, cumulative, proof, root, init: init.init }));
+      w.addLocalActivity({ id: `hatch-${ent.root.seq}-${Date.now()}`, kind: 'egg', direction: 'in', amount: cumulative - state.claimed, symbol: 'EGG', decimals: cfg.token.decimals, peer: '', time: Math.floor(Date.now() / 1000), label: 'hatch', failed: false });
 
       setStep(3);
       for (let i = 0; i < 40; i++) {

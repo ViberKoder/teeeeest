@@ -68,12 +68,15 @@ export async function readEgg(master: Address, owner: Address): Promise<EggState
   return { jettonWallet: address, deployed: true, balance: wd[0], claimed: cs[0], lockedUntil: Number(cs[1] ?? 0n) };
 }
 
-/** The commitment the minter stores for an epoch — the one thing a proof must open to. */
-export async function onchainCommitment(master: Address, epoch: number): Promise<Buffer | null> {
-  try {
-    const r = await ton().runMethod(master, 'get_root', [{ type: 'int', value: BigInt(epoch) }]);
-    return Buffer.from(r.stack.readBigNumber().toString(16).padStart(64, '0'), 'hex');
-  } catch {
-    return null;
-  }
+/**
+ * The key whose signatures make roots valid, read from the minter itself (never from the bot). A signed root is checked against it
+ * before anything is sent — the same check the contract repeats on-chain. It changes only when the admin rotates it, so it is cached briefly.
+ */
+let keyCache: { at: number; key: Buffer } | undefined;
+export async function publisherKey(master: Address): Promise<Buffer> {
+  if (keyCache && Date.now() - keyCache.at < 5 * 60_000) return keyCache.key;
+  const n = (await runGetter(master.toRawString(), 'get_publisher_key'))?.[0];
+  if (n === undefined) throw new Error('minter not reachable');
+  keyCache = { at: Date.now(), key: Buffer.from(n.toString(16).padStart(64, '0'), 'hex') };
+  return keyCache.key;
 }

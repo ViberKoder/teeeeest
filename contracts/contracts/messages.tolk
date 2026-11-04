@@ -71,12 +71,12 @@ struct (0xd1735400) ResponseWalletAddress {
 
 // ---------------- claims ----------------
 
-/// owner -> own wallet. `cumulative` + `proof` come from the published tree of `epoch`.
+/// owner -> own wallet. `root` is a `SignedRoot` the publisher signed; `cumulative` + `proof` open to that root.
 struct (0x28dac35b) AskToClaim {
     queryId: uint64
-    epoch: uint32
     cumulative: coins
     proof: cell
+    root: cell
     /// optional `TransferIntent`: after the credit lands, send this much to someone, in the same flow
     next: cell?
 }
@@ -95,10 +95,10 @@ struct TransferIntent {
 struct (0x87a42c7c) ClaimRequest {
     queryId: uint64
     ownerAddress: address
-    epoch: uint32
     cumulative: coins
     claimedAtWallet: coins
     proof: cell
+    root: cell
     next: cell?
 }
 
@@ -112,23 +112,16 @@ struct (0x49e1974f) ClaimCredit {
 
 // ---------------- governance ----------------
 
-struct (0x0e7ccd64) PublishRoot {
+/// admin -> minter: the key that signs roots changes; the old one keeps only what it already promised.
+struct (0x4b2e9d11) ChangePublisherKey {
     queryId: uint64
-    epoch: uint32
-    treeRoot: uint256
-    total: coins
-}
-
-struct (0x97d70ce0) ChangePublisher {
-    queryId: uint64
-    newPublisher: address
+    newKey: uint256
 }
 
 struct (0x0cc58dbc) SetLimits {
     queryId: uint64
     maxGrowth: coins
     periodSeconds: uint32
-    minInterval: uint32
 }
 
 struct (0x6501f354) ChangeMinterAdmin {

@@ -134,9 +134,9 @@ fun EggWallet.sendAskToClaim(
     self,
     from: address,
     queryId: uint64,
-    epoch: uint32,
     cumulative: coins,
     proof: cell,
+    root: cell,
     next: cell?,
     config: SendParams = {},
 ): SendResultList {
@@ -144,7 +144,7 @@ fun EggWallet.sendAskToClaim(
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: AskToClaim { queryId, epoch, cumulative, proof, next },
+        body: AskToClaim { queryId, cumulative, proof, root, next },
     });
     return net.send(from, genericMsg);
 }

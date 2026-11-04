@@ -1,6 +1,7 @@
 import "@stdlib/gas-payments"
 import "@stdlib/strings"
 import "@acton/build"
+import "@acton/crypto"
 import "@acton/emulation/config"
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
@@ -30,41 +31,41 @@ fun testMetadata(): cell {
 struct Env {
     minter: EggMinter
     admin: Treasury
-    publisher: Treasury
     alice: Treasury
     bob: Treasury
+    /// the key that signs roots
+    kp: KeyPair
 }
 
 fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY): Env {
     testing.setNow(1800000000);
     val admin = testing.treasury("admin");
-    val publisher = testing.treasury("publisher");
+    val kp = crypto.seedToKeyPair(1234567);
     val alice = testing.treasury("alice");
     val bob = testing.treasury("bob");
 
     val governance: Governance = {
         adminAddress: admin.address,
         nextAdminAddress: null,
-        publisherAddress: publisher.address,
     };
+    val keys: Keys = { publisherKey: kp.publicKey, legacyKey: 0, legacyCap: 0 };
     val limits: Limits = {
         maxGrowth,
         periodSeconds: 3600,
-        minInterval: 0,
         windowStart: 0,
         windowGrowth: 0,
-        lastPublishedAt: 0,
-        lastTotal: 0,
+        maxTotal: 0,
     };
     val minter = EggMinter.fromStorage({
         totalSupply: 0,
         maxSupply,
-        lastEpoch: 0,
         metadata: testMetadata(),
-        roots: [],
         governance: governance.toCell(),
+        keys: keys.toCell(),
         limits: limits.toCell(),
         totalMinted: 0,
+        lastSeq: 0,
+        lastRoot: 0,
     });
     // the generated .deploy() sends an empty body; this contract expects TopUpGrams
     val res = net.send(
@@ -77,7 +78,7 @@ fun setupMinter(maxSupply: coins = MAX_SUPPLY, maxGrowth: coins = MAX_SUPPLY): E
         }),
     );
     expect(res).toHaveSuccessfulDeploy({ to: minter.address });
-    return { minter, admin, publisher, alice, bob };
+    return { minter, admin, alice, bob, kp };
 }
 
 fun userWallet(minter: EggMinter, owner: address): EggWallet {
@@ -126,10 +127,17 @@ fun twoLeafTree(a: address, aSum: int, b: address, bSum: int): Pair {
     };
 }
 
-fun publish(env: Env, epoch: int, root: int, total: int): SendResultList {
-    return env.minter.sendPublishRoot(env.publisher.address, 0, epoch, root, total, { value: grams("0.1") });
+/// A root signed by the publisher: what a player carries into the claim. No transaction, nothing published.
+fun signRootWith(privateKey: int, minter: address, seq: int, root: int, total: int): cell {
+    val digest = signedRootDigest(minter, root, total, seq);
+    val signature = crypto.rawSign(privateKey, digest);
+    return beginCell().storeUint(root, 256).storeCoins(total).storeUint(seq, 64).storeSlice(signature).endCell();
 }
 
-fun claim(wallet: EggWallet, owner: address, epoch: int, cumulative: int, proof: cell): SendResultList {
-    return wallet.sendAskToClaim(owner, 0, epoch, cumulative, proof, null, { value: CLAIM_VALUE });
+fun signRoot(env: Env, seq: int, root: int, total: int): cell {
+    return signRootWith(env.kp.privateKey, env.minter.address, seq, root, total);
+}
+
+fun claim(wallet: EggWallet, owner: address, root: cell, cumulative: int, proof: cell): SendResultList {
+    return wallet.sendAskToClaim(owner, 0, cumulative, proof, root, null, { value: CLAIM_VALUE });
 }

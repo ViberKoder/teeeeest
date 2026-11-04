@@ -1,7 +1,8 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Address, toNano, TupleReader } from '@ton/core';
 import { findTransaction } from '@ton/test-utils';
-import { EggTree, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, publishRootBody, topUpBody, verifyEntitlement, walletStateInit } from '@egg/sdk';
+import { keyPairFromSeed } from '@ton/crypto';
+import { EggTree, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata, signRoot, signedRootCell, topUpBody, verifyEntitlement, walletStateInit } from '@egg/sdk';
 import { eggClaim, eggTransfer, parseAddress, tonTransfer } from '../src/chain/actions';
 import type { EggState } from '../src/chain/egg';
 import type { OutMessage } from '../src/provider/types';
@@ -24,7 +25,7 @@ async function sendAs(user: SandboxContract<TreasuryContract>, msgs: OutMessage[
 describe('messages built by the wallet app are accepted by the real (Tolk) contracts', () => {
   let chain: Blockchain;
   let admin: SandboxContract<TreasuryContract>;
-  let publisher: SandboxContract<TreasuryContract>;
+  const pub = keyPairFromSeed(Buffer.alloc(32, 77));
   let alice: SandboxContract<TreasuryContract>;
   let bob: SandboxContract<TreasuryContract>;
   let minter: Address;
@@ -32,17 +33,17 @@ describe('messages built by the wallet app are accepted by the real (Tolk) contr
   beforeEach(async () => {
     chain = await Blockchain.create();
     chain.now = T0;
-    [admin, publisher, alice, bob] = await Promise.all(['admin', 'publisher', 'alice', 'bob'].map((n) => chain.treasury(n)));
+    [admin, alice, bob] = await Promise.all(['admin', 'alice', 'bob'].map((n) => chain.treasury(n)));
     const s = minterStateInit(
-      { maxSupply: E(1_000_000), admin: admin.address, publisher: publisher.address, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
+      { maxSupply: E(1_000_000), admin: admin.address, publisherKey: pub.publicKey, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
       eggMinterCode,
     );
     minter = s.address;
     await admin.send({ to: minter, value: toNano('1'), init: s.init, bounce: false, body: topUpBody() });
   });
 
-  const publish = (tree: EggTree, epoch = 1) =>
-    publisher.send({ to: minter, value: toNano('0.1'), body: publishRootBody({ epoch, treeRoot: tree.treeRoot, total: tree.total }) });
+  // the publisher signs a root; nothing is published on-chain
+  const rootOf = (tree: EggTree, seq = 1n) => signRoot(minter, tree.treeRoot, tree.total, seq, pub.secretKey);
 
   const stateOf = async (owner: Address): Promise<{ s: EggState; init: ReturnType<typeof walletStateInit>['init'] }> => {
     const { init, address } = walletStateInit(owner, minter, eggWalletCode);
@@ -57,10 +58,9 @@ describe('messages built by the wallet app are accepted by the real (Tolk) contr
 
   it('first claim deploys the wallet from the app-built StateInit and credits exactly the proven amount', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(2500) }, { owner: bob.address, cumulative: E(40) }]);
-    await publish(tree);
 
     const { s, init } = await stateOf(alice.address);
-    const tx = await sendAs(alice, eggClaim({ state: s, epoch: 1, cumulative: E(2500), proof: tree.proof(alice.address)!, init }));
+    const tx = await sendAs(alice, eggClaim({ state: s, cumulative: E(2500), proof: tree.proof(alice.address)!, root: signedRootCell(rootOf(tree)), init }));
     expectTx(tx.transactions, { to: s.jettonWallet, success: true, deploy: true });
     expectTx(tx.transactions, { from: minter, to: s.jettonWallet, success: true });
     const after = (await stateOf(alice.address)).s;
@@ -70,23 +70,21 @@ describe('messages built by the wallet app are accepted by the real (Tolk) contr
 
   it('the proof the app checks locally is the same one the contract accepts', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(10) }, { owner: bob.address, cumulative: E(20) }]);
-    await publish(tree);
-    const onchain = new TupleReader((await chain.runGetMethod(minter, 'get_root', [{ type: 'int', value: 1n }])).stack).readBigNumber();
-    const commitment = Buffer.from(onchain.toString(16).padStart(64, '0'), 'hex');
+    const key = Buffer.from(new TupleReader((await chain.runGetMethod(minter, 'get_publisher_key')).stack).readBigNumber().toString(16).padStart(64, '0'), 'hex');
     const ent = {
-      owner: alice.address.toRawString(), epoch: 1, cumulative: E(10).toString(),
-      proof: tree.proof(alice.address)!.toBoc().toString('base64'), commitment: commitment.toString('hex'),
+      owner: alice.address.toRawString(), cumulative: E(10).toString(),
+      proof: tree.proof(alice.address)!.toBoc().toString('base64'), root: rootOf(tree),
     };
-    expect(verifyEntitlement(ent, commitment)).toBe(true);
-    expect(verifyEntitlement({ ...ent, cumulative: E(11).toString() }, commitment)).toBe(false);
+    expect(verifyEntitlement(ent, minter, key)).toBe(true);
+    expect(verifyEntitlement({ ...ent, cumulative: E(11).toString() }, minter, key)).toBe(false);
+    expect(verifyEntitlement(ent, minter, Buffer.alloc(32, 9))).toBe(false);
   });
 
   it('a claim costs the user a few cents, the attached TON comes back, the jetton-wallet stays solvent', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(5) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(tree);
     const { s, init } = await stateOf(alice.address);
     const before = await alice.getBalance();
-    await sendAs(alice, eggClaim({ state: s, epoch: 1, cumulative: E(5), proof: tree.proof(alice.address)!, init }));
+    await sendAs(alice, eggClaim({ state: s, cumulative: E(5), proof: tree.proof(alice.address)!, root: signedRootCell(rootOf(tree)), init }));
     const spent = before - (await alice.getBalance());
     expect(spent).toBeLessThan(toNano('0.03'));
     expect((await chain.getContract(s.jettonWallet)).balance).toBeGreaterThan(0n);
@@ -94,9 +92,8 @@ describe('messages built by the wallet app are accepted by the real (Tolk) contr
 
   it('send with a comment: recipient wallet is created and the recipient is notified', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(500) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(tree);
     const a0 = await stateOf(alice.address);
-    await sendAs(alice, eggClaim({ state: a0.s, epoch: 1, cumulative: E(500), proof: tree.proof(alice.address)!, init: a0.init }));
+    await sendAs(alice, eggClaim({ state: a0.s, cumulative: E(500), proof: tree.proof(alice.address)!, root: signedRootCell(rootOf(tree)), init: a0.init }));
 
     const { s } = await stateOf(alice.address);
     const tx = await sendAs(alice, eggTransfer({ owner: alice.address, state: s, to: bob.address, amount: E(100), comment: 'for coffee' }));

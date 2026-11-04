@@ -30,7 +30,7 @@ export const hatches = table('hatches', {
   byUser: index('idx_hatch_user').on(t.tgId, t.ts),
 }));
 
-// Merkle proofs of published roots, filled by the operator after each PublishRoot (the contract is the authority).
+// Merkle proofs of roots (legacy table, not used any more), filled by the operator after each PublishRoot (the contract is the authority).
 export const proofs = table('proofs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   epoch: integer('epoch').notNull(),
@@ -81,4 +81,16 @@ export const prepared = table('prepared', {
   adoptedBy: integer('adopted_by').notNull().default(0),
   fundedAt: integer('funded_at').notNull().default(0),
   sentAt: integer('sent_at').notNull().default(0),
+});
+
+// Every root the publisher key ever signed (an append-only public log: seq, root, total, signature). Only the newest keeps its
+// leaf set (needed to build proofs); an auditor can ask for any root's leaves from the log's mirror.
+export const roots = table('roots', {
+  seq: integer('seq').primaryKey(),
+  version: text('version').notNull(),
+  treeRoot: text('tree_root').notNull(),
+  total: text('total').notNull(),
+  signature: text('signature').notNull(),
+  leaves: text('leaves').notNull().default(''),
+  createdAt: integer('created_at').notNull(),
 });

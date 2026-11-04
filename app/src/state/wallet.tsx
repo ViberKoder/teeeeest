@@ -236,7 +236,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
         acc.me = me;
         push();
-        if (api.available()) void api.kick();
       })().catch(() => undefined),
     ];
     await Promise.all(tasks);

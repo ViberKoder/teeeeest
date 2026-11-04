@@ -57,10 +57,10 @@ fun EggMinter.sendClaimRequest(
     from: address,
     queryId: uint64,
     ownerAddress: address,
-    epoch: uint32,
     cumulative: coins,
     claimedAtWallet: coins,
     proof: cell,
+    root: cell,
     next: cell?,
     config: SendParams = {},
 ): SendResultList {
@@ -71,30 +71,12 @@ fun EggMinter.sendClaimRequest(
         body: ClaimRequest {
             queryId,
             ownerAddress,
-            epoch,
             cumulative,
             claimedAtWallet,
             proof,
+            root,
             next,
         },
-    });
-    return net.send(from, genericMsg);
-}
-
-fun EggMinter.sendPublishRoot(
-    self,
-    from: address,
-    queryId: uint64,
-    epoch: uint32,
-    treeRoot: uint256,
-    total: coins,
-    config: SendParams = {},
-): SendResultList {
-    val genericMsg = createMessage({
-        bounce: config.bounce,
-        value: config.value,
-        dest: self.address,
-        body: PublishRoot { queryId, epoch, treeRoot, total },
     });
     return net.send(from, genericMsg);
 }
@@ -134,18 +116,18 @@ fun EggMinter.sendRequestWalletAddress(
     return net.send(from, genericMsg);
 }
 
-fun EggMinter.sendChangePublisher(
+fun EggMinter.sendChangePublisherKey(
     self,
     from: address,
     queryId: uint64,
-    newPublisher: address,
+    newKey: uint256,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: ChangePublisher { queryId, newPublisher },
+        body: ChangePublisherKey { queryId, newKey },
     });
     return net.send(from, genericMsg);
 }
@@ -156,14 +138,13 @@ fun EggMinter.sendSetLimits(
     queryId: uint64,
     maxGrowth: coins,
     periodSeconds: uint32,
-    minInterval: uint32,
     config: SendParams = {},
 ): SendResultList {
     val genericMsg = createMessage({
         bounce: config.bounce,
         value: config.value,
         dest: self.address,
-        body: SetLimits { queryId, maxGrowth, periodSeconds, minInterval },
+        body: SetLimits { queryId, maxGrowth, periodSeconds },
     });
     return net.send(from, genericMsg);
 }
@@ -267,16 +248,24 @@ fun EggMinter.getMaxSupply(self): int {
     return net.runGetMethod(self.address, "get_max_supply");
 }
 
-fun EggMinter.getLastEpoch(self): int {
-    return net.runGetMethod(self.address, "get_last_epoch");
+fun EggMinter.getMaxTotal(self): int {
+    return net.runGetMethod(self.address, "get_max_total");
 }
 
-fun EggMinter.getRoot(self, epoch: int): RootReply {
-    return net.runGetMethod(self.address, "get_root", [epoch]);
+fun EggMinter.getLimits(self): LimitsReply {
+    return net.runGetMethod(self.address, "get_limits");
 }
 
-fun EggMinter.getPublisher(self): address {
-    return net.runGetMethod(self.address, "get_publisher");
+fun EggMinter.getLastSeq(self): int {
+    return net.runGetMethod(self.address, "get_last_seq");
+}
+
+fun EggMinter.getPublisherKey(self): int {
+    return net.runGetMethod(self.address, "get_publisher_key");
+}
+
+fun EggMinter.getLegacyKey(self): LegacyKeyReply {
+    return net.runGetMethod(self.address, "get_legacy_key");
 }
 
 fun EggMinter.getNextAdminAddress(self): address? {

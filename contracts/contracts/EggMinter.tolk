@@ -9,17 +9,16 @@ import "storage"
 contract EggMinter {
     author: "EGG"
     version: "2.0.0"
-    description: "TEP-74 / TEP-89 jetton minter. Supply is created only by verified claims against published Merkle roots"
+    description: "TEP-74 / TEP-89 jetton minter. Supply is created only by claims that prove a share of a publisher-signed Merkle root"
     storage: MinterStorage
     incomingMessages: AllowedMessageToMinter
 }
 
 type AllowedMessageToMinter =
     | ClaimRequest
-    | PublishRoot
     | BurnNotificationForMinter
     | RequestWalletAddress
-    | ChangePublisher
+    | ChangePublisherKey
     | SetLimits
     | ChangeMinterAdmin
     | ClaimMinterAdmin
@@ -51,30 +50,57 @@ fun onInternalMessage(in: InMessage) {
                 )
             ) throw Errors.NotValidWallet;
 
-            val record = storage.roots.get(msg.epoch);
-            assert (record.isFound) throw Errors.UnknownEpoch;
+            // 1. the root is authentic: signed by the publisher key (or by the previous key, within what it had promised)
+            val sr = SignedRoot.fromCell(msg.root);
+            val digest = signedRootDigest(contract.getAddress(), sr.treeRoot, sr.total, sr.seq);
+            val keys = storage.keys.load();
+            val signature = sr.signature as slice;
+            if (!isSignatureValid(digest, signature, keys.publisherKey)) {
+                assert (keys.legacyKey != 0 && isSignatureValid(digest, signature, keys.legacyKey)) throw Errors.BadSignature;
+                assert (sr.total <= keys.legacyCap) throw Errors.LegacyCap;
+            }
 
+            // 2. the proof opens to exactly that root
             val (treeRoot, total) = foldProof(
                 leafHash(msg.ownerAddress, msg.cumulative),
                 msg.cumulative,
                 msg.proof,
             );
-            assert (
-                rootCommitment(treeRoot, total) == record.loadValue().commitment
-            ) throw Errors.ProofMismatch;
+            assert (treeRoot == sr.treeRoot && total == sr.total) throw Errors.ProofMismatch;
 
-            // new supply = only what this wallet has not been credited yet
+            // 3. one slot, one root: a second, different root for the same `seq` is refused
+            if (sr.seq > storage.lastSeq) {
+                storage.lastSeq = sr.seq;
+                storage.lastRoot = digest;
+            } else if (sr.seq == storage.lastSeq) {
+                assert (storage.lastRoot == digest) throw Errors.Equivocation;
+            }
+
+            // 4. limits: a root that promises more than anything seen before may raise `maxTotal`, but only within the growth budget
+            var limits = storage.limits.load();
+            if (sr.total > limits.maxTotal) {
+                assert (sr.total <= storage.maxSupply) throw Errors.SupplyExceeded;
+                val now = blockchain.now();
+                if (now >= limits.windowStart + limits.periodSeconds) {
+                    limits.windowStart = now;
+                    limits.windowGrowth = 0;
+                }
+                limits.windowGrowth += sr.total - limits.maxTotal;
+                assert (limits.windowGrowth <= limits.maxGrowth) throw Errors.GrowthLimit;
+                limits.maxTotal = sr.total;
+                storage.limits = limits.toCell();
+            }
+
+            // 5. new supply = only what this wallet has not been credited yet
             if (msg.cumulative > msg.claimedAtWallet) {
                 val delta = msg.cumulative - msg.claimedAtWallet;
                 assert (storage.totalSupply + delta <= storage.maxSupply) throw Errors.SupplyExceeded;
-                // What has ever been created can never exceed the NEWEST published total, which the growth limits bound.
-                // A tree's internal sums are only checked along the claimed path, so a dishonest publisher could otherwise
-                // promise the same total to different people in different roots and mint past the limits.
-                assert (storage.totalMinted + delta <= storage.limits.load().lastTotal) throw Errors.SupplyExceeded;
+                // What was ever created can never exceed the highest total promised, which the growth limits bound.
+                assert (storage.totalMinted + delta <= limits.maxTotal) throw Errors.SupplyExceeded;
                 storage.totalSupply += delta;
                 storage.totalMinted += delta;
-                storage.save();
             }
+            storage.save();
 
             val creditMsg = createMessage({
                 bounce: BounceMode.NoBounce,
@@ -89,37 +115,6 @@ fun onInternalMessage(in: InMessage) {
             creditMsg.send(
                 SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
             );
-        }
-
-        PublishRoot => {
-            var storage = lazy MinterStorage.load();
-            val gov = storage.governance.load();
-            assert (in.senderAddress == gov.publisherAddress) throw Errors.NotPublisher;
-            assert (msg.epoch == storage.lastEpoch + 1) throw Errors.EpochOutOfOrder;
-            assert (msg.total <= storage.maxSupply) throw Errors.SupplyExceeded;
-
-            var limits = storage.limits.load();
-            val now = blockchain.now();
-            assert (now >= limits.lastPublishedAt + limits.minInterval) throw Errors.PublishTooSoon;
-            assert (msg.total >= limits.lastTotal) throw Errors.TotalDecreased;
-
-            if (now >= limits.windowStart + limits.periodSeconds) {
-                limits.windowStart = now;
-                limits.windowGrowth = 0;
-            }
-            limits.windowGrowth += msg.total - limits.lastTotal;
-            assert (limits.windowGrowth <= limits.maxGrowth) throw Errors.GrowthLimit;
-            limits.lastTotal = msg.total;
-            limits.lastPublishedAt = now;
-
-            storage.roots.set(msg.epoch, {
-                commitment: rootCommitment(msg.treeRoot, msg.total),
-                total: msg.total,
-                publishedAt: now,
-            });
-            storage.lastEpoch = msg.epoch;
-            storage.limits = limits.toCell();
-            storage.save();
         }
 
         BurnNotificationForMinter => {
@@ -177,13 +172,19 @@ fun onInternalMessage(in: InMessage) {
             );
         }
 
-        ChangePublisher => {
+        ChangePublisherKey => {
             val storage = lazy MinterStorage.load();
-            var gov = storage.governance.load();
+            val gov = storage.governance.load();
             assertSenderIsAdmin(in.senderAddress, gov.adminAddress);
-            gov.publisherAddress = msg.newPublisher;
+            assert (msg.newKey != 0) throw Errors.ZeroKey;
+            var keys = storage.keys.load();
+            val limits = storage.limits.load();
+            // the replaced key keeps value only for what was already promised
+            keys.legacyKey = keys.publisherKey;
+            keys.legacyCap = limits.maxTotal;
+            keys.publisherKey = msg.newKey;
             var next = storage;
-            next.governance = gov.toCell();
+            next.keys = keys.toCell();
             next.save();
         }
 
@@ -195,10 +196,8 @@ fun onInternalMessage(in: InMessage) {
             // limits can only be tightened: a compromised admin must not be able to open the tap
             assert (msg.maxGrowth <= limits.maxGrowth) throw Errors.LimitsLoosened;
             assert (msg.periodSeconds >= limits.periodSeconds) throw Errors.LimitsLoosened;
-            assert (msg.minInterval >= limits.minInterval) throw Errors.LimitsLoosened;
             limits.maxGrowth = msg.maxGrowth;
             limits.periodSeconds = msg.periodSeconds;
-            limits.minInterval = msg.minInterval;
             var next = storage;
             next.limits = limits.toCell();
             next.save();
@@ -288,21 +287,31 @@ get fun get_max_supply(): int {
     return storage.maxSupply;
 }
 
-get fun get_last_epoch(): int {
+get fun get_max_total(): int {
     val storage = lazy MinterStorage.load();
-    return storage.lastEpoch;
+    return storage.limits.load().maxTotal;
 }
 
-/// (commitment, total, publishedAt) of a published root; exit code 9 style failure if unknown
-get fun get_root(epoch: int): RootReply {
+get fun get_limits(): LimitsReply {
     val storage = lazy MinterStorage.load();
-    val record = storage.roots.mustGet(epoch, Errors.UnknownEpoch as int);
-    return { commitment: record.commitment, total: record.total, publishedAt: record.publishedAt };
+    val l = storage.limits.load();
+    return { maxGrowth: l.maxGrowth, periodSeconds: l.periodSeconds, windowStart: l.windowStart, windowGrowth: l.windowGrowth, maxTotal: l.maxTotal };
 }
 
-get fun get_publisher(): address {
+get fun get_last_seq(): int {
     val storage = lazy MinterStorage.load();
-    return storage.governance.load().publisherAddress;
+    return storage.lastSeq;
+}
+
+get fun get_publisher_key(): int {
+    val storage = lazy MinterStorage.load();
+    return storage.keys.load().publisherKey;
+}
+
+get fun get_legacy_key(): LegacyKeyReply {
+    val storage = lazy MinterStorage.load();
+    val keys = storage.keys.load();
+    return { legacyKey: keys.legacyKey, legacyCap: keys.legacyCap };
 }
 
 get fun get_next_admin_address(): address? {

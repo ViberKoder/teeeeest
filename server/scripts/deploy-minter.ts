@@ -1,11 +1,11 @@
 /**
  * Deploys the EGG minter.
  *
- *   DEPLOYER_MNEMONIC="…" ADMIN_ADDRESS=… PUBLISHER_ADDRESS=… MAX_SUPPLY=100000000000000000000 \
+ *   DEPLOYER_MNEMONIC="…" ADMIN_ADDRESS=… PUBLISHER_KEY=<ed25519 public key, hex> MAX_SUPPLY=100000000000000000000 \
  *   NAME=Egg SYMBOL=EGG IMAGE=https://… NETWORK=testnet TONCENTER_KEY=… npm run deploy-minter
  *
- * ADMIN_ADDRESS should be a cold wallet (later a multisig). It can rotate the publisher, tune limits and
- * change metadata — it cannot mint. PUBLISHER_ADDRESS is the hot wallet the server uses; the contract rate-limits it.
+ * ADMIN_ADDRESS should be a cold wallet (later a multisig). It can rotate the signing key, tighten limits and
+ * change metadata — it cannot mint. PUBLISHER_KEY is the public key whose signatures make Merkle roots valid; the contract rate-limits what it can promise.
  * Amounts are jetton units (decimals 9 ⇒ 1 EGG = 1 000 000 000).
  */
 import { Address, toNano } from '@ton/core';
@@ -33,20 +33,19 @@ async function main() {
   const maxGrowth = BigInt(need('MAX_GROWTH'));
   const periodSeconds = Number(process.env.PERIOD_SECONDS ?? 3600);
   const admin = Address.parse(need('ADMIN_ADDRESS'));
-  const publisher = Address.parse(need('PUBLISHER_ADDRESS'));
+  const publisherKey = Buffer.from(need('PUBLISHER_KEY'), 'hex');
+  if (publisherKey.length !== 32) throw new Error('PUBLISHER_KEY must be 32 bytes of hex');
   if (maxGrowth <= 0n || maxGrowth > maxSupply) throw new Error('MAX_GROWTH must be in (0, MAX_SUPPLY]');
   if (maxGrowth * 20n > maxSupply * BigInt(Math.max(1, Math.floor(86_400 / periodSeconds)))) console.warn('warning: MAX_GROWTH allows more than 5% of the supply per day');
   if (!Number.isInteger(periodSeconds) || periodSeconds < 60) throw new Error('PERIOD_SECONDS must be an integer >= 60');
-  if (admin.equals(publisher)) throw new Error('ADMIN_ADDRESS and PUBLISHER_ADDRESS must be different wallets (the admin should stay cold)');
 
   const { init, address } = minterStateInit(
     {
       maxSupply,
       admin,
-      publisher,
+      publisherKey,
       maxGrowth,
       periodSeconds,
-      minInterval: Number(process.env.MIN_INTERVAL ?? 60),
       metadata: onchainMetadata({
         name: process.env.NAME ?? 'Egg',
         symbol: process.env.SYMBOL ?? 'EGG',

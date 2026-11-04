@@ -1,5 +1,5 @@
 import { Cell } from '@ton/core';
-import { Entitlement } from '@egg/sdk';
+import { Entitlement, signedRootCell } from '@egg/sdk';
 import { cfg } from '../config';
 import { initData } from '../lib/tg';
 
@@ -70,8 +70,6 @@ export const api = {
   /** hand that wallet over to a key generated on this device (poll until "done") */
   adopt: (publicKey: string, signature: string) =>
     call<{ status: 'funding' | 'sent' | 'done' | 'taken' | 'bad-proof' | 'none'; address?: string }>('/v1/adopt', { method: 'POST', body: JSON.stringify({ public_key: publicKey, signature }) }),
-  /** nudges the publisher in the bot's runtime; fire and forget */
-  kick: () => call<{ status: string }>('/v1/kick').catch(() => undefined),
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string, replace = false) =>
     call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),
@@ -82,6 +80,7 @@ export const api = {
 };
 
 export const proofCell = (e: Entitlement) => Cell.fromBase64(e.proof);
+export const rootCell = (e: Entitlement) => signedRootCell(e.root);
 
 /**
  * The last verified entitlement is kept on the device. A proof is self-contained and stays valid against the

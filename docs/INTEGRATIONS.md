@@ -47,16 +47,16 @@ Unclaimed EGG is **not** a balance in the wallet contract, so standard jetton UI
 use the public entitlement API and the SDK:
 
 ```ts
-import { Address } from '@ton/core';
-import { fetchEntitlement, verifyEntitlement, askToClaimBody, Attach, walletStateInit, eggWalletCode } from '@egg/sdk';
+import { Address, Cell } from '@ton/core';
+import { verifyEntitlement, signedRootCell, askToClaimBody, Attach, walletStateInit, eggWalletCode } from '@egg/sdk';
 
 const owner = Address.parse(userAddress);
-const ent = await fetchEntitlement('https://api.example.org', owner);       // { epoch, cumulative, proof, commitment } | null
+const ent = await callBot('entitlement', { address: owner.toRawString() });   // { owner, cumulative, proof, root:{treeRoot,total,seq,signature} } | not found
 if (ent) {
-  // never trust the API: compare with the commitment stored in the minter contract
-  const onChain = await minterGetRoot(minter, ent.epoch);                   // get_root(epoch).commitment  (32 bytes)
-  if (verifyEntitlement(ent, onChain)) {
-    const pending = BigInt(ent.cumulative) - claimedByWallet;               // get_claim_state().claimed, 0 if not deployed
+  // never trust the bot: the signature is checked against the key stored in the minter contract
+  const key = await minterGetPublisherKey(minter);                            // get_publisher_key()  (32 bytes)
+  if (verifyEntitlement(ent, minter, key)) {
+    const pending = BigInt(ent.cumulative) - claimedByWallet;                 // get_claim_state().claimed, 0 if not deployed
     // show `pending` as "ready to claim"
   }
 }
@@ -65,34 +65,34 @@ if (ent) {
 const { init, address } = walletStateInit(owner, minter, eggWalletCode);
 send({
   to: address,
-  value: Attach.claim,                                  // 0.08 TON; ~0.004 is spent, the rest returns
+  value: Attach.claim,                                  // 0.08 TON; ~0.005 is spent, the rest returns
   stateInit: deployed ? undefined : init,               // the first claim deploys the wallet
-  body: askToClaimBody({ epoch: ent.epoch, cumulative: BigInt(ent.cumulative), proof: Cell.fromBase64(ent.proof) }),
+  body: askToClaimBody({ cumulative: BigInt(ent.cumulative), proof: Cell.fromBase64(ent.proof), root: signedRootCell(ent.root) }),
 });
 ```
 
-### API (public, no key)
+### Bot endpoints (Telegram Serverless; `tgcloud` calls, no key)
 
-| Request | Answer |
+| Endpoint | Answer |
 |---|---|
-| `GET /v1/entitlement/:address` | `{ owner, epoch, cumulative, proof(base64 BoC), commitment }` for the newest confirmed epoch containing the address, or 404 |
-| `GET /v1/epochs/latest` · `/v1/epochs/:n` | full leaf set of a confirmed epoch: `{ epoch, treeRoot, total, commitment, leaves:[{owner, cumulative}] }` — enough to rebuild every proof with `EggTree.fromJSON` and **no server at all** |
-| `GET /v1/supply` | `{ promised, max, decimals }` |
+| `entitlement {address}` | `{ owner, cumulative, proof(base64 BoC), root }` where `root` is the newest root the publisher signed, or "no-entitlement" |
+| `me` | the caller's ledger total, linked wallet and the same entitlement |
 
 ### Message layouts
 
 ```
-AskToClaim   (to the user's own jetton-wallet) op 0x28dac35b  query_id:uint64  epoch:uint32  cumulative:Coins  ^proof
+AskToClaim   (to the user's own jetton-wallet) op 0x28dac35b  query_id:uint64  cumulative:Coins  ^proof  ^signedRoot  next:Maybe ^cell
 ClaimRequest (wallet → minter, internal)        op 0x87a42c7c
 ClaimCredit  (minter → wallet, internal)        op 0x49e1974f
+signedRoot   treeRoot:256 total:Coins seq:64 signature:512      (signature over H(0x45474752 | minter hash | treeRoot | total | seq))
 proof cell   hasNext:1 count:2 (siblingHash:256 siblingSum:128 siblingOnRight:1)×count [^next]
 ```
 
-Minter getters for integrators: `get_last_epoch()`, `get_root(epoch) → (commitment, total, publishedAt)`, `get_max_supply()`,
-`get_publisher()`. Wallet getter: `get_claim_state() → (claimed, claimLockedUntil)`.
+Minter getters for integrators: `get_publisher_key()`, `get_max_total()`, `get_limits()`, `get_last_seq()`, `get_max_supply()`, `get_total_minted()`.
+Wallet getter: `get_claim_state() → (claimed, claimLockedUntil)`.
 
 ### Why this is safe to show
 
-The numbers an integrator displays are checked against the contract's own commitment, and the contract re-checks them when
+The numbers an integrator displays are checked against the key the contract stores, and the contract re-checks them when
 the user claims. An integrator that shows a wrong number cannot cause a wrong credit; a user cannot claim more than the root
 holds.

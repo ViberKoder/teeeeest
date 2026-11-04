@@ -2,33 +2,22 @@
   "name": "@egg/server",
   "version": "0.2.0",
   "private": true,
-  "description": "EGG claim server: ingests rewards, signs cumulative claims, verifies Telegram users",
-  "main": "dist/index.js",
+  "description": "Operator tools for EGG: wallet generation, minter deployment, and the tests that pin the Serverless (pure-JS) library to the SDK and the contracts",
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
     "test": "vitest run",
     "gen-wallet": "tsx scripts/gen-wallet.ts",
-    "deploy-minter": "tsx scripts/deploy-minter.ts",
-    "publish-from-cloud": "tsx scripts/publish-from-cloud.ts"
+    "deploy-minter": "tsx scripts/deploy-minter.ts"
   },
   "dependencies": {
-    "@fastify/cors": "^9.0.1",
-    "@fastify/rate-limit": "^9.1.0",
     "@ton/core": "^0.62.0",
-    "better-sqlite3": "^11.1.1",
-    "dotenv": "^16.4.5",
-    "fastify": "^4.28.1",
     "tsx": "^4.19.2",
-    "zod": "^3.23.8",
     "@egg/sdk": "*",
     "@ton/crypto": "^3.3.0",
     "@ton/ton": "^15.4.0"
   },
   "devDependencies": {
     "@ton/sandbox": "^0.45.0",
-    "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^20.11.0",
     "typescript": "^5.4.5",
     "vitest": "^2.0.5",

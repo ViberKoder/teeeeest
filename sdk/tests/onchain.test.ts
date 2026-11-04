@@ -1,9 +1,10 @@
 import { Blockchain, SandboxContract, TreasuryContract } from '@ton/sandbox';
 import { Address, beginCell, Cell, Dictionary, toNano, TupleReader } from '@ton/core';
+import { keyPairFromSeed } from '@ton/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   askToClaimBody, Attach, burnBody, commentPayload, EggTree, eggMinterCode, eggWalletCode, Err, minterStateInit,
-  onchainMetadata, publishRootBody, transferBody, transferIntent, verifyProof, walletStateInit, changePublisherBody,
+  onchainMetadata, signRoot, signedRootCell, verifyEntitlement, changePublisherKeyBody, transferBody, transferIntent, verifyProof, walletStateInit,
 } from '../src';
 
 const T0 = 1_800_000_000;
@@ -12,7 +13,7 @@ const E = (n: number) => toNano(String(n));
 describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
   let chain: Blockchain;
   let admin: SandboxContract<TreasuryContract>;
-  let publisher: SandboxContract<TreasuryContract>;
+  const pub = keyPairFromSeed(Buffer.alloc(32, 77));
   let alice: SandboxContract<TreasuryContract>;
   let bob: SandboxContract<TreasuryContract>;
   let minter: Address;
@@ -26,12 +27,12 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
   beforeEach(async () => {
     chain = await Blockchain.create();
     chain.now = T0;
-    [admin, publisher, alice, bob] = await Promise.all(['admin', 'publisher', 'alice', 'bob'].map((n) => chain.treasury(n)));
+    [admin, alice, bob] = await Promise.all(['admin', 'alice', 'bob'].map((n) => chain.treasury(n)));
     const { init, address } = minterStateInit(
       {
         maxSupply: E(1_000_000),
         admin: admin.address,
-        publisher: publisher.address,
+        publisherKey: pub.publicKey,
         metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9, description: 'test', image: 'https://x.test/egg.png' }),
       },
       eggMinterCode,
@@ -40,10 +41,10 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     await admin.send({ to: minter, value: toNano('1'), init, bounce: false, body: beginCell().storeUint(0xd372158c, 32).endCell() });
   });
 
-  const publish = async (epoch: number, tree: EggTree, from = publisher) =>
-    from.send({ to: minter, value: toNano('0.1'), body: publishRootBody({ epoch, treeRoot: tree.treeRoot, total: tree.total }) });
+  // a root signed by the publisher: nothing is published, the player carries it into the claim
+  const rootOf = (tree: EggTree, seq = 1n, key = pub.secretKey) => signRoot(minter, tree.treeRoot, tree.total, seq, key);
 
-  const claim = async (owner: SandboxContract<TreasuryContract>, epoch: number, tree: EggTree) => {
+  const claim = async (owner: SandboxContract<TreasuryContract>, tree: EggTree, seq = 1n) => {
     const { init, address } = walletStateInit(owner.address, minter, eggWalletCode);
     const deployed = (await chain.getContract(address)).accountState?.type === 'active';
     const cumulative = tree.cumulativeOf(owner.address);
@@ -52,7 +53,7 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
       value: Attach.claim,
       bounce: true,
       init: deployed ? undefined : init,
-      body: askToClaimBody({ epoch, cumulative, proof: tree.proof(owner.address)! }),
+      body: askToClaimBody({ cumulative, proof: tree.proof(owner.address)!, root: signedRootCell(rootOf(tree, seq)) }),
     });
     return { res, wallet: address };
   };
@@ -68,7 +69,7 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     expect(s.readBigNumber()).toBe(0n); // supply
     s.readBigNumber(); // mintable
     expect((await get(minter, 'get_max_supply')).readBigNumber()).toBe(E(1_000_000));
-    expect((await get(minter, 'get_publisher')).readAddress().equals(publisher.address)).toBe(true);
+    expect((await get(minter, 'get_publisher_key')).readBigNumber().toString(16).padStart(64, '0')).toBe(pub.publicKey.toString('hex'));
     const w = await get(minter, 'get_wallet_address', [{ type: 'slice', cell: beginCell().storeAddress(alice.address).endCell() }]);
     expect(w.readAddress().equals(walletStateInit(alice.address, minter, eggWalletCode).address)).toBe(true);
   });
@@ -83,35 +84,36 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     expect(dict.size).toBe(5);
   });
 
-  it('publish → claim with proofs built by the SDK: one tree, many users, exact amounts', async () => {
+  it('signed root → claim with proofs built by the SDK: one tree, many users, exact amounts', async () => {
     const users = await Promise.all(Array.from({ length: 6 }, (_, i) => chain.treasury('u' + i)));
     const tree = new EggTree([
       { owner: alice.address, cumulative: E(2500) },
       { owner: bob.address, cumulative: E(40) },
       ...users.map((u, i) => ({ owner: u.address, cumulative: E(10 + i) })),
     ]);
-    const pub = await publish(1, tree);
-    expect(exitOf(pub.transactions, minter)).toBe(0);
 
-    // the SDK's verification agrees with what is stored on-chain
-    const onchain = (await get(minter, 'get_root', [{ type: 'int', value: 1n }])).readBigNumber();
-    expect(onchain.toString(16).padStart(64, '0')).toBe(tree.commitment.toString('hex'));
+    // the SDK's verification is exactly what the minter will check (signature against the key stored in the contract, then the proof)
+    const key = Buffer.from((await get(minter, 'get_publisher_key')).readBigNumber().toString(16).padStart(64, '0'), 'hex');
+    const ent = { owner: alice.address.toRawString(), cumulative: E(2500).toString(), proof: tree.proof(alice.address)!.toBoc().toString('base64'), root: rootOf(tree) };
+    expect(verifyEntitlement(ent, minter, key)).toBe(true);
+    expect(verifyEntitlement({ ...ent, cumulative: E(2501).toString() }, minter, key)).toBe(false);
+    expect(verifyEntitlement(ent, minter, Buffer.alloc(32, 1))).toBe(false);
     expect(verifyProof(alice.address, E(2500), tree.proof(alice.address)!, tree.commitment)).toBe(true);
 
     for (const u of [alice, bob, ...users]) {
-      const { res, wallet } = await claim(u, 1, tree);
+      const { res, wallet } = await claim(u, tree);
       expect(exitOf(res.transactions, wallet), `claim of ${u.address}`).toBe(0);
       expect(await balanceOf(u.address)).toBe(tree.cumulativeOf(u.address));
     }
     const supply = (await get(minter, 'get_jetton_data')).readBigNumber();
     expect(supply).toBe(tree.total);
+    expect((await get(minter, 'get_max_total')).readBigNumber()).toBe(tree.total);
   });
 
   it('a claim, including deploying the wallet, costs the user less than 0.1 TON', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(1, tree);
     const before = await alice.getBalance();
-    await claim(alice, 1, tree);
+    await claim(alice, tree);
     const spent = before - (await alice.getBalance());
     // eslint-disable-next-line no-console
     console.log('claim cost (TON):', Number(spent) / 1e9);
@@ -121,8 +123,7 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
 
   it('claimed EGG transfers with a comment, and burning lowers the supply', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(1, tree);
-    const { wallet } = await claim(alice, 1, tree);
+    const { wallet } = await claim(alice, tree);
 
     const send = await alice.send({
       to: wallet,
@@ -140,7 +141,6 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
 
   it('claim and send in ONE request: the claim is credited, then the amount (with a comment) reaches the recipient', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(1, tree);
     const { init, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
     const res = await alice.send({
       to: wallet,
@@ -148,7 +148,7 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
       bounce: true,
       init,
       body: askToClaimBody({
-        epoch: 1, cumulative: E(100), proof: tree.proof(alice.address)!,
+        cumulative: E(100), proof: tree.proof(alice.address)!, root: signedRootCell(rootOf(tree)),
         next: transferIntent({ amount: E(30), to: bob.address, excessesTo: alice.address, forwardTon: 1n, comment: 'for coffee' }),
       }),
     });
@@ -161,13 +161,12 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
 
   it('claim and send to the username vault: 0.06 TON travels with the EGG so the vault can pay it out', async () => {
     const tree = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(1, tree);
     const { init, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
     const fwd = toNano('0.06');
     const res = await alice.send({
       to: wallet, value: Attach.claimAndSend + fwd, bounce: true, init,
       body: askToClaimBody({
-        epoch: 1, cumulative: E(100), proof: tree.proof(alice.address)!,
+        cumulative: E(100), proof: tree.proof(alice.address)!, root: signedRootCell(rootOf(tree)),
         next: transferIntent({ amount: E(10), to: bob.address, excessesTo: alice.address, forwardTon: fwd, comment: '@someone' }),
       }),
     });
@@ -178,26 +177,35 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     expect((note!.inMessage!.info as any).value.coins).toBeGreaterThanOrEqual(fwd - toNano('0.001'));
   });
 
-  it('the commitment is binding: what is published stays claimable after a later root drops the user', async () => {
+  it('a signed root stays valid forever: a later root that drops the user does not revoke it', async () => {
     const t1 = new EggTree([{ owner: alice.address, cumulative: E(100) }, { owner: bob.address, cumulative: E(1) }]);
-    await publish(1, t1);
-    const t2 = new EggTree([{ owner: bob.address, cumulative: E(1) }, { owner: publisher.address, cumulative: E(100) }]);
-    await publish(2, t2);
-    const { res, wallet } = await claim(alice, 1, t1);
+    const t2 = new EggTree([{ owner: bob.address, cumulative: E(1) }, { owner: admin.address, cumulative: E(100) }]);
+    await claim(bob, t2, 2n); // the newer root (without alice) is used first
+    chain.now = T0 + 30 * 24 * 3600;
+    const { res, wallet } = await claim(alice, t1, 1n);
     expect(exitOf(res.transactions, wallet)).toBe(0);
     expect(await balanceOf(alice.address)).toBe(E(100));
   });
 
-  it('roots can be published only by the publisher, which only the admin can change', async () => {
+  it('only the publisher key makes a root; only the admin can change that key, and the old key keeps what it promised', async () => {
     const t = new EggTree([{ owner: alice.address, cumulative: E(1) }]);
-    const bad = await publish(1, t, alice);
-    expect(exitOf(bad.transactions, minter)).toBe(Err.notPublisher);
+    const stranger = keyPairFromSeed(Buffer.alloc(32, 78));
+    const forged = signedRootCell(signRoot(minter, t.treeRoot, t.total, 1n, stranger.secretKey));
+    const { init, address: wallet } = walletStateInit(alice.address, minter, eggWalletCode);
+    const bad = await alice.send({ to: wallet, value: Attach.claim, init, body: askToClaimBody({ cumulative: E(1), proof: t.proof(alice.address)!, root: forged }) });
+    expect(exitOf(bad.transactions, minter)).toBe(Err.badSignature);
 
-    const rogue = await admin.send({ to: minter, value: toNano('0.05'), body: changePublisherBody(bob.address) });
-    expect(exitOf(rogue.transactions, minter)).toBe(0);
-    expect((await get(minter, 'get_publisher')).readAddress().equals(bob.address)).toBe(true);
-    const old = await publish(1, t);
-    expect(exitOf(old.transactions, minter)).toBe(Err.notPublisher);
+    const rogue = await alice.send({ to: minter, value: toNano('0.05'), body: changePublisherKeyBody(stranger.publicKey) });
+    expect(exitOf(rogue.transactions, minter)).toBe(Err.notAdmin);
+    const ok = await admin.send({ to: minter, value: toNano('0.05'), body: changePublisherKeyBody(stranger.publicKey) });
+    expect(exitOf(ok.transactions, minter)).toBe(0);
+
+    // the new key's roots work; the previous key's roots are limited to what was promised when it was replaced (nothing yet: maxTotal 0)
+    const fresh = await alice.send({ to: wallet, value: Attach.claim, body: askToClaimBody({ cumulative: E(1), proof: t.proof(alice.address)!, root: forged }) });
+    expect(exitOf(fresh.transactions, minter)).toBe(0);
+    const t2 = new EggTree([{ owner: alice.address, cumulative: E(1) }, { owner: bob.address, cumulative: E(5) }]);
+    const old = await alice.send({ to: wallet, value: Attach.claim, body: askToClaimBody({ cumulative: E(1), proof: t2.proof(alice.address)!, root: signedRootCell(rootOf(t2, 2n)) }) });
+    expect(exitOf(old.transactions, minter)).toBe(Err.legacyCap);
   });
 });
 void Cell;

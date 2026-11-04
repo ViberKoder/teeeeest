@@ -1,3 +1,4 @@
+import "@acton/crypto"
 import "@acton/emulation/network"
 import "@acton/emulation/testing"
 import "@acton/testing/expect"
@@ -12,53 +13,13 @@ import "test-utils"
 const ALICE_EGGS = 100000000000 // 100 EGG
 const BOB_EGGS = 50000000000 // 50 EGG
 
-get fun `test publish: only the publisher, in order, with a bounded total`() {
-    val env = setupMinter(MAX_SUPPLY, grams("200"));
-    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-
-    val stranger = env.minter.sendPublishRoot(env.alice.address, 0, 1, t.root, t.total, { value: grams("0.1") });
-    expect(stranger).toHaveFailedTx<PublishRoot>({ to: env.minter.address, exitCode: Errors.NotPublisher });
-
-    val skipped = publish(env, 2, t.root, t.total);
-    expect(skipped).toHaveFailedTx<PublishRoot>({ to: env.minter.address, exitCode: Errors.EpochOutOfOrder });
-
-    val tooBig = publish(env, 1, t.root, MAX_SUPPLY + 1);
-    expect(tooBig).toHaveFailedTx<PublishRoot>({ to: env.minter.address, exitCode: Errors.SupplyExceeded });
-
-    val ok = publish(env, 1, t.root, t.total);
-    expect(ok).toHaveSuccessfulTx<PublishRoot>({ to: env.minter.address });
-    expect(env.minter.getLastEpoch()).toEqual(1);
-    val record = env.minter.getRoot(1);
-    expect(record.total).toEqual(t.total);
-    expect(record.commitment).toEqual(rootCommitment(t.root, t.total));
-
-    // totals may never go down
-    val down = publish(env, 2, t.root, t.total - 1);
-    expect(down).toHaveFailedTx<PublishRoot>({ to: env.minter.address, exitCode: Errors.TotalDecreased });
-}
-
-get fun `test publish: growth limit bounds a misbehaving publisher`() {
-    // at most 160 EGG may be promised per hour, even though the cap is 1000
-    val env = setupMinter(MAX_SUPPLY, grams("160"));
-    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    expect(publish(env, 1, t.root, t.total)).toHaveSuccessfulTx<PublishRoot>({ to: env.minter.address });
-
-    val big = twoLeafTree(env.alice.address, grams("200"), env.bob.address, BOB_EGGS);
-    val res = publish(env, 2, big.root, big.total);
-    expect(res).toHaveFailedTx<PublishRoot>({ to: env.minter.address, exitCode: Errors.GrowthLimit });
-
-    // an hour later the window has reset
-    testing.setNow(testing.getNow() + 3601);
-    expect(publish(env, 2, big.root, big.total)).toHaveSuccessfulTx<PublishRoot>({ to: env.minter.address });
-}
-
-get fun `test claim: a published root credits exactly what the proof says, and supply follows`() {
+get fun `test claim: a signed root credits exactly what the proof says, and supply follows`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
+    val root = signRoot(env, 1, t.root, t.total);
 
     val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
-    val res = claim(wallet, env.alice.address, 1, ALICE_EGGS, t.aliceProof);
+    val res = claim(wallet, env.alice.address, root, ALICE_EGGS, t.aliceProof);
     expect(res).toHaveSuccessfulTx<AskToClaim>({ from: env.alice.address, to: wallet.address });
     expect(res).toHaveSuccessfulTx<ClaimRequest>({ from: wallet.address, to: env.minter.address });
     expect(res).toHaveSuccessfulTx<ClaimCredit>({ from: env.minter.address, to: wallet.address });
@@ -67,100 +28,184 @@ get fun `test claim: a published root credits exactly what the proof says, and s
     expect(wallet.getClaimState().claimed).toEqual(ALICE_EGGS);
     expect(wallet.getClaimState().claimLockedUntil).toEqual(0);
     expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS);
+    expect(env.minter.getMaxTotal()).toEqual(t.total);
 
-    // and the other leaf of the same tree is independently claimable
+    // the other leaf of the same root is independently claimable, with the same signed root
     val bobWallet = deployUserWallet(env.minter, env.bob.address, env.bob.address);
-    claim(bobWallet, env.bob.address, 1, BOB_EGGS, t.bobProof);
+    claim(bobWallet, env.bob.address, root, BOB_EGGS, t.bobProof);
     expect(bobWallet.getWalletData().jettonBalance).toEqual(BOB_EGGS);
     expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS + BOB_EGGS);
 }
 
-get fun `test claim: proofs bind owner, amount and the declared total`() {
+get fun `test claim: only the publisher's signature makes a root; proofs bind owner, amount and the signed total`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
+    val root = signRoot(env, 1, t.root, t.total);
     val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
 
-    // someone else's proof
-    val wrongProof = claim(wallet, env.alice.address, 1, ALICE_EGGS, t.bobProof);
-    expect(wrongProof).toHaveFailedTx<ClaimRequest>({ to: env.minter.address, exitCode: Errors.ProofMismatch });
+    // a root signed by someone else
+    val stranger = crypto.seedToKeyPair(7654321);
+    val forged = signRootWith(stranger.privateKey, env.minter.address, 1, t.root, t.total);
+    expect(claim(wallet, env.alice.address, forged, ALICE_EGGS, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.BadSignature,
+    });
+    // a signature made for ANOTHER minter does not work here
+    val other = signRootWith(env.kp.privateKey, env.bob.address, 1, t.root, t.total);
+    expect(claim(wallet, env.alice.address, other, ALICE_EGGS, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.BadSignature,
+    });
     // the minter refused, so the wallet is unlocked again and nothing was credited
     expect(wallet.getClaimState().claimLockedUntil).toEqual(0);
     expect(wallet.getWalletData().jettonBalance).toEqual(0);
 
-    // a different amount than the tree holds
-    val wrongAmount = claim(wallet, env.alice.address, 1, ALICE_EGGS + 1, t.aliceProof);
-    expect(wrongAmount).toHaveFailedTx<ClaimRequest>({ to: env.minter.address, exitCode: Errors.ProofMismatch });
-
-    // an epoch that was never published
-    val unknown = claim(wallet, env.alice.address, 7, ALICE_EGGS, t.aliceProof);
-    expect(unknown).toHaveFailedTx<ClaimRequest>({ to: env.minter.address, exitCode: Errors.UnknownEpoch });
+    // someone else's proof, or a different amount than the tree holds
+    expect(claim(wallet, env.alice.address, root, ALICE_EGGS, t.bobProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.ProofMismatch,
+    });
+    expect(claim(wallet, env.alice.address, root, ALICE_EGGS + 1, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.ProofMismatch,
+    });
+    // a signed root that lies about its total can never be proven
+    val lying = signRoot(env, 1, t.root, t.total - 1);
+    expect(claim(wallet, env.alice.address, lying, ALICE_EGGS, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.ProofMismatch,
+    });
 
     // the real thing still works afterwards
-    claim(wallet, env.alice.address, 1, ALICE_EGGS, t.aliceProof);
+    claim(wallet, env.alice.address, root, ALICE_EGGS, t.aliceProof);
     expect(wallet.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
 }
 
-get fun `test claim: a root that lies about its total can never be proven`() {
-    val env = setupMinter();
-    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    // publisher declares a smaller total than the tree really sums to
-    publish(env, 1, t.root, t.total - 1);
+get fun `test limits: growth is bounded however many roots the publisher signs`() {
+    // at most 160 EGG of new promises per hour, even though the cap is 1000
+    val env = setupMinter(MAX_SUPPLY, 160000000000);
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    claim(aw, env.alice.address, signRoot(env, 1, t1.root, t1.total), ALICE_EGGS, t1.aliceProof);
+    expect(env.minter.getMaxTotal()).toEqual(t1.total);
 
-    val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
-    val res = claim(wallet, env.alice.address, 1, ALICE_EGGS, t.aliceProof);
-    expect(res).toHaveFailedTx<ClaimRequest>({ to: env.minter.address, exitCode: Errors.ProofMismatch });
+    // a root that promises 100 EGG more would push this hour's growth to 250 > 160
+    val t2 = twoLeafTree(env.alice.address, ALICE_EGGS + 100000000000, env.bob.address, BOB_EGGS);
+    val big = signRoot(env, 2, t2.root, t2.total);
+    expect(claim(aw, env.alice.address, big, ALICE_EGGS + 100000000000, t2.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.GrowthLimit,
+    });
+    expect(env.minter.getMaxTotal()).toEqual(t1.total);
+
+    // an hour later the window has reset
+    testing.setNow(testing.getNow() + 3601);
+    claim(aw, env.alice.address, big, ALICE_EGGS + 100000000000, t2.aliceProof);
+    expect(env.minter.getMaxTotal()).toEqual(t2.total);
+
+    // and nothing above the cap, ever
+    val t3 = twoLeafTree(env.alice.address, MAX_SUPPLY + 1, env.bob.address, 0);
+    testing.setNow(testing.getNow() + 7200);
+    expect(claim(aw, env.alice.address, signRoot(env, 3, t3.root, t3.total), MAX_SUPPLY + 1, t3.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.SupplyExceeded,
+    });
 }
 
 get fun `test claim: repeating a claim never pays twice, a larger one pays the difference`() {
     val env = setupMinter();
     val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t1.root, t1.total);
+    val r1 = signRoot(env, 1, t1.root, t1.total);
     val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
 
-    claim(wallet, env.alice.address, 1, ALICE_EGGS, t1.aliceProof);
-    claim(wallet, env.alice.address, 1, ALICE_EGGS, t1.aliceProof);
+    claim(wallet, env.alice.address, r1, ALICE_EGGS, t1.aliceProof);
+    claim(wallet, env.alice.address, r1, ALICE_EGGS, t1.aliceProof);
     expect(wallet.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
     expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS);
 
-    // epoch 2: alice earned 40 more
+    // later: alice earned 40 more (a new signed root, nothing published)
     val t2 = twoLeafTree(env.alice.address, ALICE_EGGS + 40000000000, env.bob.address, BOB_EGGS);
-    publish(env, 2, t2.root, t2.total);
-    claim(wallet, env.alice.address, 2, ALICE_EGGS + 40000000000, t2.aliceProof);
+    claim(wallet, env.alice.address, signRoot(env, 2, t2.root, t2.total), ALICE_EGGS + 40000000000, t2.aliceProof);
     expect(wallet.getWalletData().jettonBalance).toEqual(ALICE_EGGS + 40000000000);
     expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS + 40000000000);
 }
 
-get fun `test claim: what was published stays claimable forever, even if a later root drops it`() {
+get fun `test claim: a signed root stays valid forever, even when later roots drop the player`() {
     val env = setupMinter();
     val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t1.root, t1.total);
-
-    // the project "forgets" alice in epoch 2 (a revocation attempt)
+    val r1 = signRoot(env, 1, t1.root, t1.total);
+    // the project "forgets" alice in a later root, and someone claims with it first
     val t2 = twoLeafTree(env.bob.address, BOB_EGGS, env.bob.address, 1);
-    publish(env, 2, t2.root, t1.total);
+    val r2 = signRoot(env, 2, t2.root, t2.total);
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(bw, env.bob.address, r2, BOB_EGGS, t2.aliceProof);
+    expect(env.minter.getLastSeq()).toEqual(2);
 
+    // days later, with the older root she was given:
+    testing.setNow(testing.getNow() + 10 * 24 * 3600);
     val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
-    claim(wallet, env.alice.address, 1, ALICE_EGGS, t1.aliceProof);
+    claim(wallet, env.alice.address, r1, ALICE_EGGS, t1.aliceProof);
     expect(wallet.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
+}
+
+get fun `test supply: everything ever created stays within the highest total promised`() {
+    // a publisher that promises the same total to different people in different roots cannot mint more than that total
+    val env = setupMinter();
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val t2 = twoLeafTree(env.admin.address, t1.total, env.bob.address, 0);
+    val r1 = signRoot(env, 1, t1.root, t1.total);
+    val r2 = signRoot(env, 2, t2.root, t2.total);
+
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(aw, env.alice.address, r1, ALICE_EGGS, t1.aliceProof);
+    claim(bw, env.bob.address, r1, BOB_EGGS, t1.bobProof);
+    expect(env.minter.getTotalMinted()).toEqual(t1.total);
+
+    val cw = deployUserWallet(env.minter, env.admin.address, env.admin.address);
+    expect(claim(cw, env.admin.address, r2, t1.total, t2.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.SupplyExceeded,
+    });
+    expect(cw.getWalletData().jettonBalance).toEqual(0);
+    expect(env.minter.getTotalMinted()).toEqual(t1.total);
+}
+
+get fun `test supply: two different roots for the same slot are refused`() {
+    val env = setupMinter();
+    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val t2 = twoLeafTree(env.admin.address, t1.total, env.bob.address, 0);
+    val a = signRoot(env, 5, t1.root, t1.total);
+    val b = signRoot(env, 5, t2.root, t2.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    claim(aw, env.alice.address, a, ALICE_EGGS, t1.aliceProof);
+    expect(env.minter.getLastSeq()).toEqual(5);
+
+    val cw = deployUserWallet(env.minter, env.admin.address, env.admin.address);
+    expect(claim(cw, env.admin.address, b, t1.total, t2.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.Equivocation,
+    });
+    // the same root is of course fine again
+    claim(deployUserWallet(env.minter, env.bob.address, env.bob.address), env.bob.address, a, BOB_EGGS, t1.bobProof);
 }
 
 get fun `test claim: the supply cap is enforced on-chain at claim time`() {
     val env = setupMinter(120000000000, 120000000000); // cap 120 EGG
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    // promised 150 > cap 120: refused at publication already
-    expect(publish(env, 1, t.root, t.total)).toHaveFailedTx<PublishRoot>({
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    // promised 150 > cap 120: refused
+    expect(claim(aw, env.alice.address, signRoot(env, 1, t.root, t.total), ALICE_EGGS, t.aliceProof)).toHaveFailedTx<ClaimRequest>({
         to: env.minter.address,
         exitCode: Errors.SupplyExceeded,
     });
 
     // an honest tree within the cap
     val ok = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, 20000000000);
-    publish(env, 1, ok.root, ok.total);
-    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    val root = signRoot(env, 2, ok.root, ok.total);
     val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
-    claim(aw, env.alice.address, 1, ALICE_EGGS, ok.aliceProof);
-    claim(bw, env.bob.address, 1, 20000000000, ok.bobProof);
+    claim(aw, env.alice.address, root, ALICE_EGGS, ok.aliceProof);
+    claim(bw, env.bob.address, root, 20000000000, ok.bobProof);
     expect(env.minter.getJettonData().totalSupply).toEqual(120000000000);
     expect(env.minter.getJettonData().mintable).toEqual(false);
 }
@@ -168,13 +213,13 @@ get fun `test claim: the supply cap is enforced on-chain at claim time`() {
 get fun `test claim: only the wallet owner can ask, and not while another claim is in flight`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
+    val root = signRoot(env, 1, t.root, t.total);
     val wallet = deployUserWallet(env.minter, env.alice.address, env.alice.address);
 
-    val notOwner = claim(wallet, env.bob.address, 1, ALICE_EGGS, t.aliceProof);
+    val notOwner = claim(wallet, env.bob.address, root, ALICE_EGGS, t.aliceProof);
     expect(notOwner).toHaveFailedTx<AskToClaim>({ to: wallet.address, exitCode: Errors.NotOwner });
 
-    val lowGas = wallet.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, null, { value: 10000000 });
+    val lowGas = wallet.sendAskToClaim(env.alice.address, 0, ALICE_EGGS, t.aliceProof, root, null, { value: 10000000 });
     expect(lowGas).toHaveFailedTx<AskToClaim>({ to: wallet.address, exitCode: Errors.NotEnoughGas });
 
     // a wallet whose lock is still running refuses a second request
@@ -186,16 +231,15 @@ get fun `test claim: only the wallet owner can ask, and not while another claim 
         claimLockedUntil: testing.getNow() + 500,
     });
     net.send(env.bob.address, createMessage({ bounce: false, value: grams("0.5"), dest: { stateInit: locked.stateInit!, workchain: 0 }, body: TopUpGrams {} }));
-    val again = claim(locked, env.bob.address, 1, BOB_EGGS, t.bobProof);
+    val again = claim(locked, env.bob.address, root, BOB_EGGS, t.bobProof);
     expect(again).toHaveFailedTx<AskToClaim>({ to: locked.address, exitCode: Errors.ClaimInProgress });
 }
 
 get fun `test tokens: claimed EGG moves like any jetton and burns reduce supply`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
     val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
-    claim(aw, env.alice.address, 1, ALICE_EGGS, t.aliceProof);
+    claim(aw, env.alice.address, signRoot(env, 1, t.root, t.total), ALICE_EGGS, t.aliceProof);
 
     val send = aw.sendAskToTransfer(
         env.alice.address, 0, 30000000000, env.bob.address, env.alice.address, null, 10000000,
@@ -211,29 +255,55 @@ get fun `test tokens: claimed EGG moves like any jetton and burns reduce supply`
     expect(env.minter.getJettonData().totalSupply).toEqual(ALICE_EGGS - 20000000000);
 }
 
-get fun `test governance: admin rotates the publisher, non-admin cannot, a dropped admin is final`() {
+get fun `test governance: the signing key rotates, the old key keeps only what it promised, limits only tighten`() {
     val env = setupMinter();
-    val rogue = env.alice.address;
-    val denied = env.minter.sendChangePublisher(rogue, 0, rogue, { value: grams("0.05") });
-    expect(denied).toHaveFailedTx<ChangePublisher>({ to: env.minter.address, exitCode: Errors.NotAdmin });
-
-    val ok = env.minter.sendChangePublisher(env.admin.address, 0, env.bob.address, { value: grams("0.05") });
-    expect(ok).toHaveSuccessfulTx<ChangePublisher>({ to: env.minter.address });
-    expect(env.minter.getPublisher()).toEqual(env.bob.address);
-
-    // the old publisher is out
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    expect(publish(env, 1, t.root, t.total)).toHaveFailedTx<PublishRoot>({
-        to: env.minter.address,
-        exitCode: Errors.NotPublisher,
-    });
+    val old = signRoot(env, 1, t.root, t.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    claim(aw, env.alice.address, old, ALICE_EGGS, t.aliceProof); // maxTotal = 150
 
+    val newKp = crypto.seedToKeyPair(99887766);
+    val denied = env.minter.sendChangePublisherKey(env.alice.address, 0, newKp.publicKey, { value: grams("0.05") });
+    expect(denied).toHaveFailedTx<ChangePublisherKey>({ to: env.minter.address, exitCode: Errors.NotAdmin });
+    expect(env.minter.sendChangePublisherKey(env.admin.address, 0, 0, { value: grams("0.05") })).toHaveFailedTx<ChangePublisherKey>({
+        to: env.minter.address,
+        exitCode: Errors.ZeroKey,
+    });
+    val ok = env.minter.sendChangePublisherKey(env.admin.address, 0, newKp.publicKey, { value: grams("0.05") });
+    expect(ok).toHaveSuccessfulTx<ChangePublisherKey>({ to: env.minter.address });
+    expect(env.minter.getPublisherKey()).toEqual(newKp.publicKey);
+    expect(env.minter.getLegacyKey().legacyCap).toEqual(t.total);
+
+    // what the old key signed before stays claimable (bob, with the very same root)
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(bw, env.bob.address, old, BOB_EGGS, t.bobProof);
+    expect(bw.getWalletData().jettonBalance).toEqual(BOB_EGGS);
+
+    // but a stolen old key can not promise more than it had
+    val more = twoLeafTree(env.alice.address, ALICE_EGGS + 1000000000, env.bob.address, BOB_EGGS);
+    val inflated = signRoot(env, 2, more.root, more.total); // signed with the OLD key (env.kp)
+    expect(claim(aw, env.alice.address, inflated, ALICE_EGGS + 1000000000, more.aliceProof)).toHaveFailedTx<ClaimRequest>({
+        to: env.minter.address,
+        exitCode: Errors.LegacyCap,
+    });
+    // the new key can
+    val fresh = signRootWith(newKp.privateKey, env.minter.address, 3, more.root, more.total);
+    claim(aw, env.alice.address, fresh, ALICE_EGGS + 1000000000, more.aliceProof);
+    expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS + 1000000000);
+
+    // limits only tighten
+    val looser = env.minter.sendSetLimits(env.admin.address, 0, MAX_SUPPLY + 1, 3600, { value: grams("0.05") });
+    expect(looser).toHaveFailedTx<SetLimits>({ to: env.minter.address, exitCode: Errors.LimitsLoosened });
+    val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, { value: grams("0.05") });
+    expect(tighter).toHaveSuccessfulTx<SetLimits>({ to: env.minter.address });
+
+    // a dropped admin is final
     val drop = env.minter.sendDropMinterAdmin(env.admin.address, 0, { value: grams("0.05") });
     expect(drop).toHaveSuccessfulTx<DropMinterAdmin>({ to: env.minter.address });
-    val after = env.minter.sendChangePublisher(env.admin.address, 0, env.alice.address, { value: grams("0.05") });
+    val after = env.minter.sendChangePublisherKey(env.admin.address, 0, env.kp.publicKey, { value: grams("0.05") });
     // with the admin dropped, `adminAddress!` on null aborts (TVM type-check error 7): nothing can be changed any more
-    expect(after).toHaveFailedTx<ChangePublisher>({ to: env.minter.address, exitCode: 7 });
-    expect(env.minter.getPublisher()).toEqual(env.bob.address);
+    expect(after).toHaveFailedTx<ChangePublisherKey>({ to: env.minter.address, exitCode: 7 });
+    expect(env.minter.getPublisherKey()).toEqual(newKp.publicKey);
 }
 
 get fun `test proof: depth beyond one cell is followed through the chain`() {
@@ -242,7 +312,7 @@ get fun `test proof: depth beyond one cell is followed through the chain`() {
     val a = env.alice.address;
     val b = env.bob.address;
     val c = env.admin.address;
-    val d = env.publisher.address;
+    val d = testing.treasury("dee").address;
     val la = leafHash(a, 10); val lb = leafHash(b, 20); val lc = leafHash(c, 30); val ld = leafHash(d, 40);
     val nab = nodeHash(la, 10, lb, 20);
     val ncd = nodeHash(lc, 30, ld, 40);
@@ -252,46 +322,15 @@ get fun `test proof: depth beyond one cell is followed through the chain`() {
     val tail = beginCell().storeUint(0, 1).storeUint(1, 2).storeUint(ncd, 256).storeUint(70, 128).storeUint(1, 1).endCell();
     val head = beginCell().storeUint(1, 1).storeUint(1, 2).storeUint(lb, 256).storeUint(20, 128).storeUint(1, 1).storeRef(tail).endCell();
 
-    publish(env, 1, root, 100);
     val wallet = deployUserWallet(env.minter, a, a);
-    claim(wallet, a, 1, 10, head);
+    claim(wallet, a, signRoot(env, 1, root, 100), 10, head);
     expect(wallet.getWalletData().jettonBalance).toEqual(10);
-}
-
-get fun `test supply: what was ever created stays within the newest published total`() {
-    // a publisher that promises the same total to different people in different roots cannot mint more than that total
-    val env = setupMinter();
-    val t1 = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t1.root, t1.total);
-    val t2 = twoLeafTree(env.admin.address, t1.total, env.bob.address, 0);
-    testing.setNow(testing.getNow() + 3601);
-    publish(env, 2, t2.root, t2.total);
-
-    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
-    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
-    claim(aw, env.alice.address, 1, ALICE_EGGS, t1.aliceProof);
-    claim(bw, env.bob.address, 1, BOB_EGGS, t1.bobProof);
-    expect(env.minter.getTotalMinted()).toEqual(t1.total);
-
-    val cw = deployUserWallet(env.minter, env.admin.address, env.admin.address);
-    claim(cw, env.admin.address, 2, t1.total, t2.aliceProof);
-    expect(cw.getWalletData().jettonBalance).toEqual(0);
-    expect(env.minter.getTotalMinted()).toEqual(t1.total);
-    expect(env.minter.getJettonData().totalSupply).toEqual(t1.total);
-}
-
-get fun `test governance: limits can only be tightened`() {
-    val env = setupMinter(MAX_SUPPLY, 500000000000);
-    val looser = env.minter.sendSetLimits(env.admin.address, 0, MAX_SUPPLY, 3600, 0, { value: grams("0.05") });
-    expect(looser).toHaveFailedTx<SetLimits>({ to: env.minter.address, exitCode: Errors.LimitsLoosened });
-    val tighter = env.minter.sendSetLimits(env.admin.address, 0, 100000000000, 7200, 60, { value: grams("0.05") });
-    expect(tighter).toHaveSuccessfulTx<SetLimits>({ to: env.minter.address });
 }
 
 get fun `test claim and send: one signed request credits the claim and passes part of it on`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
+    val root = signRoot(env, 1, t.root, t.total);
     val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
 
     val intent = TransferIntent {
@@ -301,7 +340,7 @@ get fun `test claim and send: one signed request credits the claim and passes pa
         forwardTonAmount: 0,
         forwardPayload: beginCell().storeUint(0, 1).toSlice(),
     }.toCell();
-    val res = aw.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, intent, { value: grams("0.3") });
+    val res = aw.sendAskToClaim(env.alice.address, 0, ALICE_EGGS, t.aliceProof, root, intent, { value: grams("0.3") });
     expect(res).toHaveSuccessfulTx<AskToClaim>({ from: env.alice.address, to: aw.address });
     expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS - 30000000000);
     expect(aw.getClaimState().claimed).toEqual(ALICE_EGGS);
@@ -312,7 +351,6 @@ get fun `test claim and send: one signed request credits the claim and passes pa
 get fun `test claim and send: asking for more than the balance still credits the claim and sends nothing`() {
     val env = setupMinter();
     val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
-    publish(env, 1, t.root, t.total);
     val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
     val intent = TransferIntent {
         jettonAmount: ALICE_EGGS + 1,
@@ -321,6 +359,6 @@ get fun `test claim and send: asking for more than the balance still credits the
         forwardTonAmount: 0,
         forwardPayload: beginCell().storeUint(0, 1).toSlice(),
     }.toCell();
-    aw.sendAskToClaim(env.alice.address, 0, 1, ALICE_EGGS, t.aliceProof, intent, { value: grams("0.3") });
+    aw.sendAskToClaim(env.alice.address, 0, ALICE_EGGS, t.aliceProof, signRoot(env, 1, t.root, t.total), intent, { value: grams("0.3") });
     expect(aw.getWalletData().jettonBalance).toEqual(ALICE_EGGS);
 }

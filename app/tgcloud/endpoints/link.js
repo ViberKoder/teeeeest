@@ -6,6 +6,7 @@ import { fromHex } from '../lib/bytes.js';
 import { verify } from '../lib/ed25519.js';
 import { walletAddress, SUBWALLET } from '../lib/wallet.js';
 import { publicKeyOf } from '../lib/chain.js';
+import { invalidate } from '../lib/snapshot.js';
 import { NETWORK } from '../lib/config.js';
 
 // Stores "this wallet is mine" and checks it: the address must be the WalletTg of the given key, and the
@@ -35,5 +36,6 @@ export default async function (input, ctx) {
   const owner = await db.select().from(users).where(eq(users.address, address)).get();
   if (owner && owner.tgId !== id) throw new EndpointError('address-taken', { code: 'address-taken' });
   await db.update(users).set({ address, publicKey: key, linkSig: sig, verified: 1 }).where(eq(users.tgId, id)).run();
+  await invalidate(); // a new wallet link changes who is in the next root
   return { ok: true, address };
 }

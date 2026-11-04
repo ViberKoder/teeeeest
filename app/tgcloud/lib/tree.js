@@ -63,5 +63,8 @@ export function proofCell(tree, owner) {
   return next;
 }
 
-export const publishRootBody = (epoch, treeRoot, total) =>
-  new Builder().uint(0x0e7ccd64, 32).uint(0, 64).uint(epoch, 32).bytes(treeRoot).coins(total).build();
+const TAG_SIGNED_ROOT = 0x45474752; // "EGGR"
+
+/** What the publisher signs; binds the minter's address (same as `signedRootDigest` in the contract and the SDK). */
+export const signedRootDigest = (minter, treeRoot, total, seq) =>
+  new Builder().uint(TAG_SIGNED_ROOT, 32).bytes(fromHex(minter.split(':')[1])).bytes(treeRoot).coins(total).uint(seq, 64).build().hash();

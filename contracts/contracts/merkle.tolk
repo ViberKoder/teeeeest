@@ -75,3 +75,17 @@ fun foldProof(leaf: int, leafSum: int, proof: cell): (int, int) {
     }
     return (hash, sum);
 }
+
+const TAG_SIGNED_ROOT = 0x45474752 // "EGGR"
+
+/// What the publisher signs. It binds the minter's address, so a signature can not be replayed on another contract.
+fun signedRootDigest(minter: address, treeRoot: int, total: int, seq: int): int {
+    val (_, minterHash) = minter.getWorkchainAndHash();
+    return beginCell()
+        .storeUint(TAG_SIGNED_ROOT, 32)
+        .storeUint(minterHash, 256)
+        .storeUint(treeRoot, 256)
+        .storeCoins(total)
+        .storeUint(seq, 64)
+        .hash();
+}

@@ -1,5 +1,5 @@
 import { Address, beginCell, Cell } from '@ton/core';
-import { sha256_sync } from '@ton/crypto';
+import { sha256_sync, sign, signVerify } from '@ton/crypto';
 
 /**
  * Sum-Merkle tree, the same as contracts/contracts/merkle.tolk. H(x) is the hash of the cell holding x
@@ -179,5 +179,41 @@ export class EggTree {
 
   static fromJSON(j: { leaves: { owner: string; cumulative: string }[] }) {
     return new EggTree(j.leaves.map((l) => ({ owner: Address.parseRaw(l.owner), cumulative: BigInt(l.cumulative) })));
+  }
+}
+
+// ------------------------------------------------------------------ signed roots
+
+const TAG_SIGNED_ROOT = 0x45474752; // "EGGR"
+
+/**
+ * What the publisher signs: it binds the minter's address, so a signature can not be replayed on another contract.
+ * Identical to `signedRootDigest` in merkle.tolk.
+ */
+export const signedRootDigest = (minter: Address, treeRoot: Buffer, total: bigint, seq: bigint): Buffer =>
+  beginCell().storeUint(TAG_SIGNED_ROOT, 32).storeBuffer(minter.hash, 32).storeBuffer(treeRoot, 32).storeCoins(total).storeUint(seq, 64).endCell().hash();
+
+/** A root the publisher signed. Nothing is published on-chain: the player carries it into the claim. */
+export interface SignedRoot {
+  treeRoot: string; // hex
+  total: string; // decimal, jetton units
+  seq: string; // decimal
+  signature: string; // hex, 64 bytes
+}
+
+export function signRoot(minter: Address, treeRoot: Buffer, total: bigint, seq: bigint, secretKey: Buffer): SignedRoot {
+  const signature = sign(signedRootDigest(minter, treeRoot, total, seq), secretKey);
+  return { treeRoot: treeRoot.toString('hex'), total: total.toString(), seq: seq.toString(), signature: signature.toString('hex') };
+}
+
+/** The cell the contract parses (`SignedRoot` in storage.tolk). */
+export const signedRootCell = (r: SignedRoot): Cell =>
+  beginCell().storeBuffer(Buffer.from(r.treeRoot, 'hex'), 32).storeCoins(BigInt(r.total)).storeUint(BigInt(r.seq), 64).storeBuffer(Buffer.from(r.signature, 'hex'), 64).endCell();
+
+export function verifySignedRoot(minter: Address, r: SignedRoot, publisherKey: Buffer): boolean {
+  try {
+    return signVerify(signedRootDigest(minter, Buffer.from(r.treeRoot, 'hex'), BigInt(r.total), BigInt(r.seq)), Buffer.from(r.signature, 'hex'), publisherKey);
+  } catch {
+    return false;
   }
 }

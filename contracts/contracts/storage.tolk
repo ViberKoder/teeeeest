@@ -13,43 +13,52 @@ struct WalletStorage {
 
 /// Who may do what. Kept in its own cell so the root storage cell stays small.
 struct Governance {
-    /// can rotate the publisher, tune limits, change metadata; may drop itself for good
+    /// can rotate the publisher key, tighten limits, change metadata; may drop itself for good
     adminAddress: address?
     nextAdminAddress: address?
-    /// may publish new Merkle roots, nothing else
-    publisherAddress: address
 }
 
-/// Brakes on the publisher. A compromised publisher can never release more than
-/// `maxGrowth` per `periodSeconds`, and never more than `maxSupply` in total.
+/// The key that signs Merkle roots. After a rotation the old key stays valid ONLY up to `legacyCap`
+/// (the total promised when it was replaced), so roots it signed earlier keep their value forever but a stolen
+/// old key can never promise more.
+struct Keys {
+    publisherKey: uint256
+    legacyKey: uint256
+    legacyCap: coins
+}
+
+/// Brakes on the publisher. However many roots it signs, the amount that can ever be created is bounded:
+/// `maxTotal` (the highest total of any root a claim has used) can grow by at most `maxGrowth` per `periodSeconds`,
+/// and never above `maxSupply`.
 struct Limits {
     maxGrowth: coins
     periodSeconds: uint32
-    minInterval: uint32
     windowStart: uint32
     windowGrowth: coins
-    lastPublishedAt: uint32
-    lastTotal: coins
+    maxTotal: coins
 }
 
-/// One published root. `commitment` = H(tag, treeRoot, total) binds the total the
-/// tree commits to, so the amount promised in an epoch is public and capped.
-struct RootRecord {
-    commitment: uint256
+/// A root the publisher signed (the contract checks the signature; nothing has to be published on-chain).
+///   digest = H(tag | minter address hash | treeRoot | total | seq)
+struct SignedRoot {
+    treeRoot: uint256
     total: coins
-    publishedAt: uint32
+    seq: uint64
+    signature: bits512
 }
 
 struct MinterStorage {
     totalSupply: coins
     maxSupply: coins
-    lastEpoch: uint32
     metadata: cell
-    roots: map<uint32, RootRecord>
     governance: Cell<Governance>
+    keys: Cell<Keys>
     limits: Cell<Limits>
-    /// everything ever created by claims (burns do not lower it). Bounded by the newest published total.
+    /// everything ever created by claims (burns do not lower it). Never above `limits.maxTotal`.
     totalMinted: coins
+    /// the newest root slot seen: one `seq` can only ever mean one root (a second one is refused)
+    lastSeq: uint64
+    lastRoot: uint256
 }
 
 fun MinterStorage.load(): MinterStorage {
@@ -92,8 +101,17 @@ struct ClaimStateReply {
     claimLockedUntil: uint32
 }
 
-struct RootReply {
-    commitment: uint256
-    total: coins
-    publishedAt: uint32
+
+
+struct LegacyKeyReply {
+    legacyKey: uint256
+    legacyCap: coins
+}
+
+struct LimitsReply {
+    maxGrowth: coins
+    periodSeconds: uint32
+    windowStart: uint32
+    windowGrowth: coins
+    maxTotal: coins
 }

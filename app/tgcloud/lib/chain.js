@@ -55,3 +55,11 @@ export async function balanceOf(address) {
   if (!r.ok) throw new Error(`tonapi account ${r.status}`);
   return BigInt((await r.json()).balance ?? 0);
 }
+
+/** the minter's growth brake: how much more may be promised right now */
+export async function limitsOf(minter) {
+  const s = await get(minter, 'get_limits');
+  if (!s) throw new Error('minter is not reachable');
+  const [maxGrowth, periodSeconds, windowStart, windowGrowth, maxTotal] = s.map(num);
+  return { maxGrowth, periodSeconds: Number(periodSeconds), windowStart: Number(windowStart), windowGrowth, maxTotal };
+}

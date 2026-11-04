@@ -115,7 +115,7 @@ export function SendPage({ onClose }: { onClose: () => void }) {
           const v = await loadVerifiedEntitlement(provider, masterAddress, data.me?.address === provider.address.toRawString());
           if (v.cumulative > v.state.claimed) {
             await provider.send(eggClaim({
-              state: v.state, epoch: v.ent.epoch, cumulative: v.cumulative, proof: v.proof, init: v.init.init,
+              state: v.state, cumulative: v.cumulative, proof: v.proof, root: v.root, init: v.init.init,
               thenSend: { owner: provider.address, to: dest.address, amount, comment: note, forwardTon },
             }));
           } else {

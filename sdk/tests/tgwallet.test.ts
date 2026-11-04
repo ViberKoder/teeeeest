@@ -4,7 +4,7 @@ import { keyPairFromSeed, KeyPair } from '@ton/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   askToClaimBody, Attach, changeKey, EggTree, eggMinterCode, eggWalletCode, minterStateInit, onchainMetadata,
-  publishRootBody, recoverOldSeed, sendOne, SUBWALLET_ID, tgWalletStateInit, topUpBody, walletStateInit,
+  recoverOldSeed, sendOne, signRoot, signedRootCell, SUBWALLET_ID, tgWalletStateInit, topUpBody, walletStateInit,
 } from '../src';
 
 const T0 = 1_800_000_000;
@@ -118,22 +118,22 @@ describe('Telegram wallet contract (WalletTg) driven by the SDK', () => {
 
   it('EGG end to end: a brand-new player hatches through a sponsored first request, then on their own', async () => {
     const admin = await chain.treasury('admin');
-    const publisher = await chain.treasury('publisher');
+    const pub = keyPairFromSeed(Buffer.alloc(32, 77));
     const { init: minterInit, address: minter } = minterStateInit(
-      { maxSupply: E(1_000_000), admin: admin.address, publisher: publisher.address, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
+      { maxSupply: E(1_000_000), admin: admin.address, publisherKey: pub.publicKey, metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }) },
       eggMinterCode,
     );
     await admin.send({ to: minter, value: toNano('1'), init: minterInit, bounce: false, body: topUpBody() });
 
     // the player's wallet address is known from their key alone, so the server can put it in the tree before anything is deployed
     const tree = new EggTree([{ owner: wallet, cumulative: E(2500) }, { owner: bob.address, cumulative: E(1) }]);
-    await publisher.send({ to: minter, value: toNano('0.1'), body: publishRootBody({ epoch: 1, treeRoot: tree.treeRoot, total: tree.total }) });
+    const root = signedRootCell(signRoot(minter, tree.treeRoot, tree.total, 1n, pub.secretKey));
 
     // 1) the first hatch: signed offline for the gasless channel, delivered and paid by a relayer, deploying both wallets
     const eggWallet = walletStateInit(wallet, minter, eggWalletCode);
     const claim = sendOne({
       channel: 'internal', secretKey: keys.secretKey, header: header(0),
-      message: { to: eggWallet.address, value: Attach.claim, bounce: true, init: eggWallet.init, body: askToClaimBody({ epoch: 1, cumulative: E(2500), proof: tree.proof(wallet)! }) },
+      message: { to: eggWallet.address, value: Attach.claim, bounce: true, init: eggWallet.init, body: askToClaimBody({ cumulative: E(2500), proof: tree.proof(wallet)!, root }) },
     });
     await relay(claim, toNano('0.15'), true);
 

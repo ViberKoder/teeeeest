@@ -168,10 +168,10 @@ fun onInternalMessage(in: InMessage) {
                 body: ClaimRequest {
                     queryId: msg.queryId,
                     ownerAddress: storage.ownerAddress,
-                    epoch: msg.epoch,
                     cumulative: msg.cumulative,
                     claimedAtWallet: storage.claimed,
                     proof: msg.proof,
+                    root: msg.root,
                     next: msg.next,
                 },
             });

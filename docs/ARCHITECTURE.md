@@ -2,50 +2,54 @@
 
 ## The idea
 
-The project owes players tokens. Instead of paying each one on-chain (too expensive) or keeping the debt in a database
-(then the server owns the money), the debt is **committed on-chain in a Merkle root**, and each player can *prove* their
-share to the token contract themselves.
+The project owes players tokens. Instead of paying each one on-chain (too expensive) or keeping the debt in a database (then the server
+owns the money), the debt is committed in a **Merkle root signed by the publisher key**, and each player *proves* their share to the
+token contract themselves, in their own claim. **Nothing is published on-chain per update**: the root travels inside the claim.
 
 ```
- bot ──ingest──▶ server ledger ──every N min──▶ sum-Merkle tree ──PublishRoot──▶ EggMinter (stores commitment)
-                                       │                                              ▲
-                              public leaf set + proofs                                 │ verifies proof, mints delta
-                                       ▼                                              │
- wallet app ──AskToClaim(epoch, amount, proof)──▶ your EggWallet ──ClaimRequest──▶ EggMinter ──ClaimCredit──▶ your EggWallet
+ ledger ──▶ sum-Merkle tree ──▶ root signed by the publisher key (off-chain, free, on demand)
+                                         │
+ wallet app ──AskToClaim(cumulative, proof, signedRoot)──▶ your EggWallet ──ClaimRequest──▶ EggMinter ──ClaimCredit──▶ your EggWallet
+                                                                                  │ checks: signature of the root (key stored in the contract),
+                                                                                  │         the proof opens to exactly that root,
+                                                                                  │         limits (growth, cap), one root per `seq`
 ```
+
+The player pays the network fee of their own claim (≈ 0.005 TON, measured), the project pays **nothing per root** — the earlier design
+(a PublishRoot transaction every few seconds) cost the project continuously and made the contract's storage grow without bound.
 
 ## Sum-Merkle tree
 
 ```
 leaf = H(0x00 | owner:256 | cumulative:128)
 node = H(0x01 | leftHash | leftSum:128 | rightHash | rightSum:128)
-root = H(0x02 | treeRoot  | total:128)          ← what the minter stores per epoch
+root = what the publisher signs, together with `total` (= the root node's sum), the minter's address and a counter `seq`
+signed digest = H(0x45474752 | minter hash:256 | treeRoot:256 | total:128 | seq:64)
 ```
-`H(x)` is the hash of the cell holding `x` (`builder.hash()` / HASHBU). Every node commits to the **sum** of the leaves below it and
-a verifier recomputes that sum while walking the proof, so the root commits to the *total promised*. The tree is
-implemented twice — Tolk (`contracts/contracts/merkle.tolk`) and TypeScript (`sdk/src/tree.ts`) — and the SDK tests run
-trees built in TypeScript through the Acton-compiled bytecode in `@ton/sandbox`, so the two cannot drift.
+`H(x)` is the hash of the cell holding `x` (`builder.hash()` / HASHBU). Every node commits to the **sum** of the leaves below it and a
+verifier recomputes that sum while walking the proof. The tree is implemented three times — Tolk (`contracts/contracts/merkle.tolk`),
+TypeScript (`sdk/src/tree.ts`) and plain JS for the Serverless runtime (`app/tgcloud/lib/tree.js`) — and tests run all of them through the
+Acton-compiled bytecode in `@ton/sandbox`, so they cannot drift.
 
 ## Contracts (Tolk, built and tested with Acton)
 
-**EggMinter** — TEP-74/89 minter. Storage: `totalSupply`, `maxSupply`, `lastEpoch`, metadata, `roots: epoch → commitment`,
-governance (admin, next admin, publisher), limits.
+**EggMinter** — TEP-74/89 minter. Storage is **constant-size**: supply numbers, metadata, governance, the signing key (+ the previous key and what it had
+promised), the growth limits and the last `(seq, root)` slot. There is no per-epoch registry.
 
 | Message | Who | Effect |
 |---|---|---|
-| `PublishRoot(epoch, treeRoot, total)` | publisher | stores `H(0x02|treeRoot|total)`. Requires: `epoch = last+1`, `total ≤ maxSupply`, `total ≥ lastTotal`, `Δtotal` per period ≤ `maxGrowth`, ≥ `minInterval` since the previous one |
-| `ClaimRequest(owner, epoch, cumulative, claimedAtWallet, proof)` | **a genuine EggWallet only** (address recomputed from `owner`) | opens the proof, compares with `roots[epoch]`, checks `totalSupply + delta ≤ maxSupply`, adds `delta`, replies `ClaimCredit` |
-| `ChangePublisher`, `SetLimits` (tighten only), `ChangeMetadata`, 2-step admin change, `DropAdmin` | admin | governance. **There is no mint and no code upgrade** |
+| `ClaimRequest(owner, cumulative, claimedAtWallet, proof, signedRoot)` | **a genuine EggWallet only** (address recomputed from `owner`) | checks the root's signature (publisher key, or the previous key within what it promised), that the proof opens to **exactly that root**, the one-root-per-`seq` slot, the growth limits and the caps; adds the delta to the supply and replies `ClaimCredit` |
+| `ChangePublisherKey(newKey)` | admin | the old key keeps value **only up to the highest total promised so far** (`legacyCap`): what it signed earlier stays claimable, a stolen old key can promise nothing more |
+| `SetLimits`, `ChangeMetadata`, 2-step admin change, `DropAdmin` | admin | governance. **No mint, no code upgrade**; limits can only be *tightened* |
 | `BurnNotification`, `RequestWalletAddress` | wallets / anyone | standard |
 
-**EggWallet** — TEP-74 wallet plus `claimed` and a short lock.
+**EggWallet** — TEP-74 wallet plus `claimed`, a short lock, and "claim and send" (a claim can carry a transfer instruction that runs right after the credit).
 
 | Message | Who | Effect |
 |---|---|---|
-| `AskToClaim(epoch, cumulative, proof)` | owner only | locks the wallet for 10 min, forwards `ClaimRequest` to the minter |
-| `ClaimCredit(cumulative)` | **minter only** | credits `cumulative − claimed` (never more than the wallet's own state allows), unlocks, returns excess |
-| bounce of `ClaimRequest` | system | unlocks (the minter refused: unknown epoch / bad proof) |
-| transfer / burn / internal transfer | standard | internal credit only from the minter or a genuine wallet |
+| `AskToClaim(cumulative, proof, signedRoot, next?)` | owner only | locks the wallet for 10 min, forwards `ClaimRequest` to the minter |
+| `ClaimCredit(cumulative, next?)` | **minter only** | credits `cumulative − claimed` (never more than the wallet's own state allows), unlocks, then runs `next` if it fits |
+| bounce of `ClaimRequest` | system | unlocks (the minter refused: bad signature / proof / limit) |
 
 Wallet addresses depend on `(owner, minter, code)` only — nothing the project does later can move anyone's address.
 
@@ -53,47 +57,29 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
 
 | Statement | Guaranteed by |
 |---|---|
-| Nobody can be credited an amount that is not in a published root | the minter verifies the proof itself; the wallet accepts `ClaimCredit` only from the minter |
+| Nobody can be credited more than their leaf in a root the publisher key signed | the minter verifies the signature **and** the proof; the wallet accepts `ClaimCredit` only from the minter |
 | Nobody can be credited twice for the same amount | `claimed` in the wallet + monotone `cumulative`; replays credit 0 |
-| What was published stays claimable forever | roots are never deleted or replaced; there is no admin function that edits them |
-| A root cannot promise more than `maxSupply`, and can only grow | checked at publication |
-| Everything ever created ≤ the newest published total | `totalMinted` check at claim time (inner tree sums are only verified along a claimed path, so this — not the tree — is the binding bound; see `SECURITY_REVIEW.md`) |
-| Total supply never exceeds `maxSupply` | checked again at claim time |
-| A compromised publisher can only release `maxGrowth` per period | on-chain limits |
-| The server cannot take back or change a published amount | it holds no key that can touch the minter's roots or any wallet |
+| **A signed root can not be revoked** | the signature never expires and amounts only grow; a later root that omits someone does not invalidate an earlier one |
+| Everything ever created ≤ the highest total ever promised ≤ `maxSupply` | `totalMinted ≤ maxTotal ≤ maxSupply`, checked at every claim |
+| A compromised publisher key can raise the promised total by at most `maxGrowth` per period | the minter's growth window (a claim whose root raises `maxTotal` must fit it) |
+| After a key rotation the old key can promise nothing new | `legacyCap` |
+| Two different roots can not share a `seq` | the last-slot check at claim time |
+| Admin can not mint, and can only tighten limits | contract code |
 | `totalSupply` on-chain is truthful | minted at claim time; burns subtract |
 
 ## What is **not** guaranteed (be honest with your users)
 
-* **Amounts not yet published.** The ledger entry for what a player earned in the last minutes is a promise of the
-  server, not of the contract. The app shows it as “hatching”, separately from “ready”.
-* **The publisher decides entitlements.** It can include or omit a player in a *new* root. It cannot touch old ones, and
-  the limits bound the damage, but until the admin is dropped or becomes a multisig, rotating the publisher and raising
-  limits is a human power. Decide deliberately who holds it.
-* **Data availability.** To build a proof one needs the epoch's leaf set. The server serves it (`GET /v1/epochs/:n`);
-  mirror it (IPFS, a public channel) and the app caches each user's last verified proof on the device. If you lose the
-  data, an unproven amount cannot be claimed.
-* **A malicious publisher can promise the same tokens to different people in different epochs** (each root is below the
-  cap, but the sum of everyone's best proof is not). The claim-time cap stops everything ever created from exceeding the *newest published total* (and `maxSupply`), so the
-  *later* claimants are refused. Publishers must keep each user's amount non-decreasing; the public leaf sets make
-  this auditable by anyone.
-* **A failed claim keeps its TON** in the user's wallet contract (bounced messages return there). The app avoids it by
-  verifying the proof locally against the on-chain commitment first.
+* **Who is in the tree and for how much** is the publisher's decision: the contract bounds the total, not the allocation.
+* **Amounts earned but not yet in a signed root** (seconds, or until the player's next request) are the bot's promise, shown as "hatching".
+* **Equivocation.** The publisher *can* sign two different roots at different `seq` values; the contract bounds the total they can promise, and the public log of every signed root (`roots` table, mirrored) makes it detectable by anyone. It can not be prevented on-chain without publishing every root.
+* **Data availability.** To build a proof one needs the leaf set; the wallet app caches the last verified (signed root + proof) on the device and a signed root never expires.
+* **A failed claim keeps its TON** in the user's wallet contract (bounced messages return there). The app avoids it by verifying locally first.
 * **Not externally audited.**
 
 ## Cost to the user (measured in the sandbox)
 
-A claim, including deploying the wallet contract, costs about **0.004 TON**; the app attaches 0.08 TON and the rest
-returns as excess.
-
-## Components
-
-| Package | Role |
-|---|---|
-| `contracts/` | Tolk sources, 14 Acton tests, `artifacts/*.json` (bytecode used by the TS packages) |
-| `sdk/` | tree + proofs, message builders, contract init, entitlement client — Node and browser |
-| `server/` | ledger, publisher loop (pending → sent → confirmed), public entitlement/epoch API, ban/slash |
-| `app/` | the wallet Mini App; verifies every proof against the chain before sending |
+A claim, including deploying the jetton wallet, costs about **0.0027 TON** (4 leaves) to **0.0045 TON** (131 000 leaves) in network fees; each tree level adds ≈ 0.00013 TON.
+The app attaches 0.08 TON and the rest returns as excess (0.2 for "claim and send"). Measured on testnet with a real claim: **0.0051 TON**, credited in ~4 s after the transaction was accepted.
 
 ## The player's wallet (modelled on Telegram's Money)
 
