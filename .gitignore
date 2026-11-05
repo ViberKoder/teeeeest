@@ -19,3 +19,5 @@ coverage/
 # operator key for the Serverless bot (see docs/BOT.md)
 app/tgcloud/lib/opkey.js
 app/tgcloud/lib/publisherkey.js
+
+app/dist-explorer/
