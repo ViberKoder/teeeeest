@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5190",
+    "build:explorer": "vite build && node scripts/build-explorer.mjs",
     "test": "vitest run",
     "deploy": "npm run build && tgcloud push",
     "status": "tgcloud status"

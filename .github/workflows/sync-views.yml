@@ -1,0 +1,19 @@
+name: Sync post views
+# The Bot API does not expose a channel post's view counter. This job reads it from the public embed page and gives it to the bot.
+# Needs two repository secrets: TGCLOUD_TOKEN (the Serverless project token) and OP_KEY (app/tgcloud/lib/opkey.js).
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --workspace @egg/app --ignore-scripts
+      - run: node app/scripts/sync-views.mjs
+        env:
+          TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
+          OP_KEY: ${{ secrets.OP_KEY }}

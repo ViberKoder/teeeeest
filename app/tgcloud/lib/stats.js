@@ -1,7 +1,7 @@
 // Project numbers for the explorer: computed from the ledger, the users and the posts (all exact, all public).
 import { db } from 'sdk';
 import { desc, sql } from 'sdk/db';
-import { roots } from '../schema.js';
+import { chats, posts, roots } from '../schema.js';
 
 const one = async (q) => (await db.get(q)) ?? {};
 
@@ -14,6 +14,7 @@ export async function computeStats(now) {
   const p = await one(sql`SELECT COUNT(*) AS posts, COALESCE(SUM(views),0) AS views, COALESCE(SUM(hatches),0) AS hatches FROM posts`);
   const e = await one(sql`SELECT COUNT(*) AS eggs, COALESCE(SUM(hatched),0) AS hatched FROM eggs`);
   const r = await db.select().from(roots).orderBy(desc(roots.seq)).limit(1).get();
+  const lp = await latestPost();
   return {
     t: now,
     users: Number(u.users ?? 0), wallets: Number(u.wallets ?? 0), newUsersToday: Number(u.newToday ?? 0), lastUserAt: Number(u.lastUser ?? 0),
@@ -21,6 +22,8 @@ export async function computeStats(now) {
     today: t.today ?? '0', eventsToday: Number(t.n ?? 0), hatchesLastHour: Number(h.n ?? 0),
     posts: Number(p.posts ?? 0), views: Number(p.views ?? 0), postHatches: Number(p.hatches ?? 0),
     eggs: Number(e.eggs ?? 0), eggHatches: Number(e.hatched ?? 0),
+    reactions: Number((await one(sql`SELECT COALESCE(SUM(reactions),0) AS n FROM posts`)).n ?? 0),
+    latestPost: lp,
     root: r ? { seq: r.seq, treeRoot: r.treeRoot, total: r.total, signature: r.signature, at: r.createdAt } : null,
   };
 }
@@ -37,4 +40,18 @@ export async function daily(now, days = 14) {
   const e = await db.all(sql`SELECT (ts / 86400) AS d, CAST(SUM(amount) AS TEXT) AS egg, COUNT(*) AS n FROM ledger WHERE ts >= ${from} GROUP BY d ORDER BY d`);
   const u = await db.all(sql`SELECT (created_at / 86400) AS d, COUNT(*) AS n FROM users WHERE created_at >= ${from} GROUP BY d ORDER BY d`);
   return { egg: e.map((r) => ({ d: Number(r.d) * 86400, egg: r.egg, n: Number(r.n) })), users: u.map((r) => ({ d: Number(r.d) * 86400, n: Number(r.n) })) };
+}
+
+/** The newest channel post, as the explorer draws it (Telegram-post style). */
+export async function latestPost() {
+  const p = await db.select().from(posts).orderBy(desc(posts.id)).limit(1).get();
+  if (!p) return null;
+  const c = await db.select().from(chats).where(sql`${chats.chatId} = ${p.chatId}`).get();
+  return { id: p.id, title: c?.title ?? p.username ?? 'Hatch', username: p.username ?? c?.username ?? null, messageId: p.messageId, hatches: p.hatches, views: p.views, reactions: p.reactions, caption: p.caption, at: p.createdAt };
+}
+
+/** The most-hatched posts (for the table). */
+export async function topPosts(limit = 5) {
+  const rows = await db.select().from(posts).orderBy(desc(posts.hatches)).limit(limit).all();
+  return rows.map((p) => ({ username: p.username, messageId: p.messageId, hatches: p.hatches, views: p.views, reactions: p.reactions, at: p.createdAt }));
 }

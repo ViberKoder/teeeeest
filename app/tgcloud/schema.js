@@ -126,6 +126,9 @@ export const posts = table('posts', {
   views: integer('views').notNull().default(0),
   viewsAt: integer('views_at').notNull().default(0),
   editedAt: integer('edited_at').notNull().default(0),
+  // reactions (Telegram's own likes) counted by the channel; the Bot API reports them only as a total
+  reactions: integer('reactions').notNull().default(0),
+  caption: text('caption'),
 }, (t) => ({
   once: uniqueIndex('uq_post').on(t.chatId, t.messageId),
 }));

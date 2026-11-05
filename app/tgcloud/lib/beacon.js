@@ -37,7 +37,7 @@ export async function maybeBeacon(now) {
     const s = await db.select().from(state).where(eq(state.id, ROW)).get();
     if (now - s.lastPublishAt < BEACON_EVERY) return 'too-soon';
     const st = await computeStats(now);
-    const body = { v: 1, t: now, u: st.users, w: st.wallets, p: st.promised, e: st.events, po: st.posts, vi: st.views, eg: st.eggs, r: st.root ? [st.root.seq, st.root.total, st.root.treeRoot, st.root.signature] : null };
+    const body = { v: 1, t: now, u: st.users, w: st.wallets, p: st.promised, e: st.events, po: st.posts, vi: st.views, eg: st.eggs, re: st.reactions, tp: st.latestPost ? [st.latestPost.hatches, st.latestPost.views, st.latestPost.reactions, st.latestPost.at, st.latestPost.username ?? '', st.latestPost.title] : null, r: st.root ? [st.root.seq, st.root.total, st.root.treeRoot, st.root.signature] : null };
     const json = JSON.stringify(body);
     const h = hex(await sha256(new TextEncoder().encode(JSON.stringify({ ...body, t: 0 }))));
     if (h === s.lastCommitment) return 'unchanged';

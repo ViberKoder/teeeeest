@@ -38,3 +38,6 @@ Not covered: if nobody ever opens the wallet, the money stays at that address (a
 ## The bot's own wallet
 
 `VAULT` pays three small things: the first network fee of a player who earned at least 3 EGG and has no TON (`gas`, once per account, 50 accounts/day), the first request of a prepared wallet, and the **stats beacon** (an on-chain comment `egg-stats:v1 {…}` to itself, at most every 5 minutes, only when numbers changed). Keep it funded.
+
+## Reactions and views of channel posts
+`handlers/message_reaction_count.js` stores the total of Telegram reactions on each post (the bot must be a channel administrator). Views are read from the public embed page by `app/scripts/sync-views.mjs` (the bot's runtime can not reach t.me) and written back through the operator endpoint `opPosts`; see `docs/EXPLORER.md`.

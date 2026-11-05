@@ -54,7 +54,13 @@ export async function recentClaims(): Promise<ClaimTx[]> {
 }
 
 /** The public stats beacon: comments the bot's own wallet writes to itself. Only that wallet's key can write them. */
-export interface Beacon { t: number; u: number; w: number; p: string; e: number; po: number; vi: number; eg: number; r: [number, string, string, string] | null; tx: string }
+export interface Beacon {
+  t: number; u: number; w: number; p: string; e: number; po: number; vi: number; eg: number; re?: number;
+  /** newest channel post: [hatches, views, reactions, published at, channel username, channel title] */
+  tp?: [number, number, number, number, string, string] | null;
+  r: [number, string, string, string] | null;
+  tx: string;
+}
 export async function readBeacons(): Promise<Beacon[]> {
   if (!cfg.vault) return [];
   const vault = Address.parse(cfg.vault).toRawString();
@@ -95,3 +101,10 @@ export async function walletOnChain(owner: Address): Promise<{ balance: bigint; 
   }
   return { balance: BigInt(j.balance ?? '0'), claimed };
 }
+
+/** A post as the explorer draws it, from the bot (inside Telegram) or from the newest on-chain beacon. */
+export interface PostView { title: string; username: string; messageId: number | null; hatches: number; views: number; reactions: number; at: number; caption: string }
+export const DEFAULT_CAPTION = 'A fresh egg!\nTap Hatch — every tap is +1 EGG, yours on the blockchain.';
+
+export const postFromBeacon = (b: Beacon | undefined): PostView | null =>
+  b?.tp ? { hatches: b.tp[0], views: b.tp[1], reactions: b.tp[2], at: b.tp[3], username: b.tp[4], title: b.tp[5] || b.tp[4] || 'Hatch', messageId: null, caption: DEFAULT_CAPTION } : null;

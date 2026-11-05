@@ -19,13 +19,15 @@ export interface Me {
 export interface Stats {
   t: number; users: number; wallets: number; newUsersToday: number; lastUserAt: number;
   promised: string; events: number; lastEventAt: number; today: string; eventsToday: number; hatchesLastHour: number;
-  posts: number; views: number; postHatches: number; eggs: number; eggHatches: number;
+  posts: number; views: number; postHatches: number; eggs: number; eggHatches: number; reactions: number;
+  latestPost: { id: number; title: string; username: string | null; messageId: number; hatches: number; views: number; reactions: number; caption: string | null; at: number } | null;
   root: { seq: number; treeRoot: string; total: string; signature: string; at: number } | null;
 }
 export interface StatsReply {
   stats: Stats;
   recent: { kind: string; amount: string; t: number; who: string }[];
   days: { egg: { d: number; egg: string; n: number }[]; users: { d: number; n: number }[] } | null;
+  top: { username: string | null; messageId: number; hatches: number; views: number; reactions: number; at: number }[];
 }
 export interface LookupReply { found: boolean; address?: string | null; ledger?: string; since?: number; entitlement?: Entitlement | null }
 

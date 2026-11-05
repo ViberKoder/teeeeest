@@ -31,4 +31,4 @@ export const GAS_MIN_EARNED = 3n * EGG;
 export const GAS_DAILY_BUDGET = 50; // accounts per day
 
 // ---- public stats beacon (written on-chain by the vault, read by hatch.tg) ----
-export const BEACON_EVERY = 300; // seconds, at most; only when something changed
+export const BEACON_EVERY = 60; // seconds, at most; only when something changed (costs ~0.0001 TON: the bot pays itself)

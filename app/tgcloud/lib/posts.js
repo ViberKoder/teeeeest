@@ -17,7 +17,7 @@ export async function publishPost({ chatId, username, caption, by, now }) {
     parse_mode: 'HTML',
     reply_markup: hatchKeyboard(0),
   });
-  await db.insert(posts).values({ chatId, messageId: m.message_id, username: username ?? null, createdBy: by, createdAt: now }).onConflictDoNothing().run();
+  await db.insert(posts).values({ chatId, messageId: m.message_id, username: username ?? null, createdBy: by, createdAt: now, caption: caption || DEFAULT_CAPTION }).onConflictDoNothing().run();
   return m;
 }
 
