@@ -7,7 +7,8 @@ import { state } from '../schema.js';
 import { fromHex, hex, sha256, toBase64 } from './bytes.js';
 import { Builder } from './cell.js';
 import { seqnoOf, sendBoc } from './chain.js';
-import { BEACON_EVERY, NETWORK, VAULT } from './config.js';
+import { NETWORK, VAULT } from './config.js';
+import { getSettings } from './settings.js';
 import { VAULT_SEED } from './publisherkey.js';
 import { computeStats } from './stats.js';
 import { externalSend, SUBWALLET } from './wallet.js';
@@ -35,9 +36,10 @@ export async function maybeBeacon(now) {
   try {
     await db.insert(state).values({ id: ROW }).onConflictDoNothing().run();
     const s = await db.select().from(state).where(eq(state.id, ROW)).get();
+    const BEACON_EVERY = (await getSettings()).beaconEvery;
     if (now - s.lastPublishAt < BEACON_EVERY) return 'too-soon';
     const st = await computeStats(now);
-    const body = { v: 1, t: now, u: st.users, w: st.wallets, p: st.promised, e: st.events, po: st.posts, vi: st.views, eg: st.eggs, re: st.reactions, tp: st.latestPost ? [st.latestPost.hatches, st.latestPost.views, st.latestPost.reactions, st.latestPost.at, st.latestPost.username ?? '', st.latestPost.title] : null, r: st.root ? [st.root.seq, st.root.total, st.root.treeRoot, st.root.signature] : null };
+    const body = { v: 1, mn: (await getSettings()).minter, t: now, u: st.users, w: st.wallets, p: st.promised, e: st.events, po: st.posts, vi: st.views, eg: st.eggs, re: st.reactions, tp: st.latestPost ? [st.latestPost.hatches, st.latestPost.views, st.latestPost.reactions, st.latestPost.at, st.latestPost.username ?? '', st.latestPost.title] : null, r: st.root ? [st.root.seq, st.root.total, st.root.treeRoot, st.root.signature] : null };
     const json = JSON.stringify(body);
     const h = hex(await sha256(new TextEncoder().encode(JSON.stringify({ ...body, t: 0 }))));
     if (h === s.lastCommitment) return 'unchanged';

@@ -2,6 +2,7 @@ import { db } from 'sdk';
 import { eq } from 'sdk/db';
 import { users } from '../schema.js';
 import { entitlementFor } from '../lib/snapshot.js';
+import { isAdminId } from '../lib/settings.js';
 import { balanceOf, ensureUser } from '../lib/ledger.js';
 
 export default async function (_input, ctx) {
@@ -19,6 +20,7 @@ export default async function (_input, ctx) {
     ledger: await balanceOf(id),
     entitlement: e,
     address_locked: Boolean(u.locked),
+    is_admin: await isAdminId(id),
     banned: false,
     sponsored_left: 0,
   };

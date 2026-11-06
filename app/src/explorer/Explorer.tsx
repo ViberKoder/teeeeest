@@ -158,7 +158,15 @@ export function Explorer() {
         if (!stop) setErr('The blockchain API is busy — retrying');
       }
     };
-    const gb = async () => { try { const b = await readBeacons(); if (!stop) setBeacons(b); } catch { /* next round */ } };
+    const gb = async () => {
+      try {
+        const b = await readBeacons();
+        // the active token is whatever the newest beacon says (the admin can switch it; the public page needs no rebuild)
+        const mn = b[b.length - 1]?.mn;
+        if (mn && !api.available()) (cfg as { master: string }).master = mn;
+        if (!stop) setBeacons(b);
+      } catch { /* next round */ }
+    };
     void go(); void gb();
     const a = setInterval(go, 8000), b = setInterval(gb, 20_000), c = setInterval(() => setTick((x) => x + 1), 1000);
     return () => { stop = true; clearInterval(a); clearInterval(b); clearInterval(c); };

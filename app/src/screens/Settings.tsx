@@ -137,6 +137,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
 
       <Section title="EGG" footer="Friends you invite earn as usual; you get 25% on top of what they earn.">
         <Row onClick={() => shareLink(`https://t.me/${cfg.bot}?start=ref_${tgUserId()}`, 'Hatch eggs with me and earn EGG 🥚')} icon={ic(<span>🤝</span>)} title="Invite friends" subtitle="+25% of what they earn" />
+        {w.data.me?.is_admin && <Row onClick={() => location.assign('/admin/')} icon={ic(<span>🛠</span>)} title="Admin panel" subtitle="Token, game settings, posts, players" />}
         <Row onClick={() => location.assign('/explorer/')} icon={ic(<span>📊</span>)} title="Project explorer" subtitle="Live numbers, checkable against the blockchain" />
       </Section>
 

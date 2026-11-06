@@ -55,6 +55,8 @@ export async function recentClaims(): Promise<ClaimTx[]> {
 
 /** The public stats beacon: comments the bot's own wallet writes to itself. Only that wallet's key can write them. */
 export interface Beacon {
+  /** the active token contract (raw) when the beacon was written */
+  mn?: string;
   t: number; u: number; w: number; p: string; e: number; po: number; vi: number; eg: number; re?: number;
   /** newest channel post: [hatches, views, reactions, published at, channel username, channel title] */
   tp?: [number, number, number, number, string, string] | null;

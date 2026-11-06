@@ -9,8 +9,8 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1200,
-    // the wallet and the public explorer (hatch.tg) are two pages of one build
-    rollupOptions: { input: { main: 'index.html', explorer: 'explorer/index.html' } },
+    // the wallet, the public explorer (hatch.tg) and the admin panel are three pages of one build
+    rollupOptions: { input: { main: 'index.html', explorer: 'explorer/index.html', admin: 'admin/index.html' } },
   },
   server: { host: true, port: 5180 },
   test: { globals: true, environment: 'node', testTimeout: 60_000 },

@@ -1,7 +1,7 @@
 import { api } from 'sdk';
-import { ADMINS } from './config.js';
+import { isAdminId } from './settings.js';
 
-export const isAdmin = (id) => ADMINS.includes(Number(id));
+export const isAdmin = (id) => isAdminId(id);
 
 /** Bot API calls whose failure must never undo what was already credited (a toast, an edit, a notification). */
 export async function quietly(p) {

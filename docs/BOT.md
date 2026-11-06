@@ -12,7 +12,7 @@ Everything runs on Telegram's own infrastructure (`app/tgcloud/`): no server of 
 | `schema.js` | `users`, `ledger` (one row per credit, unique `ref`, amounts in units — a balance is `SUM`), `posts`, `eggs`, `chats`, `roots` (log of signed roots), `prepared` |
 | `endpoints/me, link, entitlement, walletFor, prepared, adopt, gas, stats, lookup` | what the wallet and the explorer call (the platform verifies Telegram `initData`) |
 
-**Game rules** (`lib/config.js`): post hatch +1, friend's egg +1 (sender +2), referrer +25 %; per player at most 300 EGG a day (checked in the same SQL statement as the insert); the same sender/hatcher pair at most 3 times a day; 10 of a player's eggs hatched per day (`SENDS_PER_DAY`); callback data of an egg carries a MAC so a modified client can not change it.
+**Game rules** (defaults in `lib/settings.js`, editable in the admin panel — see `docs/ADMIN.md`; the text below is the default): post hatch +1, friend's egg +1 (sender +2), referrer +25 %; per player at most 300 EGG a day (checked in the same SQL statement as the insert); the same sender/hatcher pair at most 3 times a day; 10 of a player's eggs hatched per day (`SENDS_PER_DAY`); callback data of an egg carries a MAC so a modified client can not change it.
 
 **Enable inline mode** for the bot in @BotFather (`/setinline`) — only the bot's owner can.
 

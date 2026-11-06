@@ -66,3 +66,10 @@ export async function limitsOf(minter) {
     walletDaily, walletBurst, launchAt: Number(launchAt), frozen: (frozen ?? 0n) !== 0n,
   };
 }
+
+/** the signing key a token contract trusts (hex) */
+export async function publisherKeyOf(minter) {
+  const s = await get(minter, 'get_publisher_key');
+  if (!s) throw new Error('not a token contract');
+  return num(s[0]).toString(16).padStart(64, '0');
+}

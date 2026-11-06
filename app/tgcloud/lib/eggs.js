@@ -3,7 +3,6 @@
 import { api, db } from 'sdk';
 import { and, eq, lt, sql } from 'sdk/db';
 import { eggs } from '../schema.js';
-import { PAIR_DAILY_CAP, REWARD, SENDS_PER_DAY } from './config.js';
 import { credit } from './ledger.js';
 import { mac } from './mac.js';
 import { answer, nameOf, quietly } from './telegram.js';
@@ -30,7 +29,7 @@ const keyboard = (data, hatched, max) => ({
 });
 
 /** A tap on an egg's Hatch button. */
-export async function hatchEgg(q, egg, now) {
+export async function hatchEgg(q, egg, now, S) {
   const clicker = q.from.id;
   if (clicker === egg.sender) return answer(q, 'You can’t hatch your own egg — send it to someone!', true);
 
@@ -40,23 +39,23 @@ export async function hatchEgg(q, egg, now) {
   const row = await db.select().from(eggs).where(eq(eggs.key, egg.key)).get();
   if (row.hatched === 0) {
     const sent = await db.$count(eggs, and(eq(eggs.sender, egg.sender), sql`${eggs.createdAt} >= ${day}`));
-    if (sent > SENDS_PER_DAY) return answer(q, `This sender already has ${SENDS_PER_DAY} hatched eggs today — try again tomorrow.`, true);
+    if (sent > S.sendsPerDay) return answer(q, `This sender already has ${S.sendsPerDay} hatched eggs today — try again tomorrow.`, true);
   }
   // the same pair can not farm each other
   const pair = await db.get(sql`SELECT COUNT(*) AS n FROM ledger WHERE tg_id = ${clicker} AND kind = 'inline' AND ts >= ${day} AND ref LIKE ${`egg:${egg.sender}:%`}`);
-  if (Number(pair?.n ?? 0) >= PAIR_DAILY_CAP) return answer(q, 'You already hatched enough of this friend’s eggs today.', true);
+  if (Number(pair?.n ?? 0) >= S.pairCap) return answer(q, 'You already hatched enough of this friend’s eggs today.', true);
 
   const already = await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${`egg:${egg.key}:${clicker}`}`);
   if (already) return answer(q, 'You already hatched this egg.');
   const taken = await db.update(eggs).set({ hatched: sql`${eggs.hatched} + 1` }).where(and(eq(eggs.key, egg.key), lt(eggs.hatched, egg.max))).returning().run();
   if (!taken.length) return answer(q, 'This egg has already hatched 🐣');
 
-  const r = await credit({ tgId: clicker, amount: REWARD.inline, kind: 'inline', ref: `egg:${egg.key}:${clicker}`, now });
+  const r = await credit({ tgId: clicker, amount: S.reward.inline, kind: 'inline', ref: `egg:${egg.key}:${clicker}`, now });
   if (r !== 'ok') {
     await db.update(eggs).set({ hatched: sql`${eggs.hatched} - 1` }).where(eq(eggs.key, egg.key)).run();
-    return answer(q, r === 'cap' ? 'Daily limit reached — come back tomorrow!' : 'You already hatched this egg.', r === 'cap');
+    return answer(q, r === 'banned' ? 'Your account can not earn right now.' : r === 'cap' ? 'Daily limit reached — come back tomorrow!' : 'You already hatched this egg.', r !== 'again');
   }
-  await credit({ tgId: egg.sender, amount: REWARD.sender, kind: 'sender', ref: `snd:${egg.key}:${clicker}`, now });
+  await credit({ tgId: egg.sender, amount: S.reward.sender, kind: 'sender', ref: `snd:${egg.key}:${clicker}`, now });
   await answer(q, `🐣 +1 EGG! The sender got +2.`);
 
   const hatched = taken[0].hatched;

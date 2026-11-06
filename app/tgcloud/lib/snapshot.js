@@ -9,7 +9,7 @@ import { roots } from '../schema.js';
 import { fromHex, hex, toBase64 } from './bytes.js';
 import { toBoc } from './cell.js';
 import { limitsOf } from './chain.js';
-import { MINTER } from './config.js';
+import { activeMinter } from './settings.js';
 import { sign } from './ed25519.js';
 import { PUBLISHER_SEED } from './publisherkey.js';
 import { buildTree, proofCell, signedRootDigest } from './tree.js';
@@ -24,8 +24,8 @@ async function ledger() {
 }
 
 /** What the minter would accept from a new root right now: the total it may promise, and the most one wallet may be owed. */
-async function chainLimits(now) {
-  const l = await limitsOf(MINTER);
+async function chainLimits(now, minter) {
+  const l = await limitsOf(minter);
   const used = now >= l.windowStart + l.periodSeconds ? 0n : l.windowGrowth;
   const total = l.frozen ? l.maxTotal : l.maxTotal + (l.maxGrowth > used ? l.maxGrowth - used : 0n);
   const days = BigInt(Math.max(0, now - l.launchAt));
@@ -37,18 +37,20 @@ export async function currentRoot(now) {
   const last = await db.select().from(roots).orderBy(desc(roots.seq)).limit(1).get();
   // a root is reused for a few seconds without even looking at the ledger (opening the wallet must stay cheap)
   if (last && last.version !== 'stale' && now - last.createdAt < REBUILD_EVERY) return last;
-  const { leaves, version } = await ledger();
+  const { leaves, version: v0 } = await ledger();
+  const minter = await activeMinter();
+  const version = `${minter.slice(-8)}:${v0}`; // a root is bound to ONE token contract
   if (last && last.version === version) return last;
   if (!leaves.length) return last ?? null;
 
   // never sign what the contract would refuse: the growth budget for the total, and the per-wallet ceiling for each leaf
-  const lim = await chainLimits(now);
+  const lim = await chainLimits(now, minter);
   const capped = leaves.map((l) => (l.cumulative > lim.perWallet ? { ...l, cumulative: lim.perWallet } : l));
   const tree = await buildTree(capped);
   if (tree.total > lim.total) return last ?? null;
   if (last && BigInt(last.total) > tree.total) return last; // totals only grow (a smaller one would be provable fraud)
   const seq = (last?.seq ?? 0) + 1;
-  const signature = await sign(await signedRootDigest(MINTER, tree.treeRoot, tree.total, seq), fromHex(PUBLISHER_SEED));
+  const signature = await sign(await signedRootDigest(minter, tree.treeRoot, tree.total, seq), fromHex(PUBLISHER_SEED));
   const row = {
     seq, version, treeRoot: hex(tree.treeRoot), total: tree.total.toString(), signature: hex(signature), createdAt: now,
     leaves: JSON.stringify(tree.leaves.map((l) => [l.owner, l.cumulative.toString()])),

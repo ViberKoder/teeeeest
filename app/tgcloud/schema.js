@@ -15,6 +15,8 @@ export const users = table('users', {
   referrer: integer('referrer'),
   // when the bot paid this player's first network fee (once per account)
   gasAt: integer('gas_at').notNull().default(0),
+  // set by an admin: the account stops earning (what it was already promised in signed roots stays claimable)
+  banned: integer('banned').notNull().default(0),
   // 1 once the signature was checked (ed25519) and the address was derived from that key
   verified: integer('verified').notNull().default(0),
   // 1 once this address was included in a root sent on-chain: from then on it is the account's wallet for good
@@ -129,6 +131,8 @@ export const posts = table('posts', {
   // reactions (Telegram's own likes) counted by the channel; the Bot API reports them only as a total
   reactions: integer('reactions').notNull().default(0),
   caption: text('caption'),
+  // 0 = closed by an admin: the button stops paying
+  active: integer('active').notNull().default(1),
 }, (t) => ({
   once: uniqueIndex('uq_post').on(t.chatId, t.messageId),
 }));
@@ -152,3 +156,26 @@ export const chats = table('chats', {
   isAdmin: integer('is_admin').notNull().default(0),
   updatedAt: integer('updated_at').notNull(),
 });
+
+// Admin-editable settings (the game's numbers and the active token). Missing keys fall back to the defaults in lib/settings.js.
+export const settings = table('settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: integer('updated_at').notNull().default(0),
+});
+
+// Admins added from the panel (the ones in lib/config.js are the root admins and can not be removed here).
+export const admins = table('admins', {
+  tgId: integer('tg_id').primaryKey(),
+  addedBy: integer('added_by').notNull(),
+  at: integer('at').notNull(),
+});
+
+// Everything an admin did, newest first in the panel.
+export const adminLog = table('admin_log', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tgId: integer('tg_id').notNull(),
+  action: text('action').notNull(),
+  detail: text('detail').notNull().default(''),
+  ts: integer('ts').notNull(),
+}, (t) => ({ byTime: index('idx_admin_log_ts').on(t.ts) }));

@@ -3,7 +3,8 @@
 import { db } from 'sdk';
 import { eq, sql } from 'sdk/db';
 import { ledger, users } from '../schema.js';
-import { DAILY_EARN_CAP, EGG, REFERRAL_PERCENT } from './config.js';
+import { EGG } from './config.js';
+import { getSettings } from './settings.js';
 
 export async function ensureUser(tgId, now) {
   await db.insert(users).values({ tgId, createdAt: now }).onConflictDoNothing().run();
@@ -18,20 +19,22 @@ export async function balanceOf(tgId) {
 }
 
 /**
- * Credits `amount` to `tgId` once per `ref`. Returns 'ok' | 'again' (this event was already paid) | 'cap' (daily cap reached).
+ * Credits `amount` to `tgId` once per `ref`. Returns 'ok' | 'again' (this event was already paid) | 'cap' (daily cap reached) | 'banned'.
  * The player's referrer, if any, gets REFERRAL_PERCENT on top (it does not count against anyone's cap).
  */
 export async function credit({ tgId, amount, kind, ref, now }) {
+  const S = await getSettings();
   await ensureUser(tgId, now);
   if (await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`)) return 'again';
+  if ((await db.get(sql`SELECT banned AS b FROM users WHERE tg_id = ${tgId}`))?.b) return 'banned';
   // one statement: the cap can not be overrun by two taps arriving at the same moment
   await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
     SELECT ${tgId}, ${Number(amount)}, ${kind}, ${ref}, ${now}
-    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind != 'ref') + ${Number(amount)} <= ${Number(DAILY_EARN_CAP)}`);
+    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind != 'ref') + ${Number(amount)} <= ${Number(S.dailyCap)}`);
   if (!(await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`))) return 'cap';
   const u = await db.select().from(users).where(eq(users.tgId, tgId)).get();
   if (u?.referrer && u.referrer !== tgId) {
-    const bonus = (amount * REFERRAL_PERCENT) / 100n;
+    const bonus = (amount * S.referralPct) / 100n;
     if (bonus > 0n) await db.insert(ledger).values({ tgId: u.referrer, amount: Number(bonus), kind: 'ref', ref: `ref:${ref}`, ts: now }).onConflictDoNothing().run();
   }
   return 'ok';

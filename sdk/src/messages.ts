@@ -115,6 +115,11 @@ export const proveFraudBody = (p: { a: Cell; b: Cell; owner?: Address | null; cu
 export const changeMetadataBody = (metadata: Cell): Cell =>
   beginCell().storeUint(Op.changeMetadata, 32).storeUint(0, 64).storeRef(metadata).endCell();
 
+/** Step 1 of an admin hand-over: the current admin nominates `next`. Nothing changes until `next` claims. */
+export const changeAdminBody = (next: Address): Cell => beginCell().storeUint(Op.changeAdmin, 32).storeUint(0, 64).storeAddress(next).endCell();
+/** Step 2: the nominated address accepts the admin role. */
+export const claimAdminBody = (): Cell => beginCell().storeUint(Op.claimAdmin, 32).storeUint(0, 64).endCell();
+
 export const dropAdminBody = (): Cell => beginCell().storeUint(Op.dropAdmin, 32).storeUint(0, 64).endCell();
 
 /** StateInit as base64 BoC (what TON Connect and most SDKs expect). */

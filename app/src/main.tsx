@@ -3,6 +3,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { bootTelegram } from './lib/tg';
+import { applyRemoteConfig } from './lib/remoteConfig';
 import { WalletProvider } from './state/wallet';
 import { ToastProvider } from './ui/toast';
 import '@fontsource-variable/onest';
@@ -14,7 +15,8 @@ bootTelegram();
 // Fixtures live in their own module; with VITE_DEMO unset the branch is dead code and no chunk is emitted.
 const Demo = import.meta.env.VITE_DEMO === '1' ? React.lazy(() => import('./demo')) : null;
 
-createRoot(document.getElementById('root')!).render(
+void applyRemoteConfig().finally(() =>
+  createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ToastProvider>
       <WalletProvider>
@@ -27,4 +29,5 @@ createRoot(document.getElementById('root')!).render(
       </WalletProvider>
     </ToastProvider>
   </React.StrictMode>,
+),
 );

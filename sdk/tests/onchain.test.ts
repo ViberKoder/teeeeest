@@ -4,7 +4,7 @@ import { keyPairFromSeed } from '@ton/crypto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   askToClaimBody, Attach, burnBody, commentPayload, EggTree, eggMinterCode, eggWalletCode, Err, minterStateInit,
-  onchainMetadata, signRoot, signedRootCell, verifyEntitlement, changePublisherKeyBody, proveFraudBody, transferBody, transferIntent, verifyProof, walletStateInit,
+  onchainMetadata, signRoot, signedRootCell, verifyEntitlement, changePublisherKeyBody, proveFraudBody, changeMetadataBody, setLimitsBody, changeAdminBody, claimAdminBody, dropAdminBody, transferBody, transferIntent, verifyProof, walletStateInit,
 } from '../src';
 
 const T0 = 1_800_000_000;
@@ -227,5 +227,59 @@ describe('fraud proofs built by the SDK', () => {
     const l = new TupleReader((await chain.runGetMethod(minter, 'get_limits')).stack);
     for (let i = 0; i < 8; i++) l.readBigNumber();
     expect(l.readBoolean()).toBe(true);
+  });
+});
+
+describe('admin operations built by the SDK (what the admin panel sends)', () => {
+  const E = (n: number) => toNano(String(n));
+  const setup = async () => {
+    const chain = await Blockchain.create();
+    chain.now = T0;
+    const [admin, next, other] = await Promise.all(['admin', 'next', 'other'].map((n) => chain.treasury(n)));
+    const pub = keyPairFromSeed(Buffer.alloc(32, 77));
+    const { init, address: minter } = minterStateInit({
+      maxSupply: E(1_000_000), admin: admin.address, publisherKey: pub.publicKey, maxGrowth: E(1000), periodSeconds: 3600, walletDaily: E(100), walletBurst: E(100), launchAt: T0,
+      metadata: onchainMetadata({ name: 'Egg', symbol: 'EGG', decimals: 9 }),
+    }, eggMinterCode);
+    await admin.send({ to: minter, value: toNano('1'), init, bounce: false, body: beginCell().storeUint(0xd372158c, 32).endCell() });
+    const exit = (txs: any[]) => (txs.find((t) => t.inMessage?.info.dest?.toString() === minter.toString())!.description as any).computePhase.exitCode as number;
+    const get = async (m: string) => new TupleReader((await chain.runGetMethod(minter, m)).stack);
+    return { chain, admin, next, other, minter, exit, get };
+  };
+
+  it('metadata is replaced on-chain by the admin only', async () => {
+    const { admin, other, minter, exit, chain } = await setup();
+    const md = onchainMetadata({ name: 'Hatch', symbol: 'HATCH', decimals: 9, description: 'new', image: 'https://x.test/h.png' });
+    expect(exit((await other.send({ to: minter, value: toNano('0.05'), body: changeMetadataBody(md) })).transactions)).toBe(Err.notAdmin);
+    expect(exit((await admin.send({ to: minter, value: toNano('0.05'), body: changeMetadataBody(md) })).transactions)).toBe(0);
+    const j = new TupleReader((await chain.runGetMethod(minter, 'get_jetton_data')).stack);
+    j.skip(3);
+    expect(j.readCell().hash().equals(md.hash())).toBe(true);
+  });
+
+  it('limits can only be tightened, including the per-wallet ceiling', async () => {
+    const { admin, minter, exit, get } = await setup();
+    const send = (p: { maxGrowth: bigint; periodSeconds: number; walletDaily: bigint; walletBurst: bigint }) => admin.send({ to: minter, value: toNano('0.05'), body: setLimitsBody(p) });
+    expect(exit((await send({ maxGrowth: E(2000), periodSeconds: 3600, walletDaily: E(100), walletBurst: E(100) })).transactions)).toBe(Err.limitsLoosened);
+    expect(exit((await send({ maxGrowth: E(1000), periodSeconds: 3600, walletDaily: E(200), walletBurst: E(100) })).transactions)).toBe(Err.limitsLoosened);
+    expect(exit((await send({ maxGrowth: E(500), periodSeconds: 7200, walletDaily: E(50), walletBurst: E(80) })).transactions)).toBe(0);
+    const l = await get('get_limits');
+    expect(l.readBigNumber()).toBe(E(500));
+    expect(l.readBigNumber()).toBe(7200n);
+  });
+
+  it('admin hand-over is two steps, and a dropped admin is final', async () => {
+    const { admin, next, other, minter, exit, chain } = await setup();
+    const adminOf = async () => (await chain.runGetMethod(minter, 'get_jetton_data')).stackReader;
+    expect(exit((await admin.send({ to: minter, value: toNano('0.05'), body: changeAdminBody(next.address) })).transactions)).toBe(0);
+    expect(exit((await other.send({ to: minter, value: toNano('0.05'), body: claimAdminBody() })).transactions)).not.toBe(0); // not the nominee
+    expect(exit((await next.send({ to: minter, value: toNano('0.05'), body: claimAdminBody() })).transactions)).toBe(0);
+    const s = (await adminOf());
+    s.skip(2);
+    expect(s.readAddress().equals(next.address)).toBe(true);
+    // the old admin can no longer do anything; the new one drops the role for good
+    expect(exit((await admin.send({ to: minter, value: toNano('0.05'), body: dropAdminBody() })).transactions)).toBe(Err.notAdmin);
+    expect(exit((await next.send({ to: minter, value: toNano('0.05'), body: dropAdminBody() })).transactions)).toBe(0);
+    expect(exit((await next.send({ to: minter, value: toNano('0.05'), body: dropAdminBody() })).transactions)).not.toBe(0);
   });
 });

@@ -58,7 +58,8 @@ export default async function (m) {
   }
 
   // ---- admins ----
-  if (cmd === '/post' && isAdmin(m.from.id)) {
+  if (cmd === '/admin' && (await isAdmin(m.from.id))) return say(m.chat.id, 'Admin panel — token, game settings, posts, players. Every action is logged.', openWallet('Open admin panel', 'admin/'));
+  if (cmd === '/post' && (await isAdmin(m.from.id))) {
     let caption = text.slice(cmd0.length).trim();
     let target = null;
     const first = USER.exec(args[0] ?? '');
@@ -75,10 +76,10 @@ export default async function (m) {
     const link = target.username ? `https://t.me/${target.username}/${sent.message_id}` : '';
     return say(m.chat.id, `Posted ✅ ${link}`);
   }
-  if (cmd === '/stats' && isAdmin(m.from.id)) {
+  if (cmd === '/stats' && (await isAdmin(m.from.id))) {
     const s = await computeStats(now);
     return say(m.chat.id, `<b>Stats</b>\nPlayers: ${s.users} (wallets: ${s.wallets})\nEGG promised: ${fmtEgg(s.promised)}\nToday: ${fmtEgg(s.today)} EGG, ${s.newUsersToday} new players\nPosts: ${s.posts}, views: ${s.views}, hatches: ${s.postHatches}\nEggs sent in chats: ${s.eggs}\nNewest root: #${s.root?.seq ?? '—'}`);
   }
-  return say(m.chat.id, 'Commands: /start, /balance, <code>/send @username 10</code>' + (isAdmin(m.from.id) ? ', /post [@channel] [text], /stats' : ''), openWallet());
+  return say(m.chat.id, 'Commands: /start, /balance, <code>/send @username 10</code>' + ((await isAdmin(m.from.id)) ? ', /post [@channel] [text], /stats, /admin' : ''), openWallet());
 }
 void esc;

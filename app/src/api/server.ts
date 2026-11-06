@@ -12,6 +12,7 @@ export interface Me {
   entitlement: Entitlement | null;
   address_locked: boolean;
   banned: boolean;
+  is_admin?: boolean;
   /** sponsored (gasless) requests this account can still use */
   sponsored_left: number;
 }
@@ -88,6 +89,10 @@ export const api = {
   /** Links the wallet to the Telegram account; the signature proves the caller holds the wallet's key. */
   link: (address: string, publicKey: string, signature: string, replace = false) =>
     call<{ ok: true }>('/v1/link', { method: 'POST', body: JSON.stringify({ address, public_key: publicKey, signature, replace }) }),
+  /** admin panel (the bot checks the Telegram account is an admin) */
+  admin: <T = unknown>(input: Record<string, unknown>) => call<T>('/v1/admin', { method: 'POST', body: JSON.stringify(input) }),
+  /** which token contract is active */
+  config: () => call<{ minter: string; network: string; bot: string }>('/v1/config', { method: 'POST', body: '{}' }),
   /** the bot pays a new player's first network fee (once per account) */
   gas: () => call<{ status: 'sent' | 'enough' }>('/v1/gas', { method: 'POST', body: '{}' }),
   /** live project numbers (explorer inside Telegram) */
