@@ -104,7 +104,7 @@ export async function walletOnChain(owner: Address): Promise<{ balance: bigint; 
 
 /** A post as the explorer draws it, from the bot (inside Telegram) or from the newest on-chain beacon. */
 export interface PostView { title: string; username: string; messageId: number | null; hatches: number; views: number; reactions: number; at: number; caption: string }
-export const DEFAULT_CAPTION = 'A fresh egg!\nTap Hatch — every tap is +1 EGG, yours on the blockchain.';
+export const DEFAULT_CAPTION = '';
 
 export const postFromBeacon = (b: Beacon | undefined): PostView | null =>
   b?.tp ? { hatches: b.tp[0], views: b.tp[1], reactions: b.tp[2], at: b.tp[3], username: b.tp[4], title: b.tp[5] || b.tp[4] || 'Hatch', messageId: null, caption: DEFAULT_CAPTION } : null;

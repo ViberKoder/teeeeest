@@ -7,17 +7,16 @@ import { quietly } from './telegram.js';
 
 export const POST_DATA = 'h';
 export const hatchKeyboard = (n) => ({ inline_keyboard: [[{ text: `🥚 Hatch${n ? ` · ${n}` : ''}`, callback_data: POST_DATA }]] });
-const DEFAULT_CAPTION = '🥚 A fresh egg!\nTap <b>Hatch</b> — every tap is +1 EGG, yours on the blockchain.';
 
 export async function publishPost({ chatId, username, caption, by, now }) {
   const m = await api.sendPhoto({
     chat_id: chatId,
     photo: `${APP_URL}post-egg.jpg`,
-    caption: caption || DEFAULT_CAPTION,
-    parse_mode: 'HTML',
+    // just the egg and the button — a caption only if the admin wrote one
+    ...(caption ? { caption, parse_mode: 'HTML' } : {}),
     reply_markup: hatchKeyboard(0),
   });
-  await db.insert(posts).values({ chatId, messageId: m.message_id, username: username ?? null, createdBy: by, createdAt: now, caption: caption || DEFAULT_CAPTION }).onConflictDoNothing().run();
+  await db.insert(posts).values({ chatId, messageId: m.message_id, username: username ?? null, createdBy: by, createdAt: now, caption: caption || '' }).onConflictDoNothing().run();
   return m;
 }
 

@@ -1,20 +1,19 @@
 // Eggs sent into any chat through inline mode (the "send egg" game of the original bot): someone else hatches it,
-// the hatcher earns REWARD.inline and the sender REWARD.sender. A multi egg can be hatched by up to `max` different people.
+// the hatcher earns REWARD.inline and the sender REWARD.sender. One egg is hatched by one person.
 import { api, db } from 'sdk';
 import { and, eq, lt, sql } from 'sdk/db';
 import { eggs } from '../schema.js';
-import { MULTI_MAX, PAIR_DAILY_CAP, REWARD, SENDS_PER_DAY } from './config.js';
+import { PAIR_DAILY_CAP, REWARD, SENDS_PER_DAY } from './config.js';
 import { credit } from './ledger.js';
 import { mac } from './mac.js';
 import { answer, nameOf, quietly } from './telegram.js';
 
 const nonce = () => Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
 
-/** Callback data of a fresh egg: e:<sender>:<nonce>:<max>:<mac> (always < 64 bytes). */
-export async function newEggData(sender, max) {
+/** Callback data of a fresh egg: e:<sender>:<nonce>:1:<mac> (always < 64 bytes; the `1` is kept so older eggs stay valid). */
+export async function newEggData(sender) {
   const n = nonce();
-  const m = Math.max(1, Math.min(MULTI_MAX, max | 0));
-  return `e:${sender}:${n}:${m}:${await mac(`${sender}:${n}:${m}`)}`;
+  return `e:${sender}:${n}:1:${await mac(`${sender}:${n}:1`)}`;
 }
 
 export async function parseEggData(data) {
@@ -22,7 +21,8 @@ export async function parseEggData(data) {
   if (p.length !== 5 || p[0] !== 'e') return null;
   const [, sender, n, max, tag] = p;
   if (tag !== (await mac(`${sender}:${n}:${max}`))) return null;
-  return { sender: Number(sender), key: `${sender}:${n}`, max: Number(max) };
+  // eggs that were sent as "multi" before multi eggs were removed now hatch once, like any other egg
+  return { sender: Number(sender), key: `${sender}:${n}`, max: 1 };
 }
 
 const keyboard = (data, hatched, max) => ({
@@ -36,11 +36,11 @@ export async function hatchEgg(q, egg, now) {
 
   await db.insert(eggs).values({ key: egg.key, sender: egg.sender, max: egg.max, createdAt: now }).onConflictDoNothing().run();
   const day = now - (now % 86400);
-  // the sender's daily sending allowance (counted on first hatch of each egg)
+  // the sender's daily allowance: only SENDS_PER_DAY of their eggs per day can be hatched (counted at the first hatch of each egg)
   const row = await db.select().from(eggs).where(eq(eggs.key, egg.key)).get();
   if (row.hatched === 0) {
     const sent = await db.$count(eggs, and(eq(eggs.sender, egg.sender), sql`${eggs.createdAt} >= ${day}`));
-    if (sent > SENDS_PER_DAY) return answer(q, 'This sender reached today’s egg limit.', true);
+    if (sent > SENDS_PER_DAY) return answer(q, `This sender already has ${SENDS_PER_DAY} hatched eggs today — try again tomorrow.`, true);
   }
   // the same pair can not farm each other
   const pair = await db.get(sql`SELECT COUNT(*) AS n FROM ledger WHERE tg_id = ${clicker} AND kind = 'inline' AND ts >= ${day} AND ref LIKE ${`egg:${egg.sender}:%`}`);

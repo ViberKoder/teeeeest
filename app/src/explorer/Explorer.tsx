@@ -53,7 +53,7 @@ function PostCard({ post, live }: { post: PostView | null; live: boolean }) {
   const p: PostView = post ?? { title: 'Egg', username: '', messageId: null, hatches: 0, views: 0, reactions: 0, at: nowS(), caption: DEFAULT_CAPTION };
   const link = p.username ? `https://t.me/${p.username}${p.messageId ? `/${p.messageId}` : ''}` : `https://t.me/${cfg.bot}`;
   const time = new Date(p.at * 1000).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' });
-  const lines = (p.caption ?? DEFAULT_CAPTION).split('\n');
+  const lines = (p.caption ?? '').split('\n').filter(Boolean);
   return (
     <div className="chat">
       <div className="bubble">
@@ -65,7 +65,7 @@ function PostCard({ post, live }: { post: PostView | null; live: boolean }) {
         <a className="photo" href={link} target="_blank" rel="noreferrer">
           <img src="/post-egg.jpg" alt="Egg post" loading="lazy" />
         </a>
-        <p className="cap">{lines.map((l, i) => <span key={i}>{l}<br /></span>)}</p>
+        {lines.length > 0 && <p className="cap">{lines.map((l, i) => <span key={i}>{l}<br /></span>)}</p>}
         <a className="kbtn" href={link} target="_blank" rel="noreferrer">🥚 Hatch · <Count value={BigInt(p.hatches)} /></a>
         <div className="bf">
           <div className="reacts">
@@ -171,7 +171,7 @@ export function Explorer() {
     root: lastBeacon.r ? { seq: lastBeacon.r[0], total: lastBeacon.r[1], treeRoot: lastBeacon.r[2], signature: lastBeacon.r[3], at: lastBeacon.t } : null,
   } : null);
   const post: PostView | null = live?.stats.latestPost
-    ? { ...live.stats.latestPost, title: live.stats.latestPost.title, username: live.stats.latestPost.username ?? '', caption: live.stats.latestPost.caption ?? DEFAULT_CAPTION, at: live.stats.latestPost.at, messageId: live.stats.latestPost.messageId }
+    ? { ...live.stats.latestPost, title: live.stats.latestPost.title, username: live.stats.latestPost.username ?? '', caption: live.stats.latestPost.caption ?? '', at: live.stats.latestPost.at, messageId: live.stats.latestPost.messageId }
     : postFromBeacon(lastBeacon);
 
   // every new event makes the egg burst and a "+1 EGG" float up

@@ -6,13 +6,13 @@ Everything runs on Telegram's own infrastructure (`app/tgcloud/`): no server of 
 |---|---|
 | `handlers/message.js` | `/start` (also `ref_<id>` invites and `send-<user>-<amount>` links), `/balance`, `/send @user 10` (opens the wallet prefilled — the player confirms with their own key), admins: `/post [@channel] [text]`, `/stats` |
 | `handlers/channel_post.js` | an admin's own channel post containing `#hatch` gets the Hatch button |
-| `handlers/inline_query.js` | `@hatchapp` in any chat sends an egg (single, or multi ×N) |
+| `handlers/inline_query.js` | `@hatchapp` in any chat sends an egg (one person hatches it) |
 | `handlers/callback_query.js` | Hatch under a post: +1 EGG once per player per post; hatching a friend's egg: +1 for the hatcher, +2 for the sender; never your own egg |
 | `handlers/my_chat_member.js` | remembers channels where **one of our admins** made the bot an administrator — only there it publishes or adopts posts |
 | `schema.js` | `users`, `ledger` (one row per credit, unique `ref`, amounts in units — a balance is `SUM`), `posts`, `eggs`, `chats`, `roots` (log of signed roots), `prepared` |
 | `endpoints/me, link, entitlement, walletFor, prepared, adopt, gas, stats, lookup` | what the wallet and the explorer call (the platform verifies Telegram `initData`) |
 
-**Game rules** (`lib/config.js`): post hatch +1, friend's egg +1 (sender +2), referrer +25 %; per player at most 300 EGG a day (checked in the same SQL statement as the insert); the same sender/hatcher pair at most 3 times a day; 200 eggs sent per day; callback data of an egg carries a MAC so a modified client can not change it.
+**Game rules** (`lib/config.js`): post hatch +1, friend's egg +1 (sender +2), referrer +25 %; per player at most 300 EGG a day (checked in the same SQL statement as the insert); the same sender/hatcher pair at most 3 times a day; 10 of a player's eggs hatched per day (`SENDS_PER_DAY`); callback data of an egg carries a MAC so a modified client can not change it.
 
 **Enable inline mode** for the bot in @BotFather (`/setinline`) — only the bot's owner can.
 

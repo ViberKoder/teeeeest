@@ -1,4 +1,4 @@
-// Short MACs for callback data, so a modified client can not invent eggs (e.g. raise a multi egg's limit).
+// Short MACs for callback data, so a modified client can not invent eggs.
 import { OP_KEY } from './opkey.js';
 
 let key = null;

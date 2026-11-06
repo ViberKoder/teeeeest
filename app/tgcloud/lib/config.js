@@ -22,8 +22,7 @@ export const REWARD = {
 export const REFERRAL_PERCENT = 25n; // a referrer earns 25% of what the people they invited earn
 export const DAILY_EARN_CAP = 300n * EGG; // per player per UTC day, all sources (the contract allows 1000/day/wallet)
 export const PAIR_DAILY_CAP = 3; // the same sender + hatcher pair earns at most this many times a day (anti-farming)
-export const MULTI_MAX = 100; // a multi egg can be hatched by up to this many people
-export const SENDS_PER_DAY = 200; // eggs one player can send in a day
+export const SENDS_PER_DAY = 10; // eggs one player can have hatched per day (raise it later, once the game is balanced)
 
 // ---- the first claim's network fee, paid by the bot (once per account, only for players who earned something)
 export const GAS_AMOUNT = 100000000n; // 0.1 TON: a claim attaches 0.08 and gets most of it back
