@@ -1,4 +1,4 @@
-import { Egg } from '../ui/Egg';
+import { Egg3D } from '../ui/Egg3D';
 import { Sparkle } from '../ui/Icons';
 import { MainButton, Page } from '../ui/native';
 
@@ -17,11 +17,11 @@ const Gift = () => (
 export function IntroPage({ onClose }: { onClose: () => void }) {
   return (
     <Page title="How It Works" onBack={onClose} bottomSpace>
-      <div className="center" style={{ marginTop: 6 }}><div style={{ display: 'inline-block' }}><Egg size={92} float /></div></div>
+      <div style={{ position: 'relative', height: 190, marginTop: 0 }}><Egg3D energy={0.5} /></div>
       <div className="stack" style={{ gap: 4, marginTop: 8 }}>
-        <div className="info-row"><span className="ic"><Sparkle /></span><div><b>Hatch EGG</b><span>Earn EGG in chats and games. Everything you earn is recorded in a public root on the blockchain.</span></div></div>
-        <div className="info-row"><span className="ic"><Shield /></span><div><b>Blockchain Verified</b><span>The token contract itself checks every hatch. Nobody — not even us — can take back what is recorded.</span></div></div>
-        <div className="info-row"><span className="ic"><Gift /></span><div><b>Free to Start</b><span>Your first hatches cost nothing: we cover the network fee. Your wallet is part of your Telegram account — no secret phrase to write down.</span></div></div>
+        <div className="info-row"><span className="ic"><Sparkle /></span><div><b>Hatch EGG</b><span>Tap Hatch on eggs in chats and channels, play, invite friends. Every hatch is +1 EGG.</span></div></div>
+        <div className="info-row"><span className="ic"><Shield /></span><div><b>Proven on-chain</b><span>Your balance is sealed in a public Merkle root and enforced by the token contract. Nobody, not even us, can take back what is recorded.</span></div></div>
+        <div className="info-row"><span className="ic"><Gift /></span><div><b>Yours, in Telegram</b><span>Your wallet is tied to your Telegram account, with no seed phrase to lose. Claim and send EGG in a couple of taps.</span></div></div>
       </div>
       <p className="hint center" style={{ marginTop: 18 }}>Want full control? Switch to self-custody any time in Settings → Keys &amp; Backup.</p>
       <MainButton text="Got it" onClick={onClose} />
