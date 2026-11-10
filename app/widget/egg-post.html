@@ -1,0 +1,32 @@
+<style>
+*{margin:0;box-sizing:border-box}
+body{height:100vh;background:radial-gradient(120% 90% at 50% 40%,#3fae5f,#1c6b3c 70%,#124d2b);color:#fff;font:600 15px system-ui;text-align:center;overflow:hidden}
+#t{padding-top:14px;font-size:11px;letter-spacing:2px;opacity:.75}
+#n{font:800 40px system-ui;line-height:1.1;text-shadow:0 2px 12px #0006}
+canvas{display:block;margin:2px auto 0}
+button{display:block;margin:0 auto;padding:11px 44px;font:700 16px system-ui;border-radius:14px}
+#m{height:20px;margin-top:6px;font-size:12px;opacity:.8}
+</style>
+<div id=t>HATCHED</div><div id=n>0</div>
+<canvas id=c width=200 height=190></canvas>
+<button id=b>Hatch +1</button><div id=m></div>
+<script>
+var W=window.TelegramWidget,c=document.getElementById('c'),x=c.getContext('2d'),n=document.getElementById('n'),m=document.getElementById('m'),s=0,v=0;
+function F(k){k=+k||0;n.textContent=k.toString().replace(/\B(?=(\d{3})+$)/g,' ')}
+function D(){try{F(JSON.parse(W.publicData).n)}catch(e){}}
+function P(t){x.beginPath();x.moveTo(0,-86);x.bezierCurveTo(40,-86,66,0,66,38);x.bezierCurveTo(66,72,40,92,0,92);x.bezierCurveTo(-40,92,-66,72,-66,38);x.bezierCurveTo(-66,0,-40,-86,0,-86)}
+function R(t){
+x.clearRect(0,0,200,190);var sw=Math.sin(t/700)*.07,bo=Math.sin(t/450)*3+(v>0?-v*9:0);
+x.fillStyle='#0004';x.beginPath();x.ellipse(100,178,46-bo/2,8,0,0,7);x.fill();
+x.save();x.translate(100,98+bo);x.rotate(sw+(v>0?Math.sin(t/40)*.08*v:0));
+P();var g=x.createRadialGradient(-26,-34,6,0,10,100);g.addColorStop(0,'#fff3b8');g.addColorStop(.35,'#ffd35a');g.addColorStop(.8,'#e0962a');g.addColorStop(1,'#a8620f');x.fillStyle=g;x.fill();
+x.save();P();x.clip();var o=Math.sin(t/900)*14;x.fillStyle='#b9741a55';
+[[-30,-8,5],[20,-30,4],[34,20,6],[-14,40,5],[-44,34,4],[8,64,4],[-6,0,3]].forEach(function(p){x.beginPath();x.ellipse(p[0]+o,p[1],p[2],p[2]*.8,0,0,7);x.fill()});
+var r=x.createLinearGradient(30,0,78,0);r.addColorStop(0,'#0000');r.addColorStop(1,'#5a2e0866');x.fillStyle=r;x.fillRect(0,-90,90,190);x.restore();
+x.fillStyle='#fff8';x.beginPath();x.ellipse(-30+o/3,-38,13,22,.5,0,7);x.fill();
+x.restore();if(v>0)v=Math.max(0,v-.06)}
+setInterval(function(){R(Date.now())},50);
+if(W){D();W.watchPublicData();W.onEvent('publicDataChanged',D);
+b.onclick=function(){W.HapticFeedback.impactOccurred('medium');v=1;W.request('h').then(function(r){var d=r&&r.result;try{d=JSON.parse(d)}catch(e){}m.textContent=d&&d.m||'';d&&d.n&&F(d.n)},function(e){m.textContent=e&&e.code||'error'})}}
+else F(12345);
+</script>
