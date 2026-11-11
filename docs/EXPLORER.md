@@ -32,7 +32,7 @@ It needs no server and no secrets. Meanwhile it is live at https://app8930916503
 
 ## v3 layout (ton.org look)
 
-The previous explorer was removed and rebuilt: Google Sans Flex (self-hosted, OFL), deep navy `#10161f`, one blue accent `#1eaefb`, hairline borders, as on ton.org.
+The previous explorer was removed and rebuilt: Google Sans Flex (self-hosted, OFL), hairline borders and rounded cards as on ton.org, on the post's own yellow-green gradient across the whole page (no dark background).
 
 * **Left:** a short text about Egg, then the numbers: eggs hatched, EGG promised, when the last egg appeared, players, wallets, holders.
 * **Right:** a big, slowly turning 3D egg as the "media" of a Telegram-style message, with the reaction pill, views and time under it and the bot's inline button ("🥚 Hatch · N", links to the channel post). The bubble, the pill and the button follow Telegram Web K (`tweb`): 14 px bubble, 30 px reaction pill, 6/12 px button corners.
