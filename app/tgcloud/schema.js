@@ -84,6 +84,8 @@ export const prepared = table('prepared', {
   username: text('username').primaryKey(),
   address: text('address').notNull(),
   issuedAt: integer('issued_at').notNull(),
+  // who asked for it first (rate limit: this table must not grow with every username anyone can type)
+  issuedBy: integer('issued_by').notNull().default(0),
   adoptedBy: integer('adopted_by').notNull().default(0),
   fundedAt: integer('funded_at').notNull().default(0),
   sentAt: integer('sent_at').notNull().default(0),

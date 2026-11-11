@@ -35,6 +35,18 @@ What it gives up: roots are no longer public on-chain objects, so **equivocation
 | 13 | Low | `/start send_…` broke on usernames with `_`; a send link reopened on every reload; the wallet polled while hidden; all screens loaded up front. | `send-<user>-<amount>`, the URL is cleared, polling pauses when hidden, secondary screens are lazy. |
 | 14 | Low | The stats beacon could get stuck after a failed send. | The slot is released on failure. |
 
+## Audit of v4.1 (second full pass) — found and fixed
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 15 | Medium | **A rotated-out key could move the `seq` slot.** A stolen old key could sign a root with a huge `seq` (within `legacyCap`); the minter stored it as `lastSeq`, so the same-`seq` fork check no longer covered the new key's roots. | Roots signed by a legacy key never move `lastSeq`/`lastRoot` (they still must match the slot when `seq == lastSeq`). Test: `a rotated-out key can not move the seq slot`. **Takes effect for newly deployed minters.** |
+| 16 | Medium | **Referral rings.** The 25% referral bonus sat outside every cap, so fresh accounts referring each other multiplied a day's earnings. | A referrer earns at most one daily cap of bonuses per day (single-statement insert, like the main cap). |
+| 17 | Medium | **Unbounded table growth.** `walletFor` is public and wrote a `prepared` row for every username anyone typed. | Rows are created only for signed-in users (30 a day each, 5000 a day overall); anonymous callers only get the address of an existing row. |
+| 18 | Medium | **Delegated admins could add admins and switch the active token.** | `team.add`, `team.remove` and `token.setActive` are root-admin only. |
+| 19 | Medium | `/post @name` published to any channel name, bypassing the approved-channel list. | Only channels an admin connected. |
+| 20 | Low | A failing value in `settings.set` left the earlier ones half applied. | Everything is validated first, then applied. |
+| 21 | Perf | Every public `stats` call tried to fetch `t.me` (always blocked), awaited the failure and wrote `viewsAt` rows. Every wallet open rebuilt the whole Merkle tree (hashing every leaf). | The fetch is gone (views come from the external sync); the tree is built once per root and reused. |
+
 ## Checked and fine
 
 * Claims verify a proof against a root the minter itself stores; the wallet accepts credit only from the minter; leaf/node/root hashes carry distinct tags and lengths (no second-preimage reuse of a node as a leaf); sums are `uint128` and range-checked on serialisation; proof depth is capped (64 steps).

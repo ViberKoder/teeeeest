@@ -1,5 +1,5 @@
 // Channel posts with a Hatch button: publishing (admins only), counting, and their public view counter.
-import { api, db, fetch } from 'sdk';
+import { api, db } from 'sdk';
 import { and, eq, lt, sql } from 'sdk/db';
 import { posts } from '../schema.js';
 import { APP_URL } from './config.js';
@@ -39,28 +39,4 @@ export async function countHatch({ chatId, messageId, now }) {
     if (claimed.length) await quietly(api.editMessageReplyMarkup({ chat_id: chatId, message_id: messageId, reply_markup: hatchKeyboard(n) }));
   }
   return n;
-}
-
-const parseViews = (s) => {
-  const m = /^([\d.,]+)\s*([KM])?$/i.exec(String(s).trim());
-  if (!m) return 0;
-  const n = Number(m[1].replace(',', '.'));
-  return Math.round(n * (m[2]?.toUpperCase() === 'M' ? 1e6 : m[2] ? 1e3 : 1));
-};
-
-/** Public channels expose a view counter on their embed page (the Bot API does not). Refreshed lazily, a few posts at a time. */
-export async function refreshViews(now, limit = 4) {
-  const stale = await db.select().from(posts).where(lt(posts.viewsAt, now - 120)).orderBy(posts.viewsAt).limit(limit).all();
-  for (const p of stale) {
-    await db.update(posts).set({ viewsAt: now }).where(eq(posts.id, p.id)).run();
-    if (!p.username) continue;
-    try {
-      const r = await fetch(`https://t.me/${p.username}/${p.messageId}?embed=1&mode=tme`);
-      const html = await r.text();
-      const v = /tgme_widget_message_views">([^<]+)</.exec(html)?.[1];
-      if (v) await db.update(posts).set({ views: parseViews(v) }).where(eq(posts.id, p.id)).run();
-    } catch {
-      /* a view counter is nice to have */
-    }
-  }
 }

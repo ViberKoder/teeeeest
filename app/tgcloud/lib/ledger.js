@@ -2,7 +2,7 @@
 // against what is already in the ledger. Amounts are jetton units (1 EGG = 1e9) and are read back as exact strings.
 import { db } from 'sdk';
 import { eq, sql } from 'sdk/db';
-import { ledger, users } from '../schema.js';
+import { users } from '../schema.js';
 import { EGG } from './config.js';
 import { getSettings } from './settings.js';
 
@@ -35,7 +35,12 @@ export async function credit({ tgId, amount, kind, ref, now }) {
   const u = await db.select().from(users).where(eq(users.tgId, tgId)).get();
   if (u?.referrer && u.referrer !== tgId) {
     const bonus = (amount * S.referralPct) / 100n;
-    if (bonus > 0n) await db.insert(ledger).values({ tgId: u.referrer, amount: Number(bonus), kind: 'ref', ref: `ref:${ref}`, ts: now }).onConflictDoNothing().run();
+    if (bonus > 0n) {
+      // one statement again: a referrer earns at most one daily cap of referral bonuses per day
+      await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
+        SELECT ${u.referrer}, ${Number(bonus)}, 'ref', ${`ref:${ref}`}, ${now}
+        WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${u.referrer} AND ts >= ${dayStart(now)} AND kind = 'ref') + ${Number(bonus)} <= ${Number(S.dailyCap)}`);
+    }
   }
   return 'ok';
 }

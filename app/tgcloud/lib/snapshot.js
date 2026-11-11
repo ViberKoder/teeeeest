@@ -64,10 +64,17 @@ export async function currentRoot(now) {
 }
 
 /** What the wallet needs to claim: the player's amount, the proof, and the root the publisher signed (null if not in any root yet). */
+let memo = { key: '', tree: null };
+async function treeOf(root) {
+  const key = `${root.seq}:${root.treeRoot}`;
+  if (memo.key !== key) memo = { key, tree: await buildTree(JSON.parse(root.leaves).map(([o, c]) => ({ owner: o, cumulative: BigInt(c) }))) };
+  return memo.tree;
+}
+
 export async function entitlementFor(address, now) {
   const root = await currentRoot(now);
   if (!root || !root.leaves) return null;
-  const tree = await buildTree(JSON.parse(root.leaves).map(([o, c]) => ({ owner: o, cumulative: BigInt(c) })));
+  const tree = await treeOf(root);
   const proof = proofCell(tree, address);
   if (!proof) return null;
   const leaf = tree.leaves[tree.index.get(address.split(':')[1])];

@@ -65,7 +65,8 @@ export default async function (m) {
     const first = USER.exec(args[0] ?? '');
     const all = await db.select().from(chats).where(eq(chats.isAdmin, 1)).all();
     if (first && args[0].startsWith('@')) {
-      target = all.find((c) => (c.username ?? '').toLowerCase() === first[1].toLowerCase()) ?? { chatId: '@' + first[1], username: first[1] };
+      target = all.find((c) => (c.username ?? '').toLowerCase() === first[1].toLowerCase());
+      if (!target) return say(m.chat.id, `@${esc(first[1])} is not connected. Make me an administrator there first (with "Post messages").`);
       caption = caption.slice(args[0].length).trim();
     } else if (all.length === 1) target = all[0];
     if (!target) {
@@ -82,4 +83,3 @@ export default async function (m) {
   }
   return say(m.chat.id, 'Commands: /start, /balance, <code>/send @username 10</code>' + ((await isAdmin(m.from.id)) ? ', /post [@channel] [text], /stats, /admin' : ''), openWallet());
 }
-void esc;

@@ -62,9 +62,11 @@ fun onInternalMessage(in: InMessage) {
             val digest = signedRootDigest(contract.getAddress(), sr.treeRoot, sr.total, sr.seq);
             val keys = storage.keys.load();
             val signature = sr.signature as slice;
+            var byCurrentKey = true;
             if (!isSignatureValid(digest, signature, keys.publisherKey)) {
                 assert (keys.legacyKey != 0 && isSignatureValid(digest, signature, keys.legacyKey)) throw Errors.BadSignature;
                 assert (sr.total <= keys.legacyCap) throw Errors.LegacyCap;
+                byCurrentKey = false;
             }
 
             // 2. the proof opens to exactly that root
@@ -76,9 +78,13 @@ fun onInternalMessage(in: InMessage) {
             assert (treeRoot == sr.treeRoot && total == sr.total) throw Errors.ProofMismatch;
 
             // 3. one slot, one root: a second, different root for the same `seq` is refused
+            // (a rotated-out key may still be honoured for old roots, but it must not move the slot: a stolen old key could
+            // otherwise claim a huge `seq` and blind the same-`seq` fork check for every root of the new key)
             if (sr.seq > storage.lastSeq) {
-                storage.lastSeq = sr.seq;
-                storage.lastRoot = digest;
+                if (byCurrentKey) {
+                    storage.lastSeq = sr.seq;
+                    storage.lastRoot = digest;
+                }
             } else if (sr.seq == storage.lastSeq) {
                 assert (storage.lastRoot == digest) throw Errors.Equivocation;
             }

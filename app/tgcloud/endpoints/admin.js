@@ -24,6 +24,8 @@ export default async function (input, ctx) {
   const now = Math.floor(Date.now() / 1000);
   const log = (action, detail) => logAdmin(me, action, detail, now);
   const fail = (m) => { throw new EndpointError(m, { code: m }); };
+  // the team and the active token are root-admin decisions: a delegated admin can run the game, not hand out the keys
+  const needRoot = () => { if (!ADMINS.includes(me)) fail('root-only'); };
 
   switch (input?.action) {
     case 'overview': {
@@ -47,18 +49,18 @@ export default async function (input, ctx) {
     }
 
     case 'settings.set': {
-      const changed = [];
+      // validate everything first: a bad value must not leave the others half applied
+      const clean = [];
       for (const [k, v] of Object.entries(input.values ?? {})) {
-        let clean;
-        try { clean = validate(k, v); } catch (e) { fail(String(e.message)); }
-        await setSetting(k, clean, now);
-        changed.push(`${k}=${clean}`);
+        try { clean.push([k, validate(k, v)]); } catch (e) { fail(String(e.message)); }
       }
-      if (changed.length) await log('settings', changed.join(' '));
+      for (const [k, v] of clean) await setSetting(k, v, now);
+      if (clean.length) await log('settings', clean.map(([k, v]) => `${k}=${v}`).join(' '));
       return { ok: true };
     }
 
     case 'token.setActive': {
+      needRoot();
       const minter = String(input.minter ?? '');
       if (!RAW.test(minter)) fail('bad-address');
       // the bot signs roots with ONE key: only a contract that trusts exactly that key can be served
@@ -114,6 +116,7 @@ export default async function (input, ctx) {
     }
 
     case 'team.add': {
+      needRoot();
       const id = Number(input.tgId);
       if (!Number.isSafeInteger(id) || id <= 0) fail('bad-id');
       await db.insert(admins).values({ tgId: id, addedBy: me, at: now }).onConflictDoNothing().run();
@@ -121,6 +124,7 @@ export default async function (input, ctx) {
       return { ok: true };
     }
     case 'team.remove': {
+      needRoot();
       const id = Number(input.tgId);
       if (ADMINS.includes(id)) fail('root-admin');
       await db.delete(admins).where(eq(admins.tgId, id)).run();

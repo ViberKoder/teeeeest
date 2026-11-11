@@ -436,3 +436,23 @@ get fun `test limits: no wallet can be owed more than the game could have paid i
     claim(aw, env.alice.address, root, 30000000000, t.aliceProof);
     expect(aw.getWalletData().jettonBalance).toEqual(30000000000);
 }
+
+get fun `test a rotated-out key can not move the seq slot`() {
+    val env = setupMinter();
+    val t = twoLeafTree(env.alice.address, ALICE_EGGS, env.bob.address, BOB_EGGS);
+    val first = signRoot(env, 1, t.root, t.total);
+    val aw = deployUserWallet(env.minter, env.alice.address, env.alice.address);
+    claim(aw, env.alice.address, first, ALICE_EGGS, t.aliceProof);
+    expect(env.minter.getLastSeq()).toEqual(1);
+
+    val newKp = crypto.seedToKeyPair(99887766);
+    env.minter.sendChangePublisherKey(env.admin.address, 0, newKp.publicKey, { value: grams("0.05") });
+
+    // the old key (stolen, say) signs the same promise under a huge seq: still honoured within legacyCap, but it must not
+    // blind the fork check of the new key by pushing lastSeq out of reach
+    val far = signRoot(env, 1000000, t.root, t.total);
+    val bw = deployUserWallet(env.minter, env.bob.address, env.bob.address);
+    claim(bw, env.bob.address, far, BOB_EGGS, t.bobProof);
+    expect(bw.getWalletData().jettonBalance).toEqual(BOB_EGGS);
+    expect(env.minter.getLastSeq()).toEqual(1);
+}

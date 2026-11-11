@@ -4,8 +4,8 @@
 // username (HMAC-SHA256). Anyone can send to that address like to any other. When the owner of the username first opens the
 // wallet, the bot (which can derive the key) moves the wallet to a key generated on THEIR device (WalletTg supports key
 // rotation, the address stays). From then on the bot's derived key is worthless: the wallet is theirs alone.
-import { db } from 'sdk';
-import { eq } from 'sdk/db';
+import { db, EndpointError } from 'sdk';
+import { and, eq, gte } from 'sdk/db';
 import { prepared } from '../schema.js';
 import { fromHex, hex, toBase64 } from './bytes.js';
 import { balanceOf, publicKeyOf, seqnoOf, sendBoc } from './chain.js';
@@ -31,9 +31,19 @@ export async function preparedWallet(username) {
 }
 
 /** Records that this username has a prepared wallet (so its owner can adopt it) and returns its address. */
-export async function issue(username, now) {
+export const ISSUE_PER_USER_PER_DAY = 30;
+export const ISSUE_PER_DAY = 5000;
+
+export async function issue(username, now, by = 0) {
   const w = await preparedWallet(username);
-  await db.insert(prepared).values({ username, address: w.address, issuedAt: now }).onConflictDoNothing().run();
+  if (!(await db.select().from(prepared).where(eq(prepared.username, username)).get())) {
+    // the table only grows when a signed-in user asks, a few times a day each (and within a global daily budget)
+    const day = now - (now % 86400);
+    if (!by) throw new EndpointError('sign-in', { code: 'sign-in' });
+    if ((await db.$count(prepared, and(eq(prepared.issuedBy, by), gte(prepared.issuedAt, day)))) >= ISSUE_PER_USER_PER_DAY) throw new EndpointError('slow-down', { code: 'slow-down' });
+    if ((await db.$count(prepared, gte(prepared.issuedAt, day))) >= ISSUE_PER_DAY) throw new EndpointError('busy', { code: 'busy' });
+    await db.insert(prepared).values({ username, address: w.address, issuedAt: now, issuedBy: by }).onConflictDoNothing().run();
+  }
   return w.address;
 }
 
