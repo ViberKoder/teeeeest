@@ -2,9 +2,9 @@ import { Address } from '@ton/core';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/server';
 import { cfg, endpoints } from '../config';
-import { Holder, Move, PostView, postFromBeacon, readHolders, rootFromTuple, rootIsSigned, walletHistory, walletOnChain } from './data';
+import { Holder, Move, readHolders, rootFromTuple, rootIsSigned, walletHistory, walletOnChain } from './data';
 import type { ExplorerData } from './hooks';
-import { Addr, ago, Card, compact, Count, egg, Empty, friendly, KIND, PostCard, short, Stack } from './ui';
+import { Addr, ago, Card, egg, Empty, friendly, KIND, short, Stack } from './ui';
 
 const tx = (h: string) => `${endpoints.explorer}/transaction/${h}`;
 
@@ -154,38 +154,6 @@ export function TokenView({ d }: { d: ExplorerData }) {
           ))}
         </div>
       </Card>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- posts
-export function PostsView({ d }: { d: ExplorerData }) {
-  const post: PostView | null = d.live?.stats.latestPost
-    ? { ...d.live.stats.latestPost, username: d.live.stats.latestPost.username ?? '', caption: d.live.stats.latestPost.caption ?? '' }
-    : postFromBeacon(d.beacons[d.beacons.length - 1]);
-  return (
-    <div className="grid2">
-      <div>
-        <h2 className="pt">The post</h2>
-        <p className="lead">This is what players see in the channel: tap <b>Hatch</b>, get +1 EGG. The numbers below the picture are live.</p>
-        <div className="tiles">
-          <div><b><Count value={BigInt(post?.hatches ?? 0)} /></b><span>hatches</span></div>
-          <div><b>{post?.views ? compact(post.views) : '—'}</b><span>views</span></div>
-          <div><b><Count value={BigInt(post?.reactions ?? 0)} /></b><span>reactions</span></div>
-        </div>
-        {d.live && d.live.top.length > 0 && (
-          <Card title="Most hatched posts">
-            <div className="table">
-              {d.live.top.map((t, i) => (
-                <a key={i} className="tr c3" href={t.username ? `https://t.me/${t.username}/${t.messageId}` : undefined} target="_blank" rel="noreferrer">
-                  <span><span className="rk">{i + 1}</span> @{t.username ?? 'channel'} #{t.messageId}</span><span className="muted">{ago(t.at)}</span><span className="r"><b>🥚 {t.hatches}</b></span>
-                </a>
-              ))}
-            </div>
-          </Card>
-        )}
-      </div>
-      <PostCard post={post} live={d.inTelegram} />
     </div>
   );
 }

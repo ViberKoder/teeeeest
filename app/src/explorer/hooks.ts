@@ -69,7 +69,7 @@ export function useRoute(): string[] {
   const read = () => location.hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent);
   const [r, setR] = useState(read);
   useEffect(() => {
-    const f = () => { setR(read()); window.scrollTo({ top: 0 }); };
+    const f = () => { setR(read()); document.getElementById('explorer')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
     window.addEventListener('hashchange', f);
     return () => window.removeEventListener('hashchange', f);
   }, []);

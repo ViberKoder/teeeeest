@@ -30,8 +30,12 @@ VITE_NETWORK=testnet VITE_JETTON_MASTER=<minter> VITE_VAULT_ADDRESS=<bot wallet>
 It needs no server and no secrets. Meanwhile it is live at https://app8930916503.tgcloud.ai/explorer/.
 
 
-## v2 layout (multi-page)
+## v3 layout (ton.org look)
 
-Hash-routed single page: **Overview** (hero with the 3D egg, stat tiles with trend lines, supply bar, live post card, feeds), **Holders** (paged, share of supply), **Claims** (on-chain claims of the minter and, inside Telegram, the live reward feed), **Roots** (every signed root seen; each signature is verified in the browser against `get_publisher_key()`), **Token** (contract facts, limits, growth budget, supply split, self-checks), **Post** (the channel post card and top posts) and **#/address/<wallet>** (on-chain balance, claimed total, bot ledger and pending claim inside Telegram, EGG transfers). Search accepts a wallet, a transaction hash, or a @username (inside Telegram). Source: `app/src/explorer/{Explorer,views,ui,hooks,data}.ts(x)`.
+The previous explorer was removed and rebuilt: Google Sans Flex (self-hosted, OFL), deep navy `#10161f`, one blue accent `#1eaefb`, hairline borders, as on ton.org.
 
-All three pages ship a Content-Security-Policy (`<meta>`): scripts only from the page itself and telegram.org, network only to the page's host, TonAPI and toncenter.
+* **Left:** a short text about Egg, then the numbers: eggs hatched, EGG promised, when the last egg appeared, players, wallets, holders.
+* **Right:** a big, slowly turning 3D egg as the "media" of a Telegram-style message, with the reaction pill, views and time under it and the bot's inline button ("🥚 Hatch · N", links to the channel post). The bubble, the pill and the button follow Telegram Web K (`tweb`): 14 px bubble, 30 px reaction pill, 6/12 px button corners.
+* **Below:** the address bar (wallet, transaction hash, @username inside Telegram) and the explorer tabs: Holders, Claims, Signed roots, Token; a wallet page opens in place of the tab.
+
+Source: `app/src/explorer/`. All three pages keep their Content-Security-Policy.

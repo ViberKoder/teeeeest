@@ -1,35 +1,41 @@
 import { Address } from '@ton/core';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../api/server';
 import { cfg, endpoints } from '../config';
 import { Egg3D } from '../ui/Egg3D';
 import { PostView, postFromBeacon } from './data';
 import { ExplorerData, useExplorerData, useRoute } from './hooks';
 import { parseQuery } from './search';
-import { Addr, ago, Bars, Card, compact, Count, egg, Empty, friendly, KIND, nowS, PostCard, Stack, Stat } from './ui';
-import { AddressView, ClaimsView, HoldersView, PostsView, RootsView, TokenView } from './views';
+import { ago, compact, Count, egg, friendly } from './ui';
+import { AddressView, ClaimsView, HoldersView, RootsView, TokenView } from './views';
 
-const TABS: [string, string][] = [['', 'Overview'], ['holders', 'Holders'], ['claims', 'Claims'], ['roots', 'Roots'], ['token', 'Token'], ['posts', 'Post']];
+const TABS: [string, string][] = [['holders', 'Holders'], ['claims', 'Claims'], ['roots', 'Signed roots'], ['token', 'Token']];
+
+const Eye = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M12 5C6.5 5 2.7 9 1.5 12c1.2 3 5 7 10.5 7s9.3-4 10.5-7C21.3 9 17.5 5 12 5Zm0 11.2a4.2 4.2 0 1 1 0-8.4 4.2 4.2 0 0 1 0 8.4Zm0-6.4a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z" fill="currentColor" /></svg>
+);
 
 export function Explorer() {
   const d = useExplorerData();
   const route = useRoute();
-  const lastBeacon = d.beacons[d.beacons.length - 1];
-  const page = route[0] ?? '';
+  const page = route[0] ?? 'holders';
   return (
     <div className="ex">
-      <div className="mesh" aria-hidden />
-      <Nav d={d} page={page} lastAt={d.live ? nowS() : lastBeacon?.t} />
-      <main>
-        {page === '' && <Overview d={d} />}
-        {page === 'holders' && <HoldersView d={d} />}
-        {page === 'claims' && <ClaimsView d={d} />}
-        {page === 'roots' && <RootsView d={d} />}
-        {page === 'token' && <TokenView d={d} />}
-        {page === 'posts' && <PostsView d={d} />}
-        {page === 'address' && <AddressView raw={route[1] ?? ''} d={d} />}
-      </main>
-      {d.err && <p className="err">{d.err}</p>}
+      <Header />
+      <Hero d={d} />
+      <section className="explorer" id="explorer">
+        <h2>Explorer</h2>
+        <AddressBar d={d} />
+        <div className="tabs">{TABS.map(([k, t]) => <a key={k} href={`#/${k}`} className={page === k ? 'on' : ''}>{t}</a>)}</div>
+        <div className="pane">
+          {page === 'holders' && <HoldersView d={d} />}
+          {page === 'claims' && <ClaimsView d={d} />}
+          {page === 'roots' && <RootsView d={d} />}
+          {page === 'token' && <TokenView d={d} />}
+          {page === 'address' && <AddressView raw={route[1] ?? ''} d={d} />}
+        </div>
+        {d.err && <p className="err">{d.err}</p>}
+      </section>
       <footer>
         <div><b>hatch.tg</b> · the public ledger of EGG. Inside Telegram the numbers update every 3 seconds from the bot; here they come from the blockchain and the bot’s on-chain beacons.</div>
         <div className="links"><a href={`https://t.me/${cfg.bot}`}>@{cfg.bot}</a><a href={`${endpoints.explorer}/${cfg.master}`} target="_blank" rel="noreferrer">Contract</a></div>
@@ -38,129 +44,63 @@ export function Explorer() {
   );
 }
 
-// ---------------------------------------------------------------- overview
-function Overview({ d }: { d: ExplorerData }) {
-  const { live, chain, claims, beacons } = d;
-  const lastBeacon = beacons[beacons.length - 1];
-  const s = live?.stats ?? (lastBeacon ? {
-    users: lastBeacon.u, wallets: lastBeacon.w, promised: lastBeacon.p, events: lastBeacon.e, posts: lastBeacon.po, views: lastBeacon.vi, eggs: lastBeacon.eg,
-    newUsersToday: 0, hatchesLastHour: 0, eggHatches: 0,
-  } : null);
-  const post: PostView | null = live?.stats.latestPost
-    ? { ...live.stats.latestPost, username: live.stats.latestPost.username ?? '', caption: live.stats.latestPost.caption ?? '' }
-    : postFromBeacon(lastBeacon);
-  const promised = BigInt(s?.promised ?? '0');
-  const claimed = chain?.supply ?? 0n;
-  const claimedPct = promised > 0n ? Number((claimed * 1000n) / promised) / 10 : 0;
-
-  // every new event makes the egg burst
-  const [burst, setBurst] = useState(0);
-  const [pops, setPops] = useState<{ id: number; text: string; x: number }[]>([]);
-  const seen = useRef<{ events: number; users: number } | null>(null);
-  useEffect(() => {
-    if (!s) return;
-    const cur = { events: s.events ?? 0, users: s.users ?? 0 };
-    const prev = seen.current;
-    seen.current = cur;
-    if (!prev || (cur.events <= prev.events && cur.users <= prev.users)) return;
-    setBurst((b) => b + 1);
-    const id = Date.now();
-    const text = cur.users > prev.users ? `+${cur.users - prev.users} player` : `+${cur.events - prev.events} hatch${cur.events - prev.events > 1 ? 'es' : ''}`;
-    setPops((p) => [...p.slice(-3), { id, text, x: 20 + Math.random() * 60 }]);
-    setTimeout(() => setPops((p) => p.filter((x) => x.id !== id)), 2600);
-  }, [s?.events, s?.users]);
-
-  const hist = (f: (b: (typeof beacons)[number]) => number) => beacons.slice(-24).map(f);
-  const days = live?.days;
+function Header() {
   return (
-    <>
-      <section className="hero">
-        <div className="copy">
-          <span className="pill"><i /> {cfg.network === 'testnet' ? 'TON testnet' : 'TON mainnet'} · public ledger</span>
-          <h1>Every egg,<br /><em>checkable.</em></h1>
-          <p>EGG is hatched in Telegram and owned on TON. Every number here is read from the token contract or checked against it, right in your browser.</p>
-          <div className="big">
-            <div className="lbl">EGG promised to players</div>
-            <div className="num"><Count value={promised / 10n ** 9n} /><span>EGG</span></div>
-            <div className="bar2"><i style={{ width: `${Math.min(100, claimedPct)}%` }} /></div>
-            <div className="lbl2"><b>{egg(claimed)}</b> already on-chain ({claimedPct.toFixed(claimedPct < 10 ? 1 : 0)}%) · <b>{chain?.holders ?? 0}</b> holders</div>
-          </div>
-          <div className="cta">
-            <a className="btn" href={`https://t.me/${cfg.bot}`}>Open the wallet</a>
-            <a className="btn ghost" href="#/token">How to verify</a>
-          </div>
-        </div>
-        <div className="stage">
-          <div className="halo" />
-          <div className="egg3d"><Egg3D energy={0.6} burst={burst} /></div>
-          {pops.map((p) => <span key={p.id} className="pop" style={{ left: `${p.x}%` }}>{p.text}</span>)}
-          <div className="hint">drag · zoom · tap</div>
-        </div>
-      </section>
-
-      <section className="stats">
-        <Stat label="Players" value={s?.users ?? 0} sub={live ? `+${live.stats.newUsersToday} today` : 'registered in Telegram'} points={hist((b) => b.u)} />
-        <Stat label="Wallets" value={s?.wallets ?? 0} sub="linked with a signature" points={hist((b) => b.w)} tone="green" />
-        <Stat label="Hatches & rewards" value={s?.events ?? 0} sub={live ? `${live.stats.hatchesLastHour} in the last hour` : 'all time'} points={hist((b) => b.e)} />
-        <Stat label="Holders" value={chain?.holders ?? 0} sub="wallets with EGG on-chain" tone="sky" />
-        <Stat label="Claims on-chain" value={claims.filter((c) => c.ok).length} sub="players proved their share" tone="green" />
-        <Stat label="Eggs sent in chats" value={s?.eggs ?? 0} sub={live ? `${live.stats.eggHatches} hatched` : 'via @' + cfg.bot} tone="sky" />
-      </section>
-
-      <section className="grid2">
-        <Card title="Supply" right={<a className="link" href="#/token">Token details →</a>}>
-          {chain ? (
-            <Stack total={promised > chain.supply ? promised : chain.supply} parts={[
-              { label: 'Claimed on-chain', v: chain.supply, cls: 'c1' },
-              { label: 'Promised, not claimed yet', v: promised > chain.supply ? promised - chain.supply : 0n, cls: 'c2' },
-              { label: 'Open headroom to the hard cap', v: chain.maxSupply > promised ? chain.maxSupply - promised : 0n, cls: 'c3', bar: false },
-            ]} />
-          ) : <Empty>Reading the contract…</Empty>}
-          <div className="mini">
-            <div><span>Hard cap</span><b>{chain ? egg(chain.maxSupply) : '—'}</b></div>
-            <div><span>Per wallet / day</span><b>{chain ? egg(chain.walletDaily) : '—'}</b></div>
-            <div><span>Signing key</span><b className={chain?.frozen ? 'bad' : 'ok'}>{chain ? (chain.frozen ? 'frozen' : 'active') : '—'}</b></div>
-          </div>
-        </Card>
-        <PostCard post={post} live={d.inTelegram} />
-      </section>
-
-      {days ? (
-        <section className="grid2">
-          <Bars label="EGG earned per day" unit="EGG" data={days.egg.map((x) => ({ d: x.d, v: Number(BigInt(x.egg) / 10n ** 9n) }))} />
-          <Bars label="New players per day" unit="players" data={days.users.map((x) => ({ d: x.d, v: x.n }))} />
-        </section>
-      ) : null}
-
-      <section className="grid2">
-        <Card title={live ? 'Live feed' : 'On-chain beacons'} right={live ? <em className="rec"><i />live</em> : <span className="muted">snapshots by the bot’s wallet</span>}>
-          {live ? live.recent.slice(0, 10).map((r, i) => (
-            <div key={`${r.t}-${i}`} className="feed"><span className="ic">{KIND[r.kind]?.[0] ?? '•'}</span><div><b>+{egg(r.amount, 2)} EGG</b><span>…{r.who.slice(-3)} {KIND[r.kind]?.[1] ?? r.kind}</span></div><time>{ago(r.t)}</time></div>
-          )) : beacons.slice(-8).reverse().map((b) => (
-            <a key={b.tx} className="feed" href={`${endpoints.explorer}/transaction/${b.tx}`} target="_blank" rel="noreferrer"><span className="ic">📡</span><div><b>{b.u} players · {egg(b.p)} EGG</b><span>{b.e} events</span></div><time>{ago(b.t)}</time></a>
-          ))}
-          {!live && beacons.length === 0 && <Empty>Waiting for the first beacon…</Empty>}
-        </Card>
-        <Card title="Latest claims" right={<a className="link" href="#/claims">All claims →</a>}>
-          {claims.length === 0 && <Empty>No claims yet</Empty>}
-          {claims.slice(0, 8).map((c) => (
-            <a key={c.hash} className="feed" href={`${endpoints.explorer}/transaction/${c.hash}`} target="_blank" rel="noreferrer">
-              <span className="ic">{c.ok ? '✅' : '⚠️'}</span><div><b><Addr a={c.wallet} /></b><span>proved its share</span></div><time>{ago(c.t)}</time>
-            </a>
-          ))}
-        </Card>
-      </section>
-      <p className="muted center">{s?.views ? `${compact(s.views)} post views · ` : ''}{s?.posts ?? 0} posts</p>
-    </>
+    <header className="top">
+      <a className="brand" href="#/"><span className="logo">🥚</span><b>hatch<i>.tg</i></b></a>
+      <nav><a href="#explorer">Explorer</a><a href="#/token">Token</a><a href={`https://t.me/${cfg.bot}`}>Bot</a></nav>
+      <a className="cta" href={`https://t.me/${cfg.bot}`}>Open wallet</a>
+    </header>
   );
 }
 
-// ---------------------------------------------------------------- header with the search
-function Nav({ d, page, lastAt }: { d: ExplorerData; page: string; lastAt?: number }) {
+function Hero({ d }: { d: ExplorerData }) {
+  const { live, chain, beacons } = d;
+  const lastBeacon = beacons[beacons.length - 1];
+  const s = live?.stats ?? (lastBeacon ? { users: lastBeacon.u, wallets: lastBeacon.w, promised: lastBeacon.p, events: lastBeacon.e, lastEventAt: 0 } : null);
+  // when the newest egg appeared: the bot says so; the public page finds the first beacon that already counted it
+  let lastEgg = live?.stats.lastEventAt ?? 0;
+  if (!lastEgg) for (let i = beacons.length - 1; i > 0; i--) if (beacons[i].e > beacons[i - 1].e) { lastEgg = beacons[i].t; break; }
+  const post: PostView | null = live?.stats.latestPost
+    ? { ...live.stats.latestPost, username: live.stats.latestPost.username ?? '', caption: live.stats.latestPost.caption ?? '' }
+    : postFromBeacon(lastBeacon);
+  const link = post?.username ? `https://t.me/${post.username}${post.messageId ? `/${post.messageId}` : ''}` : `https://t.me/${cfg.bot}`;
+  const time = post ? new Date(post.at * 1000).toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+  const promised = BigInt(s?.promised ?? '0') / 10n ** 9n;
+  return (
+    <section className="hero">
+      <div className="hero-l">
+        <span className="pill"><i /> {cfg.network === 'testnet' ? 'TON testnet' : 'TON mainnet'}</span>
+        <h1>Egg</h1>
+        <p>Hatch eggs in Telegram and own them on TON. Every egg you earn is proven by a smart contract, not by our word, and anyone can check it here.</p>
+        <div className="stats">
+          <div><span>Eggs hatched</span><b><Count value={BigInt(s?.events ?? 0)} /></b></div>
+          <div><span>EGG promised</span><b><Count value={promised} /></b></div>
+          <div><span>Last egg</span><b className="sm">{lastEgg ? ago(lastEgg) : '—'}</b></div>
+          <div><span>Players</span><b><Count value={BigInt(s?.users ?? 0)} /></b></div>
+          <div><span>Wallets</span><b><Count value={BigInt(s?.wallets ?? 0)} /></b></div>
+          <div><span>Holders</span><b><Count value={BigInt(chain?.holders ?? 0)} /></b></div>
+        </div>
+      </div>
+      <div className="hero-r">
+        <div className="tgmsg">
+          <div className="media"><Egg3D energy={0.7} /></div>
+          <div className="foot">
+            <button className="react" type="button" title="Reactions in Telegram"><span className="em">❤️</span><b>{compact(post?.reactions ?? 0)}</b></button>
+            <span className="views" title="Views in Telegram"><Eye />{post?.views ? compact(post.views) : '—'}</span>
+            <span className="time">{time}</span>
+          </div>
+          <a className="rbtn" href={link} target="_blank" rel="noreferrer">🥚 Hatch{post?.hatches ? ` · ${post.hatches.toLocaleString('en')}` : ''}</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AddressBar({ d }: { d: ExplorerData }) {
   const [q, setQ] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-
   const run = async () => {
     const parsed = parseQuery(q);
     setNote('');
@@ -175,17 +115,13 @@ function Nav({ d, page, lastAt }: { d: ExplorerData; page: string; lastAt?: numb
       else setNote(`@${parsed.name} has no wallet yet`);
     } catch { setNote('Could not look that up'); } finally { setBusy(false); }
   };
-
   return (
-    <header className="nav">
-      <a className="brand" href="#/"><span className="logo">🥚</span><b>hatch<i>.tg</i></b></a>
-      <nav>{TABS.map(([k, t]) => <a key={k} href={`#/${k}`} className={(k === page || (k === 'posts' && page === 'posts')) ? 'on' : ''}>{t}</a>)}</nav>
-      <form className="search" onSubmit={(e) => { e.preventDefault(); void run(); }}>
-        <input value={q} onChange={(e) => { setQ(e.target.value); setNote(''); }} placeholder={d.inTelegram ? 'Wallet, @username or transaction' : 'Wallet address or transaction'} spellCheck={false} autoCapitalize="none" />
-        <button disabled={busy || !q.trim()}>{busy ? '…' : 'Search'}</button>
-        {note && <div className="result"><div className="note">{note}</div></div>}
-      </form>
-      <div className={`live ${d.inTelegram ? 'on' : ''}`}><i />{d.inTelegram ? 'Live' : lastAt ? `Beacon · ${ago(lastAt)}` : 'On-chain'}</div>
-    </header>
+    <form className="bar" onSubmit={(e) => { e.preventDefault(); void run(); }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+      <input value={q} onChange={(e) => { setQ(e.target.value); setNote(''); }} placeholder={d.inTelegram ? 'Search by wallet address, @username or transaction hash' : 'Search by wallet address or transaction hash'} spellCheck={false} autoCapitalize="none" />
+      <button disabled={busy || !q.trim()}>{busy ? '…' : 'Search'}</button>
+      {note && <div className="note">{note}</div>}
+    </form>
   );
 }
+void egg;

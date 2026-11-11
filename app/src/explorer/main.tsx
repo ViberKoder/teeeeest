@@ -1,7 +1,6 @@
 import '../polyfill';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import '@fontsource-variable/onest';
 import { Explorer } from './Explorer';
 import { applyRemoteConfig } from '../lib/remoteConfig';
 import './explorer.css';
