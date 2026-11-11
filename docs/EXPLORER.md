@@ -28,3 +28,10 @@ VITE_NETWORK=testnet VITE_JETTON_MASTER=<minter> VITE_VAULT_ADDRESS=<bot wallet>
 # upload app/dist-explorer/ to any static host (Cloudflare Pages, Netlify, GitHub Pages) and point hatch.tg at it
 ```
 It needs no server and no secrets. Meanwhile it is live at https://app8930916503.tgcloud.ai/explorer/.
+
+
+## v2 layout (multi-page)
+
+Hash-routed single page: **Overview** (hero with the 3D egg, stat tiles with trend lines, supply bar, live post card, feeds), **Holders** (paged, share of supply), **Claims** (on-chain claims of the minter and, inside Telegram, the live reward feed), **Roots** (every signed root seen; each signature is verified in the browser against `get_publisher_key()`), **Token** (contract facts, limits, growth budget, supply split, self-checks), **Post** (the channel post card and top posts) and **#/address/<wallet>** (on-chain balance, claimed total, bot ledger and pending claim inside Telegram, EGG transfers). Search accepts a wallet, a transaction hash, or a @username (inside Telegram). Source: `app/src/explorer/{Explorer,views,ui,hooks,data}.ts(x)`.
+
+All three pages ship a Content-Security-Policy (`<meta>`): scripts only from the page itself and telegram.org, network only to the page's host, TonAPI and toncenter.

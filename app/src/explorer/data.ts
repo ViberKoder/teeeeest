@@ -110,3 +110,36 @@ export const DEFAULT_CAPTION = '';
 
 export const postFromBeacon = (b: Beacon | undefined): PostView | null =>
   b?.tp ? { hatches: b.tp[0], views: b.tp[1], reactions: b.tp[2], at: b.tp[3], username: b.tp[4], title: b.tp[5] || b.tp[4] || 'Hatch', messageId: null, caption: DEFAULT_CAPTION } : null;
+
+/** The biggest EGG holders, straight from TonAPI's index of the token contract. */
+export interface Holder { owner: string; balance: bigint }
+export async function readHolders(offset = 0, limit = 50): Promise<{ total: number; items: Holder[] }> {
+  const r = await tonapiFetch(`/v2/jettons/${minter().toRawString()}/holders?limit=${limit}&offset=${offset}`);
+  if (!r.ok) return { total: 0, items: [] };
+  const j = (await r.json()) as { total?: number; addresses?: { address: string; owner?: { address: string }; balance: string }[] };
+  return { total: j.total ?? 0, items: (j.addresses ?? []).map((a) => ({ owner: a.owner?.address ?? a.address, balance: BigInt(a.balance) })) };
+}
+
+/** EGG transfers of one wallet. */
+export interface Move { t: number; hash: string; from: string; to: string; amount: bigint; comment?: string }
+export async function walletHistory(owner: Address, limit = 30): Promise<Move[]> {
+  const r = await tonapiFetch(`/v2/accounts/${owner.toRawString()}/jettons/${minter().toRawString()}/history?limit=${limit}`);
+  if (!r.ok) return [];
+  type Act = { type: string; JettonTransfer?: { sender?: { address: string }; recipient?: { address: string }; amount: string; comment?: string } };
+  const j = (await r.json()) as { events?: { event_id: string; timestamp: number; actions: Act[] }[] };
+  const out: Move[] = [];
+  for (const ev of j.events ?? []) {
+    for (const a of ev.actions) {
+      if (a.type !== 'JettonTransfer' || !a.JettonTransfer) continue;
+      out.push({ t: ev.timestamp, hash: ev.event_id, from: a.JettonTransfer.sender?.address ?? '', to: a.JettonTransfer.recipient?.address ?? '', amount: BigInt(a.JettonTransfer.amount), comment: a.JettonTransfer.comment });
+    }
+  }
+  return out;
+}
+
+/** The token's own metadata, as the contract stores it. */
+export async function readMeta(): Promise<{ name: string; symbol: string; decimals: number; admin: string | null }> {
+  const r = await tonapiFetch(`/v2/jettons/${minter().toRawString()}`);
+  const j = r.ok ? ((await r.json()) as { metadata?: { name?: string; symbol?: string; decimals?: string }; admin?: { address: string } }) : {};
+  return { name: j.metadata?.name ?? 'Egg', symbol: j.metadata?.symbol ?? 'EGG', decimals: Number(j.metadata?.decimals ?? 9), admin: j.admin?.address ?? null };
+}
