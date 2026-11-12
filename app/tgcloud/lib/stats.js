@@ -5,6 +5,12 @@ import { chats, posts, roots } from '../schema.js';
 
 const one = async (q) => (await db.get(q)) ?? {};
 
+/** Where the eggs travel: players per interface language (Telegram does not tell us more, and that is all we keep). */
+export async function langs(limit = 24) {
+  const rows = await db.all(sql`SELECT lang, COUNT(*) AS n FROM users WHERE lang IS NOT NULL AND lang != '' GROUP BY lang ORDER BY n DESC LIMIT ${limit}`);
+  return rows.map((r) => [String(r.lang), Number(r.n)]);
+}
+
 export async function computeStats(now) {
   const day = now - (now % 86400);
   const u = await one(sql`SELECT COUNT(*) AS users, SUM(CASE WHEN verified = 1 THEN 1 ELSE 0 END) AS wallets, SUM(CASE WHEN created_at >= ${day} THEN 1 ELSE 0 END) AS newToday, MAX(created_at) AS lastUser FROM users`);

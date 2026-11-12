@@ -61,6 +61,9 @@ export interface Beacon {
   /** newest channel post: [hatches, views, reactions, published at, channel username, channel title] */
   tp?: [number, number, number, number, string, string] | null;
   r: [number, string, string, string] | null;
+  /** players per interface language (top 16) and the channel battle board [title, hatches, players] */
+  lg?: [string, number][];
+  bt?: [string, number, number][];
   tx: string;
 }
 export async function readBeacons(): Promise<Beacon[]> {

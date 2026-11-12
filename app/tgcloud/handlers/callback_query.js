@@ -4,7 +4,8 @@ import { eq } from 'sdk/db';
 import { chats } from '../schema.js';
 import { getSettings } from '../lib/settings.js';
 import { hatchEgg, parseEggData } from '../lib/eggs.js';
-import { balanceOf, credit, fmtEgg } from '../lib/ledger.js';
+import { balanceOf, credit, ensureUser, fmtEgg } from '../lib/ledger.js';
+import { board, recordHit, settleBattle, weekOf } from '../lib/battle.js';
 import { countHatch, findPost, POST_DATA, publishPost } from '../lib/posts.js';
 import { answer, isAdmin } from '../lib/telegram.js';
 import { maybeBeacon } from '../lib/beacon.js';
@@ -13,6 +14,7 @@ export default async function (q) {
   const now = Math.floor(Date.now() / 1000);
   if (!q.from || !q.data) return answer(q);
   const S = await getSettings();
+  await ensureUser(q.from.id, now, q.from.language_code);
 
   if (q.data.startsWith('e:')) {
     const egg = await parseEggData(q.data);
@@ -36,12 +38,17 @@ export default async function (q) {
     const post = await findPost(chat.id, q.message.message_id);
     if (!post) return answer(q, 'This post is not part of the game.');
     if (!post.active) return answer(q, 'This post is closed.');
-    const r = await credit({ tgId: q.from.id, amount: S.reward.post, kind: 'post', ref: `post:${chat.id}:${q.message.message_id}:${q.from.id}`, now });
+    // one Hatch per player per day (UTC), under whichever post: the ref is the player and the day
+    const day = Math.floor(now / 86400);
+    const r = await credit({ tgId: q.from.id, amount: S.reward.post, kind: 'post', ref: `post:${q.from.id}:${day}`, now });
     if (r === 'banned') return answer(q, 'Your account can not earn right now.', true);
     if (r === 'cap') return answer(q, 'Daily limit reached — come back tomorrow!', true);
-    if (r === 'again') return answer(q, 'You already hatched this egg. Watch the channel for the next one!');
-    await answer(q, `+1 EGG · you have ${fmtEgg(await balanceOf(q.from.id))}`);
+    if (r === 'again') return answer(q, 'You already hatched today — come back tomorrow! 🌅', true);
+    await recordHit({ chatId: chat.id, tgId: q.from.id, now });
+    const rank = (await board(weekOf(now), 50)).find((b) => b.chatId === chat.id);
+    await answer(q, `+${fmtEgg(S.reward.post)} EGG · you have ${fmtEgg(await balanceOf(q.from.id))}${rank ? `\n🏆 This channel is #${rank.rank} in this week’s battle` : ''}`);
     await countHatch({ chatId: chat.id, messageId: q.message.message_id, now });
+    await settleBattle(now).catch(() => null);
     return maybeBeacon(now);
   }
   return answer(q);

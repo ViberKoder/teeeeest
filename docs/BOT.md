@@ -41,3 +41,12 @@ Not covered: if nobody ever opens the wallet, the money stays at that address (a
 
 ## Reactions and views of channel posts
 `handlers/message_reaction_count.js` stores the total of Telegram reactions on each post (the bot must be a channel administrator). Views are read from the public embed page by `app/scripts/sync-views.mjs` (the bot's runtime can not reach t.me) and written back through the operator endpoint `opPosts`; see `docs/EXPLORER.md`.
+
+
+## Game rules (v5)
+
+* **Under a channel post:** one Hatch per player per UTC day, under whichever post (`post:<user>:<day>`); +`reward_post` EGG and one point for that channel in the weekly **channel battle**.
+* **Eggs sent in chats:** the hatcher and the sender both get +1 EGG (settings `reward_inline`, `reward_sender`). The first egg a player ever hatches makes its sender their **inviter**; from then on, every time that player's egg is hatched, the inviter earns `reward_chain` (+1) as well (A sends to B, B sends to C, C hatches: A, B and C all earn). Referral and chain credits share one daily cap per referrer; the `/start ref_<id>` link sets the inviter too; `referral_pct` (a share of the invited player's earnings) is off by default.
+* **Buttons under every egg and under the hatched message:** *Hatch App* (`t.me/<bot>?startapp`, opens the Mini App directly once a Main Mini App is set in @BotFather) and *Send Egg* (`switch_inline_query`).
+* **Channel battles:** the week (Monday-based) is scored by `chat_hits`; the top three channels pay `battle_prize_1..3` EGG to everyone who hatched in them that week. Settled lazily by the first activity of the next week (a `battle:<week>` row in `settings` is the lock, every payout has a unique ref). `/battle` shows the board.
+* **Spread map:** the interface language Telegram reports (`users.lang`), shown as bubbles on a dotted world map. It is a language map, not a location map: Telegram tells a bot nothing else.

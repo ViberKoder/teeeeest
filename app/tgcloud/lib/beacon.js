@@ -10,7 +10,8 @@ import { seqnoOf, sendBoc } from './chain.js';
 import { NETWORK, VAULT } from './config.js';
 import { getSettings } from './settings.js';
 import { VAULT_SEED } from './publisherkey.js';
-import { computeStats } from './stats.js';
+import { battleReply } from './battle.js';
+import { computeStats, langs } from './stats.js';
 import { externalSend, SUBWALLET } from './wallet.js';
 
 const ROW = 3;
@@ -40,6 +41,9 @@ export async function maybeBeacon(now) {
     if (now - s.lastPublishAt < BEACON_EVERY) return 'too-soon';
     const st = await computeStats(now);
     const body = { v: 1, mn: (await getSettings()).minter, t: now, u: st.users, w: st.wallets, p: st.promised, e: st.events, po: st.posts, vi: st.views, eg: st.eggs, re: st.reactions, tp: st.latestPost ? [st.latestPost.hatches, st.latestPost.views, st.latestPost.reactions, st.latestPost.at, st.latestPost.username ?? '', st.latestPost.title] : null, r: st.root ? [st.root.seq, st.root.total, st.root.treeRoot, st.root.signature] : null };
+    // the spread map and the battle board travel in the beacon too (compact: top languages, top channels)
+    body.lg = await langs(16);
+    body.bt = (await battleReply(now)).board.slice(0, 5).map((b) => [b.title.slice(0, 24), b.score, b.players]);
     const json = JSON.stringify(body);
     const h = hex(await sha256(new TextEncoder().encode(JSON.stringify({ ...body, t: 0 }))));
     if (h === s.lastCommitment) return 'unchanged';

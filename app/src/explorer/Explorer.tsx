@@ -7,9 +7,9 @@ import { PostView, postFromBeacon } from './data';
 import { ExplorerData, useExplorerData, useRoute } from './hooks';
 import { parseQuery } from './search';
 import { ago, compact, Count, egg, friendly } from './ui';
-import { AddressView, ClaimsView, HoldersView, RootsView, TokenView } from './views';
+import { AddressView, BattlesView, ClaimsView, HoldersView, MapView, RootsView, TokenView } from './views';
 
-const TABS: [string, string][] = [['holders', 'Holders'], ['claims', 'Claims'], ['roots', 'Signed roots'], ['token', 'Token']];
+const TABS: [string, string][] = [['holders', 'Holders'], ['battles', 'Battles'], ['map', 'Map'], ['claims', 'Claims'], ['roots', 'Signed roots'], ['token', 'Token']];
 
 const Eye = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden><path d="M12 5C6.5 5 2.7 9 1.5 12c1.2 3 5 7 10.5 7s9.3-4 10.5-7C21.3 9 17.5 5 12 5Zm0 11.2a4.2 4.2 0 1 1 0-8.4 4.2 4.2 0 0 1 0 8.4Zm0-6.4a2.2 2.2 0 1 0 0 4.4 2.2 2.2 0 0 0 0-4.4Z" fill="currentColor" /></svg>
@@ -29,6 +29,8 @@ export function Explorer() {
         <div className="tabs">{TABS.map(([k, t]) => <a key={k} href={`#/${k}`} className={page === k ? 'on' : ''}>{t}</a>)}</div>
         <div className="pane">
           {page === 'holders' && <HoldersView d={d} />}
+          {page === 'battles' && <BattlesView d={d} />}
+          {page === 'map' && <MapView d={d} />}
           {page === 'claims' && <ClaimsView d={d} />}
           {page === 'roots' && <RootsView d={d} />}
           {page === 'token' && <TokenView d={d} />}

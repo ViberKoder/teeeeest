@@ -29,6 +29,9 @@ export interface StatsReply {
   recent: { kind: string; amount: string; t: number; who: string }[];
   days: { egg: { d: number; egg: string; n: number }[]; users: { d: number; n: number }[] } | null;
   top: { username: string | null; messageId: number; hatches: number; views: number; reactions: number; at: number }[];
+  /** players per interface language: where the eggs travel */
+  langs?: [string, number][];
+  battle?: { week: number; endsAt: number; board: { rank: number; chatId: number; title: string; username: string | null; score: number; players: number }[] };
 }
 export interface LookupReply { found: boolean; address?: string | null; ledger?: string; since?: number; entitlement?: Entitlement | null }
 

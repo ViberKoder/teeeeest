@@ -4,6 +4,8 @@ import { api } from '../api/server';
 import { cfg, endpoints } from '../config';
 import { Holder, Move, readHolders, rootFromTuple, rootIsSigned, walletHistory, walletOnChain } from './data';
 import type { ExplorerData } from './hooks';
+import { LAND, LAND_H, LAND_W } from './landmask';
+import { LANG_PLACE, langName } from './geo';
 import { Addr, ago, Card, egg, Empty, friendly, KIND, short, Stack } from './ui';
 
 const tx = (h: string) => `${endpoints.explorer}/transaction/${h}`;
@@ -205,5 +207,76 @@ export function AddressView({ raw, d }: { raw: string; d: ExplorerData }) {
         </div>
       </Card>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- the spread map
+const CELL = 6;
+const LAND_PATH = (() => {
+  let d = '';
+  LAND.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] === '1') d += `M${x * CELL + CELL / 2} ${y * CELL + CELL / 2}h0`; });
+  return d;
+})();
+
+export function MapView({ d }: { d: ExplorerData }) {
+  const last = d.beacons[d.beacons.length - 1];
+  const langs: [string, number][] = d.live?.langs?.length ? d.live.langs : last?.lg ?? [];
+  const total = langs.reduce((a, [, n]) => a + n, 0);
+  const max = Math.max(1, ...langs.map(([, n]) => n));
+  const W = LAND_W * CELL, H = LAND_H * CELL;
+  const pts = langs.map(([code, n]) => {
+    const p = LANG_PLACE[code.split('-')[0]];
+    return p ? { code, n, x: ((p[0] + 180) / 360) * W, y: ((84 - p[1]) / 144) * H, r: 5 + Math.sqrt(n / max) * 16 } : null;
+  }).filter((x): x is NonNullable<typeof x> => x !== null);
+  return (
+    <div className="grid2 mapgrid">
+      <Card title="Where the eggs travel" right={<span className="muted">by players’ Telegram language</span>}>
+        <svg className="map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Map of the languages of EGG players">
+          <path d={LAND_PATH} className="land" />
+          {pts.map((p) => (
+            <g key={p.code}>
+              <circle cx={p.x} cy={p.y} r={p.r} className="halo" />
+              <circle cx={p.x} cy={p.y} r={Math.max(3, p.r * 0.45)} className="dotc"><title>{`${langName(p.code)}: ${p.n}`}</title></circle>
+            </g>
+          ))}
+        </svg>
+        {total === 0 && <Empty>The map fills as players open the bot: Telegram tells us only the interface language, nothing else about where anyone is.</Empty>}
+      </Card>
+      <Card title="Languages" right={<span className="muted">{total.toLocaleString('en')} players with a known language</span>}>
+        <div className="table">
+          {langs.slice(0, 12).map(([code, n], i) => (
+            <div key={code} className="tr c3"><span><span className="rk">{i + 1}</span> {langName(code)}</span><span className="muted">{code}</span><span className="r"><b>{n.toLocaleString('en')}</b> · {Math.round((n / Math.max(1, total)) * 100)}%</span></div>
+          ))}
+          {langs.length === 0 && <Empty>No data yet.</Empty>}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- channel battles
+const weekOf = (t: number) => Math.floor((t - 4 * 86400) / 604800);
+export function BattlesView({ d }: { d: ExplorerData }) {
+  const last = d.beacons[d.beacons.length - 1];
+  const board = d.live?.battle?.board ?? (last?.bt ?? []).map(([title, score, players], i) => ({ rank: i + 1, chatId: i, title, username: null as string | null, score, players }));
+  const endsAt = d.live?.battle?.endsAt ?? (weekOf(Math.floor(Date.now() / 1000)) + 1) * 604800 + 4 * 86400;
+  const left = Math.max(0, endsAt - Math.floor(Date.now() / 1000));
+  const top = Math.max(1, ...board.map((b) => b.score));
+  return (
+    <Card title="Channel battles" right={<span className="muted">ends in {Math.floor(left / 86400)}d {Math.floor((left % 86400) / 3600)}h</span>}>
+      <p className="note" style={{ marginTop: 0 }}>One Hatch a day under a channel’s post scores a point for that channel. When the week ends, the three best channels pay EGG to everyone who hatched there.</p>
+      <div className="table">
+        <div className="tr th c4"><span>Channel</span><span className="r">Hatches</span><span className="r">Players</span><span>Share of the leader</span></div>
+        {board.map((b) => (
+          <a key={b.chatId} className="tr c4" href={b.username ? `https://t.me/${b.username}` : undefined} target="_blank" rel="noreferrer">
+            <span>{['🥇', '🥈', '🥉'][b.rank - 1] ?? `${b.rank}.`} <b>{b.title}</b></span>
+            <span className="r"><b>{b.score.toLocaleString('en')}</b></span>
+            <span className="r">{b.players.toLocaleString('en')}</span>
+            <span><em className="pbar wide"><i style={{ width: `${(b.score / top) * 100}%` }} /></em></span>
+          </a>
+        ))}
+        {board.length === 0 && <Empty>No hatches yet this week. Be the first channel on the board.</Empty>}
+      </div>
+    </Card>
   );
 }

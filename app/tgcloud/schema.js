@@ -23,6 +23,9 @@ export const users = table('users', {
   // (a second wallet could otherwise claim the same ledger again from an older root)
   locked: integer('locked').notNull().default(0),
   createdAt: integer('created_at').notNull(),
+  // interface language Telegram reports (for the spread map) and the channel this player last hatched in (their team in the battles)
+  lang: text('lang'),
+  team: integer('team').notNull().default(0),
 });
 
 export const hatches = table('hatches', {
@@ -181,3 +184,15 @@ export const adminLog = table('admin_log', {
   detail: text('detail').notNull().default(''),
   ts: integer('ts').notNull(),
 }, (t) => ({ byTime: index('idx_admin_log_ts').on(t.ts) }));
+
+// One row per daily Hatch under a channel post: the score of the weekly channel battles (week = Monday-based index).
+export const chatHits = table('chat_hits', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  week: integer('week').notNull(),
+  chatId: integer('chat_id').notNull(),
+  tgId: integer('tg_id').notNull(),
+  ts: integer('ts').notNull(),
+}, (t) => ({
+  byWeek: index('idx_hits_week').on(t.week, t.chatId),
+  once: uniqueIndex('uq_hits').on(t.week, t.chatId, t.tgId, t.ts),
+}));

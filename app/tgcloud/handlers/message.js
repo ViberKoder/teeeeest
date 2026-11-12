@@ -4,6 +4,7 @@ import { eq } from 'sdk/db';
 import { chats } from '../schema.js';
 import { APP_URL, BOT_USERNAME } from '../lib/config.js';
 import { balanceOf, ensureUser, fmtEgg, setReferrer } from '../lib/ledger.js';
+import { battleReply, settleBattle } from '../lib/battle.js';
 import { publishPost } from '../lib/posts.js';
 import { computeStats } from '../lib/stats.js';
 import { esc, isAdmin } from '../lib/telegram.js';
@@ -36,8 +37,15 @@ export default async function (m) {
     if (!who) return say(m.chat.id, 'Usage: <code>/send @username 10</code> — they don’t need to have opened the wallet yet.');
     return sendLink(m.chat.id, private_, who, amount);
   }
+  if (cmd === '/battle') {
+    await settleBattle(now).catch(() => null);
+    const b = await battleReply(now);
+    const days = Math.max(0, Math.ceil((b.endsAt - now) / 86400));
+    const rows = b.board.map((r) => `${['🥇', '🥈', '🥉'][r.rank - 1] ?? `${r.rank}.`} <b>${esc(r.title)}</b> · ${r.score} hatches · ${r.players} players`);
+    return say(m.chat.id, `<b>Channel battle</b> · ${days} day${days === 1 ? '' : 's'} left\n\n${rows.join('\n') || 'No hatches yet this week. Tap Hatch under the post!'}\n\nOne Hatch a day under any post scores a point for its channel. The top 3 channels win EGG for everyone who hatched there.`);
+  }
   if (!private_) return;
-  await ensureUser(m.from.id, now);
+  await ensureUser(m.from.id, now, m.from.language_code);
 
   if (cmd === '/start') {
     const p = args[0] ?? '';
@@ -49,7 +57,7 @@ export default async function (m) {
     }
     return say(
       m.chat.id,
-      '<b>Hatch eggs. Earn EGG.</b>\n\n• Tap <b>Hatch</b> under posts in our channel: +1 EGG\n• Send an egg to any chat: type <code>@' + BOT_USERNAME + '</code> — a friend hatches it, they get +1, you +2\n• Invite friends: +25% of what they earn\n• <code>/send @username 10</code> — send EGG, even to someone who never opened the wallet\n\nYour EGG live in a wallet only you hold the key to.',
+      '<b>Hatch eggs. Earn EGG.</b>\n\n• Tap <b>Hatch</b> under a post once a day: +1 EGG, and a point for its channel in the weekly <b>battle</b> (/battle)\n• Send an egg to any chat: type <code>@' + BOT_USERNAME + '</code> — a friend hatches it, you both get +1. When someone you invited sends an egg that gets hatched, you earn +1 too\n• <code>/send @username 10</code> — send EGG, even to someone who never opened the wallet\n\nYour EGG live in a wallet only you hold the key to.',
       openWallet(),
     );
   }
@@ -81,5 +89,5 @@ export default async function (m) {
     const s = await computeStats(now);
     return say(m.chat.id, `<b>Stats</b>\nPlayers: ${s.users} (wallets: ${s.wallets})\nEGG promised: ${fmtEgg(s.promised)}\nToday: ${fmtEgg(s.today)} EGG, ${s.newUsersToday} new players\nPosts: ${s.posts}, views: ${s.views}, hatches: ${s.postHatches}\nEggs sent in chats: ${s.eggs}\nNewest root: #${s.root?.seq ?? '—'}`);
   }
-  return say(m.chat.id, 'Commands: /start, /balance, <code>/send @username 10</code>' + ((await isAdmin(m.from.id)) ? ', /post [@channel] [text], /stats, /admin' : ''), openWallet());
+  return say(m.chat.id, 'Commands: /start, /balance, /battle, <code>/send @username 10</code>' + ((await isAdmin(m.from.id)) ? ', /post [@channel] [text], /stats, /admin' : ''), openWallet());
 }

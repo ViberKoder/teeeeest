@@ -6,8 +6,9 @@ import { users } from '../schema.js';
 import { EGG } from './config.js';
 import { getSettings } from './settings.js';
 
-export async function ensureUser(tgId, now) {
-  await db.insert(users).values({ tgId, createdAt: now }).onConflictDoNothing().run();
+export async function ensureUser(tgId, now, lang) {
+  await db.insert(users).values({ tgId, createdAt: now, lang: lang ?? null }).onConflictDoNothing().run();
+  if (lang) await db.run(sql`UPDATE users SET lang = ${String(lang).slice(0, 8).toLowerCase()} WHERE tg_id = ${tgId} AND (lang IS NULL OR lang != ${String(lang).slice(0, 8).toLowerCase()})`);
 }
 
 const dayStart = (now) => now - (now % 86400);
@@ -30,19 +31,24 @@ export async function credit({ tgId, amount, kind, ref, now }) {
   // one statement: the cap can not be overrun by two taps arriving at the same moment
   await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
     SELECT ${tgId}, ${Number(amount)}, ${kind}, ${ref}, ${now}
-    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind != 'ref') + ${Number(amount)} <= ${Number(S.dailyCap)}`);
+    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind NOT IN ('ref', 'battle')) + ${Number(amount)} <= ${Number(S.dailyCap)}`);
   if (!(await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`))) return 'cap';
   const u = await db.select().from(users).where(eq(users.tgId, tgId)).get();
   if (u?.referrer && u.referrer !== tgId) {
     const bonus = (amount * S.referralPct) / 100n;
-    if (bonus > 0n) {
-      // one statement again: a referrer earns at most one daily cap of referral bonuses per day
-      await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
-        SELECT ${u.referrer}, ${Number(bonus)}, 'ref', ${`ref:${ref}`}, ${now}
-        WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${u.referrer} AND ts >= ${dayStart(now)} AND kind = 'ref') + ${Number(bonus)} <= ${Number(S.dailyCap)}`);
-    }
+    if (bonus > 0n) await creditRef({ tgId: u.referrer, amount: bonus, ref: `ref:${ref}`, now });
   }
   return 'ok';
+}
+
+/** A referral-type credit (share of an invited player's earnings, or the chain bonus): once per `ref`, at most one daily cap a day. */
+export async function creditRef({ tgId, amount, ref, now }) {
+  const S = await getSettings();
+  if (amount <= 0n || (await db.get(sql`SELECT banned AS b FROM users WHERE tg_id = ${tgId}`))?.b) return false;
+  await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
+    SELECT ${tgId}, ${Number(amount)}, 'ref', ${ref}, ${now}
+    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind = 'ref') + ${Number(amount)} <= ${Number(S.dailyCap)}`);
+  return Boolean(await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`));
 }
 
 /** Sets who invited a player — once, never yourself, only for someone who has not earned anything yet. */

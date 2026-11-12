@@ -112,7 +112,7 @@ a.tr:hover { background: var(--surface); border-radius: 12px; }
 .mlabel { font-size: 13px; color: var(--muted); margin: 6px 0 16px; }
 .stackbar { display: flex; height: 14px; border-radius: 99px; overflow: hidden; background: var(--surface2); gap: 2px; }
 .stackbar i { display: block; height: 100%; }
-.c1 { background: var(--ink); } .c2 { background: #2f9e6e; } .c3 { background: rgba(16, 35, 26, 0.25); }
+:is(.stackbar i, .sw).c1 { background: var(--ink); } :is(.stackbar i, .sw).c2 { background: #2f9e6e; } :is(.stackbar i, .sw).c3 { background: rgba(16, 35, 26, 0.25); }
 .legend { display: grid; gap: 9px; margin-top: 14px; font-size: 15px; } .legend div { display: flex; align-items: center; gap: 9px; } .legend b { margin-left: auto; font-weight: 500; }
 .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .checks { display: grid; gap: 16px; } .check { display: flex; gap: 12px; align-items: flex-start; }
@@ -141,3 +141,13 @@ footer > div:first-child { max-width: 600px; } footer b { color: var(--text); fo
   .tiles { grid-template-columns: 1fr; }
   .bar { padding-left: 14px; } .bar input { font-size: 15px; } .bar button { padding: 11px 16px; }
 }
+
+/* ---- spread map and battles ---- */
+.map { width: 100%; height: auto; display: block; }
+.map .land { fill: none; stroke: rgba(16, 35, 26, 0.26); stroke-width: 3.6; stroke-linecap: round; }
+.map .halo { fill: rgba(16, 35, 26, 0.16); animation: ping 2.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.map .dotc { fill: #10231a; stroke: #fff; stroke-width: 1.5; }
+@keyframes ping { 0% { transform: scale(0.7); opacity: 0.9; } 100% { transform: scale(1.25); opacity: 0.35; } }
+.mapgrid { grid-template-columns: 1.7fr 1fr; }
+.pbar.wide { width: 100%; max-width: 160px; }
+@media (max-width: 900px) { .mapgrid { grid-template-columns: 1fr; } }
