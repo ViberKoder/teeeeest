@@ -4,8 +4,8 @@ import { api } from '../api/server';
 import { cfg, endpoints } from '../config';
 import { Holder, Move, readHolders, rootFromTuple, rootIsSigned, walletHistory, walletOnChain } from './data';
 import type { ExplorerData } from './hooks';
-import { LAND, LAND_H, LAND_W } from './landmask';
-import { LANG_PLACE, langName } from './geo';
+import { langName } from './geo';
+import { WorldMap } from '../ui/WorldMap';
 import { Addr, ago, Card, egg, Empty, friendly, KIND, short, Stack } from './ui';
 
 const tx = (h: string) => `${endpoints.explorer}/transaction/${h}`;
@@ -211,35 +211,14 @@ export function AddressView({ raw, d }: { raw: string; d: ExplorerData }) {
 }
 
 // ---------------------------------------------------------------- the spread map
-const CELL = 6;
-const LAND_PATH = (() => {
-  let d = '';
-  LAND.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] === '1') d += `M${x * CELL + CELL / 2} ${y * CELL + CELL / 2}h0`; });
-  return d;
-})();
-
 export function MapView({ d }: { d: ExplorerData }) {
   const last = d.beacons[d.beacons.length - 1];
   const langs: [string, number][] = d.live?.langs?.length ? d.live.langs : last?.lg ?? [];
   const total = langs.reduce((a, [, n]) => a + n, 0);
-  const max = Math.max(1, ...langs.map(([, n]) => n));
-  const W = LAND_W * CELL, H = LAND_H * CELL;
-  const pts = langs.map(([code, n]) => {
-    const p = LANG_PLACE[code.split('-')[0]];
-    return p ? { code, n, x: ((p[0] + 180) / 360) * W, y: ((84 - p[1]) / 144) * H, r: 5 + Math.sqrt(n / max) * 16 } : null;
-  }).filter((x): x is NonNullable<typeof x> => x !== null);
   return (
     <div className="grid2 mapgrid">
       <Card title="Where the eggs travel" right={<span className="muted">by players’ Telegram language</span>}>
-        <svg className="map" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Map of the languages of EGG players">
-          <path d={LAND_PATH} className="land" />
-          {pts.map((p) => (
-            <g key={p.code}>
-              <circle cx={p.x} cy={p.y} r={p.r} className="halo" />
-              <circle cx={p.x} cy={p.y} r={Math.max(3, p.r * 0.45)} className="dotc"><title>{`${langName(p.code)}: ${p.n}`}</title></circle>
-            </g>
-          ))}
-        </svg>
+        <WorldMap langs={langs} />
         {total === 0 && <Empty>The map fills as players open the bot: Telegram tells us only the interface language, nothing else about where anyone is.</Empty>}
       </Card>
       <Card title="Languages" right={<span className="muted">{total.toLocaleString('en')} players with a known language</span>}>

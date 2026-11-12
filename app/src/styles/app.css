@@ -346,3 +346,23 @@ body { font-feature-settings: 'ss01', 'tnum' 0; }
 .incoming .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--good); animation: pulse2 1.6s infinite; flex: none; }
 .incoming b { display: block; font-size: 15px; }
 .incoming span.num { font-size: 13px; color: var(--hint); }
+
+/* squads + map entries on the home screen, and their pages */
+.duo { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.duo button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 16px; border-radius: 18px; background: var(--surface); text-align: left; color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+.duo button span { font-size: 24px; line-height: 1.1; }
+.duo button b { font-size: 16px; font-weight: 650; margin-top: 4px; }
+.duo button i { font-style: normal; font-size: 13px; color: var(--hint); }
+.duo button:active { transform: scale(0.97); }
+.squad-hero { margin: 4px 0 6px; padding: 18px; border-radius: 20px; color: #fff; background: radial-gradient(90% 120% at 100% 0%, #2aa88a 0%, transparent 60%), linear-gradient(120deg, #0f4f63, #0b6b78 60%, #0a8a82); }
+.sq-name { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.sq-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.sq-stats div { background: rgba(255, 255, 255, 0.14); border-radius: 14px; padding: 10px; text-align: center; }
+.sq-stats b { display: block; font-size: 20px; } .sq-stats span { font-size: 12px; opacity: 0.85; }
+.map-card { padding: 8px; border-radius: 20px; background: var(--surface); }
+.map { width: 100%; height: auto; display: block; }
+.map .land { fill: none; stroke: var(--hint); opacity: 0.45; stroke-width: 3.6; stroke-linecap: round; }
+.map .halo { fill: var(--accent); opacity: 0.22; animation: mping 2.8s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.map .dotc { fill: var(--accent); stroke: var(--surface); stroke-width: 1.5; }
+@keyframes mping { 0% { transform: scale(0.7); opacity: 0.4; } 100% { transform: scale(1.25); opacity: 0.12; } }
+.squad-hero .btn.soft { background: rgba(255, 255, 255, 0.18); color: #fff; }

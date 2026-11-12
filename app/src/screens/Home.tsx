@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState } from 'react';
 import { cfg, endpoints } from '../config';
 import { formatUnits, shortAddr } from '../lib/format';
-import { haptic, openExternal } from '../lib/tg';
+import { haptic, openExternal, squadFromLink } from '../lib/tg';
 import { useWallet } from '../state/wallet';
 import { Egg3D } from '../ui/Egg3D';
 import { EggMark, TonMark } from '../ui/Egg';
@@ -15,9 +15,11 @@ const ClaimPage = lazy(() => import('./Claim').then((m) => ({ default: m.ClaimPa
 const IntroPage = lazy(() => import('./Intro').then((m) => ({ default: m.IntroPage })));
 const ReceivePage = lazy(() => import('./Receive').then((m) => ({ default: m.ReceivePage })));
 const SendPage = lazy(() => import('./Send').then((m) => ({ default: m.SendPage })));
+const SquadsPage = lazy(() => import('./Squads').then((m) => ({ default: m.SquadsPage })));
+const MapPage = lazy(() => import('./MapPage').then((m) => ({ default: m.MapPage })));
 const SettingsPage = lazy(() => import('./Settings').then((m) => ({ default: m.SettingsPage })));
 
-type Open = null | 'send' | 'receive' | 'claim' | 'settings' | 'intro';
+type Open = null | 'send' | 'receive' | 'claim' | 'settings' | 'intro' | 'squads' | 'map';
 
 const Swap = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -50,7 +52,9 @@ export function Home() {
     history.replaceState(null, '', location.pathname + location.hash); // once: a reload must not reopen it
     return p;
   });
-  const [open, setOpen] = useState<Open>(prefill ? 'send' : w.firstRun ? 'intro' : null);
+  // a friend's invitation (t.me/<bot>?startapp=squad_<id>) opens the squads page
+  const [joinId] = useState<number | null>(() => squadFromLink());
+  const [open, setOpen] = useState<Open>(prefill ? 'send' : joinId ? 'squads' : w.firstRun ? 'intro' : null);
   const [burst, setBurst] = useState(0);
   const { data, provider } = w;
   const D = cfg.token.decimals;
@@ -165,6 +169,10 @@ export function Home() {
         ))
       )}
 
+      <div className="duo">
+        <button onClick={() => setOpen('squads')}><span>🛡</span><b>Squads</b><i>Hatch with a team</i></button>
+        <button onClick={() => setOpen('map')}><span>🌍</span><b>Egg map</b><i>Where the eggs travel</i></button>
+      </div>
       <div className="notice">Your balance is public due to blockchain transparency.</div>
       <button className="btn link" style={{ marginTop: 4 }} onClick={() => setOpen('intro')}>How does it work?</button>
       {data.error && <p className="hint bad center" style={{ marginTop: 10 }}>{data.error}</p>}
@@ -174,6 +182,8 @@ export function Home() {
       {open === 'receive' && <ReceivePage onClose={close} />}
       {open === 'claim' && <ClaimPage onClose={(hatched?: boolean) => { close(); if (hatched) setBurst((b) => b + 1); }} />}
       {open === 'settings' && <SettingsPage onClose={close} />}
+      {open === 'squads' && <SquadsPage onClose={close} joinId={joinId} />}
+      {open === 'map' && <MapPage onClose={close} />}
       {open === 'intro' && <IntroPage onClose={close} />}
       </Suspense>
     </div>

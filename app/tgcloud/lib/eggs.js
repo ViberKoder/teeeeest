@@ -25,15 +25,16 @@ export async function parseEggData(data) {
   return { sender: Number(sender), key: `${sender}:${n}`, max: 1 };
 }
 
-/** Under every egg (and under the hatched message): the app, and a way to send an egg of your own — every egg is its own invitation. */
-export const tailRow = () => [
-  { text: '🚀 Hatch App', url: `https://t.me/${BOT_USERNAME}?startapp` },
-  { text: '🥚 Send Egg', switch_inline_query: '' },
-];
+/** An egg that is not hatched yet has only its Hatch button; once hatched, the message offers the app and a way to send an egg of your own. */
 const keyboard = (data, hatched, max) => ({
-  inline_keyboard: [[{ text: max > 1 ? `🥚 Hatch · ${hatched}/${max}` : '🥚 Hatch', callback_data: data }], tailRow()],
+  inline_keyboard: [[{ text: max > 1 ? `🥚 Hatch · ${hatched}/${max}` : '🥚 Hatch', callback_data: data }]],
 });
-export const afterHatchKeyboard = () => ({ inline_keyboard: [tailRow()] });
+export const afterHatchKeyboard = () => ({
+  inline_keyboard: [[
+    { text: '📱 Hatch App', url: `https://t.me/${BOT_USERNAME}?startapp` },
+    { text: 'Send 🥚', switch_inline_query: '' },
+  ]],
+});
 
 /** A tap on an egg's Hatch button. */
 export async function hatchEgg(q, egg, now, S) {

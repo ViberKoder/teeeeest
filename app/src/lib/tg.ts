@@ -128,3 +128,11 @@ export function tgUserId(): number {
     return 0;
   }
 }
+
+/** The squad a friend's invitation link points at: t.me/<bot>?startapp=squad_<id>. */
+export function squadFromLink(): number | null {
+  const raw = new URLSearchParams(location.hash.slice(1)).get('tgWebAppStartParam')
+    ?? (window as unknown as { Telegram?: { WebApp?: { initDataUnsafe?: { start_param?: string } } } }).Telegram?.WebApp?.initDataUnsafe?.start_param ?? '';
+  const m = /^squad_(\d{1,9})$/.exec(raw);
+  return m ? Number(m[1]) : null;
+}

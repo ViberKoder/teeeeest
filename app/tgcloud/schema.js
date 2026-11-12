@@ -26,6 +26,9 @@ export const users = table('users', {
   // interface language Telegram reports (for the spread map) and the channel this player last hatched in (their team in the battles)
   lang: text('lang'),
   team: integer('team').notNull().default(0),
+  // the squad the player belongs to (0 = none) and when they last joined or left one (a day's cooldown between changes)
+  squad: integer('squad').notNull().default(0),
+  squadAt: integer('squad_at').notNull().default(0),
 });
 
 export const hatches = table('hatches', {
@@ -115,7 +118,10 @@ export const ledger = table('ledger', {
   kind: text('kind').notNull(), // post | inline | sender | ref | legacy
   ref: text('ref').notNull(),
   ts: integer('ts').notNull(),
+  // the player's squad at the moment of the event (a squad's weekly score is what its members earned while they were in it)
+  squad: integer('squad').notNull().default(0),
 }, (t) => ({
+  bySquad: index('idx_ledger_squad').on(t.squad, t.ts),
   once: uniqueIndex('uq_ledger_ref').on(t.ref),
   byUser: index('idx_ledger_user').on(t.tgId, t.ts),
   byTime: index('idx_ledger_ts').on(t.ts),
@@ -196,3 +202,14 @@ export const chatHits = table('chat_hits', {
   byWeek: index('idx_hits_week').on(t.week, t.chatId),
   once: uniqueIndex('uq_hits').on(t.week, t.chatId, t.tgId, t.ts),
 }));
+
+// Squads: teams the players create inside the app (Notcoin-style). Weekly score = EGG the members earned while in the squad.
+export const squads = table('squads', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull(),
+  nameKey: text('name_key').notNull().unique(),
+  ownerId: integer('owner_id').notNull(),
+  // an optional t.me link to the squad's own chat or channel
+  link: text('link').notNull().default(''),
+  createdAt: integer('created_at').notNull(),
+});

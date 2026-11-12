@@ -33,6 +33,12 @@ export interface StatsReply {
   langs?: [string, number][];
   battle?: { week: number; endsAt: number; board: { rank: number; chatId: number; title: string; username: string | null; score: number; players: number }[] };
 }
+export interface SquadInfo { id: number; name: string; link: string | null; members: number; score: string; rank: number | null; owner?: number }
+export interface SquadReply {
+  me: SquadInfo | null;
+  board: { rank: number; id: number; name: string; link: string | null; members: number; score: string }[];
+  week: number; endsAt: number; nextChangeAt: number; prizes: string[];
+}
 export interface LookupReply { found: boolean; address?: string | null; ledger?: string; since?: number; entitlement?: Entitlement | null }
 
 export class ApiError extends Error {
@@ -100,6 +106,8 @@ export const api = {
   gas: () => call<{ status: 'sent' | 'enough' }>('/v1/gas', { method: 'POST', body: '{}' }),
   /** live project numbers (explorer inside Telegram) */
   stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
+  /** squads: state, create, join, leave, find, info (everything happens inside the app) */
+  squad: (input: Record<string, unknown> = {}) => call<SquadReply & { found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
   /** internal data for a wallet or @username, to compare with the chain */
   lookup: (q: string) => call<LookupReply>('/v1/lookup', { method: 'POST', body: JSON.stringify({ q }) }),
   /** public: the same answer any wallet or explorer would get */
