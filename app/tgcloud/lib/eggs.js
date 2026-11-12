@@ -6,7 +6,7 @@ import { eggs, users } from '../schema.js';
 import { BOT_USERNAME } from './config.js';
 import { credit, creditRef, fmtEgg, setReferrer } from './ledger.js';
 import { mac } from './mac.js';
-import { answer, nameOf, quietly } from './telegram.js';
+import { answer, quietly } from './telegram.js';
 
 const nonce = () => Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0');
 
@@ -73,7 +73,7 @@ export async function hatchEgg(q, egg, now, S) {
   const hatched = taken[0].hatched;
   const target = q.inline_message_id ? { inline_message_id: q.inline_message_id } : { chat_id: q.message?.chat.id, message_id: q.message?.message_id };
   if (egg.max <= 1 || hatched >= egg.max) {
-    await quietly(api.editMessageText({ ...target, text: egg.max <= 1 ? `🐣 Hatched by ${nameOf(q.from)}` : `🐣 All ${egg.max} hatched!`, parse_mode: 'HTML', reply_markup: afterHatchKeyboard() }));
+    await quietly(api.editMessageText({ ...target, text: '🐣', parse_mode: 'HTML', reply_markup: afterHatchKeyboard() }));
   } else if (now - row.editedAt >= 3) {
     await db.update(eggs).set({ editedAt: now }).where(eq(eggs.key, egg.key)).run();
     await quietly(api.editMessageReplyMarkup({ ...target, reply_markup: keyboard(q.data, hatched, egg.max) }));
