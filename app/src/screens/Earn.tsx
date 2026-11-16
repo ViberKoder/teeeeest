@@ -10,7 +10,6 @@ import { EggCoin } from '../ui/EggCoin';
 import { Bolt, Check, Fire } from '../ui/Icons';
 import { useToast } from '../ui/toast';
 
-const TINTS = ['#ffd84d,#f0a312', '#5ad6c0,#1f9d86', '#c79bff,#7a4fe8', '#7db8ff,#3d7cf0', '#ff9a8a,#e5483a', '#8fe08f,#2e9f70', '#ffb35a,#ff6a3d'];
 /** the server's rule: day n of a streak pays min(10, 2 + n) / 2 EGG */
 const reward = (n: number) => Math.min(10, 2 + n) / 2;
 const fmt = (n: number) => String(n);
@@ -96,10 +95,10 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
       <div className="sec-row"><h3>Tasks</h3><span className="muted">{data ? `${data.tasks.filter((t) => t.status === 'done').length}/${data.tasks.length}` : ''}</span></div>
       <div className="card task-card">
         {(data?.tasks ?? []).map((t, i) => {
-          const [from, to] = TINTS[i % TINTS.length].split(',');
+          void i;
           return (
             <div key={t.id} className={`task ${t.status}`}>
-              <span className="task-ic" style={{ background: `linear-gradient(150deg, ${from}, ${to})`, fontSize: 22 }}>{t.icon}</span>
+              <span className="task-ic">{t.icon}</span>
               <span className="task-main">
                 <b>{t.title}</b>
                 <small>{t.progress && t.status !== 'done' ? `${t.progress[0]} / ${t.progress[1]} · ` : ''}{t.desc}</small>

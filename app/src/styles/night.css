@@ -1,0 +1,130 @@
+/* ======================= Egg night: one dark look, a golden glow, one accent =======================
+   Notcoin's way of working (one hero object on black, a colour world per section) with Walt's restraint
+   (calm lists, compact actions, one accent). Overrides the Telegram theme on purpose: the app has its own look. */
+:root, :root[data-theme='dark'], :root[data-theme='light'] {
+  --bg: #0a0a0c !important; --page: #0a0a0c !important; --surface: #151519 !important; --card: #151519 !important;
+  --text: #f5f5f7 !important; --hint: #8c8c96 !important; --section-title: #8c8c96 !important;
+  --link: #ffc247 !important; --accent: #ffc247 !important; --on-accent: #1d1300 !important; --accent-text: #ffc247 !important;
+  --accent-soft: rgba(255, 194, 71, 0.14) !important; --danger: #ff5a4f !important; --good: #4ade80 !important;
+  --separator: rgba(255, 255, 255, 0.08) !important; --hair: rgba(255, 255, 255, 0.07) !important; --fill: rgba(255, 255, 255, 0.07) !important;
+  --shadow-s: none; --shadow-m: 0 18px 50px rgba(0, 0, 0, 0.55);
+  color-scheme: dark !important;
+}
+body { background: #0a0a0c; }
+.card, .group { box-shadow: none; border: 0.5px solid rgba(255, 255, 255, 0.05); }
+
+/* ---------- hero: the egg on black with its own light ---------- */
+:root .home-hero { height: clamp(320px, 42vh, 400px); margin-bottom: 0; }
+:root[data-theme] .home-hero .bg { background:
+  radial-gradient(44% 40% at 50% 44%, rgba(255, 205, 100, 0.55), rgba(255, 160, 40, 0.18) 55%, transparent 74%),
+  radial-gradient(90% 50% at 50% 100%, rgba(255, 170, 60, 0.14), transparent 70%), #0a0a0c; }
+:root[data-theme] .home-hero .bg::after { display: none; }
+.home-hero .stage .egg { width: 200px; height: auto; filter: drop-shadow(0 0 40px rgba(255, 190, 80, 0.5)); }
+:root .home-hero::after { height: 70px; background: linear-gradient(transparent, #0a0a0c); }
+:root .home-hero .shadow { background: radial-gradient(closest-side, rgba(255, 190, 80, 0.45), transparent); width: 220px; margin-left: -110px; bottom: 22px; filter: blur(8px); }
+:root .home-hero .stage { inset: 62px 0 14px 0; }
+:root .home-hero .glass, :root .home-hero .ghost { background: rgba(255, 255, 255, 0.09); color: #fff; backdrop-filter: blur(14px); box-shadow: none; }
+:root .home-hero .ttl b { color: #fff; } :root .home-hero .ttl .sub { color: rgba(255, 255, 255, 0.5); }
+.home-hero .boost-btn { color: #ffc247; } .home-hero .boost-btn i { color: #fff; }
+
+/* ---------- balance, league, energy ---------- */
+.counter { margin-top: -14px; }
+.counter .count { gap: 10px; font-size: 54px; align-items: center; }
+.counter .count .frac { font-size: 26px; color: rgba(255, 255, 255, 0.4); }
+.counter .count .coin { margin-right: 2px; }
+.league { display: inline-flex; align-items: center; gap: 7px; width: auto; margin: 6px auto 0; padding: 7px 14px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); box-shadow: none; font-size: 14px; color: #fff; }
+.league b { font-weight: 650; } .league em { font-style: normal; color: var(--hint); font-weight: 500; } .league svg { color: var(--hint); }
+.lg-emoji { font-size: 17px; line-height: 1; }
+.energy { margin: 16px 4px 0; }
+.energy .pbar { height: 9px; background: rgba(255, 255, 255, 0.09); }
+.energy .pbar i { background: linear-gradient(90deg, #ffe9a0, #ffb52e); box-shadow: 0 0 14px rgba(255, 181, 46, 0.6); }
+
+/* ---------- dock: three compact glass actions (Walt) ---------- */
+.dock { gap: 8px; margin-top: 18px; }
+.dock-btn { flex-direction: column; gap: 6px; padding: 12px 4px 11px; border-radius: 18px; background: rgba(255, 255, 255, 0.07); border: 0; box-shadow: none; font-size: 13px; font-weight: 600; color: #f5f5f7; }
+.dock-btn::before { display: none; }
+.dock-btn:active { background: rgba(255, 255, 255, 0.12); }
+.di, .di.send, .di.recv, .di.swap { width: auto; height: auto; background: none; box-shadow: none; color: #ffc247; border-radius: 0; }
+
+/* ---------- lists ---------- */
+.asset + .asset, .tx + .tx::before, .kv + .kv, .pick + .pick { border-color: rgba(255, 255, 255, 0.07); }
+.tx + .tx::before, .frow + .frow::before, .brow + .brow::before, .feed + .feed::before, .task + .task::before { background: rgba(255, 255, 255, 0.07); }
+.day-label, .sec-t { color: var(--hint); }
+.chips-seg { background: rgba(255, 255, 255, 0.08); } .chips-seg button.on { background: rgba(255, 255, 255, 0.16); color: #fff; box-shadow: none; }
+.amt.in { color: #4ade80; }
+.coin-badge { border-color: #151519; }
+.egg-coin svg { filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.5)); }
+
+/* ---------- floating tab bar (Walt, Notcoin) ---------- */
+.tabbar { left: 16px; right: 16px; bottom: calc(var(--safe-b) + 12px); height: 64px; padding: 6px; border-radius: 26px; max-width: 420px; margin: 0 auto; background: rgba(28, 28, 33, 0.72); border: 0.5px solid rgba(255, 255, 255, 0.1); backdrop-filter: saturate(1.8) blur(26px); -webkit-backdrop-filter: saturate(1.8) blur(26px); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); }
+.tab { border-radius: 20px; color: #8c8c96; gap: 1px; }
+.tab .ti { width: auto; height: 28px; background: none !important; }
+.tab.on { color: #ffc247; background: rgba(255, 194, 71, 0.13); }
+.tab .dot { border-color: #1c1c21; }
+.shell { padding-bottom: calc(var(--safe-b) + 110px); }
+
+/* ---------- buttons ---------- */
+.btn-main { color: #1d1300; background: linear-gradient(180deg, #ffd466, #ffae2e); box-shadow: 0 8px 24px rgba(255, 174, 46, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.5); }
+.btn-soft { background: rgba(255, 255, 255, 0.09); color: #fff; }
+.btn-glass { background: rgba(255, 255, 255, 0.12); }
+.mainbtn { background: #ffc247; color: #1d1300; }
+.boost-pill { background: rgba(255, 255, 255, 0.09); color: #ffc247; box-shadow: none; }
+
+/* ---------- sheets ---------- */
+.sheet { background: #131316; border: 0.5px solid rgba(255, 255, 255, 0.07); border-bottom: 0; box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.6); }
+.sheet-back { background: rgba(0, 0, 0, 0.62); }
+.sheet-x { background: rgba(255, 255, 255, 0.1); color: #bbb; }
+.grabber { background: rgba(255, 255, 255, 0.22); }
+.sheet-foot { background: linear-gradient(transparent, #131316 24%); }
+.sheet .card, .sheet .field-card, .sheet .swap-card, .sheet .to-pill, .sheet .boost-card { background: #1b1b20; }
+.asset-seg { background: rgba(255, 255, 255, 0.07); } .asset-seg button.on { background: rgba(255, 255, 255, 0.15); color: #fff; box-shadow: none; }
+.swap-coin { background: rgba(255, 255, 255, 0.08); } .swap-flip { background: #131316; border-color: #131316; color: #ffc247; }
+.recv-card.egg { background: radial-gradient(100% 70% at 50% 0%, rgba(255, 230, 150, 0.55), transparent 62%), linear-gradient(160deg, #ffcf5e, #f0952a 60%, #b8631a); color: #2a1700; }
+.keypad button:active { background: rgba(255, 255, 255, 0.08); }
+
+/* ---------- earn: gold world ---------- */
+.daily-card { color: #2a1700; background: radial-gradient(90% 70% at 85% 0%, rgba(255, 255, 255, 0.55), transparent 60%), linear-gradient(160deg, #ffe27a, #ffbb3a 55%, #f08a22); box-shadow: 0 20px 50px rgba(240, 138, 34, 0.25); }
+.eyebrow { background: rgba(42, 23, 0, 0.85); color: #ffd466; }
+.wd { background: rgba(255, 255, 255, 0.4); } .wd.done { background: rgba(42, 23, 0, 0.82); color: #fff; } .wd.today { background: #fff; }
+.wd-check { background: #ffd466; color: #2a1700; }
+.btn-gold { background: #1d1300; color: #ffd466; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3); }
+.btn-gold.done, .btn-gold[disabled] { background: rgba(42, 23, 0, 0.35); color: rgba(255, 255, 255, 0.7); }
+.task .btn-gold, .bc-main .btn-gold { background: linear-gradient(180deg, #ffd466, #ffae2e); color: #1d1300; box-shadow: none; }
+.task-ic, .boost-ic { background: #1f1f25 !important; border: 0.5px solid rgba(255, 255, 255, 0.08); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07); border-radius: 16px; font-size: 24px; }
+.boost-ic { border-radius: 16px; }
+.reward { color: #ffc247; }
+.boost-mini, .boost-card { background: #151519; border: 0.5px solid rgba(255, 255, 255, 0.05); box-shadow: none; }
+.pips i { background: rgba(255, 255, 255, 0.12); } .pips i.on { background: linear-gradient(90deg, #ffe9a0, #ffb52e); }
+.pbar { background: rgba(255, 255, 255, 0.1); } .pbar i { background: linear-gradient(90deg, #ffe9a0, #ffb52e); }
+.pill { background: rgba(255, 255, 255, 0.09); color: var(--hint); } .pill.on { background: rgba(255, 194, 71, 0.16); color: #ffc247; }
+.bh-num { background: linear-gradient(180deg, #ffe9a0, #ffae2e); -webkit-background-clip: text; background-clip: text; }
+
+/* ---------- friends: purple world, amber button (as Notcoin's Frens) ---------- */
+.invite-card { color: #fff; background: radial-gradient(90% 60% at 50% 0%, rgba(190, 150, 255, 0.5), transparent 65%), linear-gradient(170deg, #3b1d8f, #5b32c8 55%, #7a4fe8); box-shadow: 0 20px 50px rgba(91, 50, 200, 0.3); }
+.invite-card p { opacity: 0.82; }
+.invite-actions .btn-glass { color: #fff; background: rgba(255, 255, 255, 0.18); }
+.stat { background: #151519; box-shadow: none; border: 0.5px solid rgba(255, 255, 255, 0.05); }
+.frow.me, .brow.me { background: rgba(255, 194, 71, 0.08); }
+.rank.m1 { background: linear-gradient(150deg, #ffe27a, #f0a012); } 
+
+/* ---------- squads: teal world ---------- */
+.squad-hero { background: radial-gradient(90% 90% at 100% 0%, rgba(80, 230, 190, 0.5), transparent 60%), linear-gradient(160deg, #06303a, #0a5560 60%, #0c7a6c); box-shadow: 0 20px 50px rgba(10, 120, 110, 0.25); }
+.sh-actions .btn-main { }
+.pod, .map-entry, .timer-pill { background: #151519; box-shadow: none; border: 0.5px solid rgba(255, 255, 255, 0.05); }
+.pod.p1 { background: linear-gradient(180deg, rgba(255, 194, 71, 0.2), #151519); } .pod-step { background: rgba(255, 255, 255, 0.06); }
+.pod.mine { outline-color: #ffc247; }
+.me-ic { background: #1f1f25; border: 0.5px solid rgba(255, 255, 255, 0.08); box-shadow: none; }
+
+/* ---------- settings, pages ---------- */
+.profile-card { color: #2a1700; background: radial-gradient(80% 70% at 50% 0%, rgba(255, 255, 255, 0.5), transparent 65%), linear-gradient(160deg, #ffe27a, #ffbb3a 55%, #f08a22); box-shadow: 0 20px 50px rgba(240, 138, 34, 0.22); }
+.profile-actions button { background: rgba(42, 23, 0, 0.85); color: #ffd466; }
+.page { background: #0a0a0c; }
+.page-head { background: rgba(10, 10, 12, 0.8); }
+.switch { background: rgba(255, 255, 255, 0.16); } .switch.on { background: #4ade80; }
+.intro-card { background: #151519; box-shadow: none; border: 0.5px solid rgba(255, 255, 255, 0.05); }
+.intro-card .ic { background: #1f1f25 !important; color: #ffc247; }
+.word { background: #1b1b20; }
+.toast { background: rgba(40, 40, 46, 0.95); }
+.status.ok { background: rgba(74, 222, 128, 0.14); color: #4ade80; }
+.frow-main small, .brow-main small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.frow-main small .lg-chip { display: inline-grid; vertical-align: middle; }

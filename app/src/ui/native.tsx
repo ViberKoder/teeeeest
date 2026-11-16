@@ -44,7 +44,7 @@ export function MainButton({
       text,
       is_visible: true,
       is_active: enabled && !loading,
-      ...(tone === 'danger' ? { color: '#ff3b30', text_color: '#ffffff' } : {}),
+      ...(tone === 'danger' ? { color: '#ff3b30', text_color: '#ffffff' } : { color: '#ffc247', text_color: '#1d1300' }),
     });
     if (loading) native.showProgress(false);
     else native.hideProgress();

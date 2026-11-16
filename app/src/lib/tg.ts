@@ -58,12 +58,14 @@ export function bootTelegram() {
   tg.expand();
   tg.disableVerticalSwipes?.();
   // Outside Telegram the script still defines WebApp (always "light"): follow the browser instead.
+  document.documentElement.dataset.theme = 'dark';
   if (!inTelegram) return;
   const apply = () => {
-    document.documentElement.dataset.theme = tg.colorScheme;
-    // match the native chrome to the grouped-list background
-    tg.setHeaderColor?.('secondary_bg_color');
-    tg.setBackgroundColor?.('secondary_bg_color');
+    // the app has one look of its own (night, like the egg's glow), whatever theme the Telegram client uses
+    document.documentElement.dataset.theme = 'dark';
+    tg.setHeaderColor?.('#0a0a0c');
+    tg.setBackgroundColor?.('#0a0a0c');
+    (tg as { setBottomBarColor?: (c: string) => void }).setBottomBarColor?.('#0a0a0c');
   };
   apply();
   tg.onEvent('themeChanged', apply);
