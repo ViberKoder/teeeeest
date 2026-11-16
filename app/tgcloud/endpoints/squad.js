@@ -4,7 +4,7 @@ import { squads, users } from '../schema.js';
 import { weekEnd, weekOf } from '../lib/battle.js';
 import { balanceOf, ensureUser, fmtEgg } from '../lib/ledger.js';
 import { getSettings } from '../lib/settings.js';
-import { COOLDOWN, CREATE_PER_DAY, LINK, MAX_MEMBERS, NAME, settleSquads, squadBoard, squadOf } from '../lib/squads.js';
+import { COOLDOWN, CREATE_PER_DAY, LINK, MAX_MEMBERS, NAME, roster, settleSquads, squadBoard, squadOf } from '../lib/squads.js';
 
 /** Squads, from inside the app. The platform verifies Telegram's init data, so `ctx.initData.user.id` can not be forged. */
 export default async function (input, ctx) {
@@ -66,6 +66,12 @@ export default async function (input, ctx) {
       const s = await squadOf(id, week);
       return { squad: s && { id: s.id, name: s.name, members: s.members, link: s.link } };
     }
+    case 'members': {
+      // the roster of a squad: who earned how much for it this week (public @username, or the last digits of the id)
+      const id = Number(input.id ?? u.squad);
+      if (!Number.isSafeInteger(id) || id <= 0) fail('bad-id');
+      return { roster: await roster(id, week, me) };
+    }
     case 'state': break;
     default: fail('unknown-action');
   }
@@ -74,6 +80,7 @@ export default async function (input, ctx) {
   const fresh = await db.select().from(users).where(eq(users.tgId, me)).get();
   return {
     me: await squadOf(fresh.squad, week),
+    roster: fresh.squad ? await roster(fresh.squad, week, me) : [],
     board: await squadBoard(week, 20),
     week, endsAt: weekEnd(week),
     nextChangeAt: fresh.squadAt ? fresh.squadAt + COOLDOWN : 0,

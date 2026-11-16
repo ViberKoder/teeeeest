@@ -28,9 +28,10 @@ const full: Data = {
   loading: false,
   error: null,
   activity: [
+    { id: '0', kind: 'egg', direction: 'in', amount: E(120), symbol: 'EGG', decimals: 9, peer: '', time: now - 120, label: 'hatch', failed: false },
     { id: '1', kind: 'egg', direction: 'in', amount: E(2500), symbol: 'EGG', decimals: 9, peer: peer('3f'), time: now - 420, comment: 'hatch reward', failed: false },
     { id: '2', kind: 'egg', direction: 'out', amount: E(120), symbol: 'EGG', decimals: 9, peer: peer('9c'), time: now - 7200, comment: 'for the coffee', failed: false },
-    { id: '3', kind: 'ton', direction: 'in', amount: E(5), symbol: 'TON', decimals: 9, peer: peer('27'), time: now - 86400 * 2, failed: false },
+    { id: '3', kind: 'ton', direction: 'in', amount: E(5), symbol: 'Gram', decimals: 9, peer: peer('27'), time: now - 86400 * 2, failed: false },
   ],
 };
 

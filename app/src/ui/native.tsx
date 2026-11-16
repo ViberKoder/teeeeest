@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useRef } from 'react';
-import { tg } from '../lib/tg';
+import { inTelegram, tg } from '../lib/tg';
 import { Back } from './Icons';
 
 /**
@@ -13,16 +13,19 @@ export function MainButton({
   enabled = true,
   loading = false,
   tone = 'accent',
+  inline = false,
 }: {
   text: string;
   onClick: () => void;
   enabled?: boolean;
   loading?: boolean;
   tone?: 'accent' | 'danger';
+  /** render in place (inside a sheet's footer) instead of as a fixed bar when there is no native button */
+  inline?: boolean;
 }) {
   const cb = useRef(onClick);
   cb.current = onClick;
-  const native = tg?.MainButton;
+  const native = inTelegram ? tg?.MainButton : undefined;
 
   useEffect(() => {
     if (!native) return;
@@ -48,6 +51,12 @@ export function MainButton({
   }, [native, text, enabled, loading, tone]);
 
   if (native) return null;
+  if (inline)
+    return (
+      <button className={`mainbtn inline ${tone}`} disabled={!enabled || loading} onClick={onClick}>
+        {loading ? <span className="spinner" /> : text}
+      </button>
+    );
   return (
     <div className="mainbar">
       <button className={`mainbtn ${tone}`} disabled={!enabled || loading} onClick={onClick}>
@@ -61,7 +70,7 @@ export function MainButton({
 export function Page({ title, onBack, children, bottomSpace }: { title?: string; onBack: () => void; children: ReactNode; bottomSpace?: boolean }) {
   const cb = useRef(onBack);
   cb.current = onBack;
-  const native = tg?.BackButton;
+  const native = inTelegram ? tg?.BackButton : undefined;
 
   useEffect(() => {
     if (!native) return;

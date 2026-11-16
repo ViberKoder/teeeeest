@@ -3,13 +3,17 @@ import { cfg, endpoints } from '../config';
 import { confirmNative, haptic, openExternal, shareLink, tgUserId } from '../lib/tg';
 import { NeedTonError } from '../provider/tg';
 import { useWallet } from '../state/wallet';
-import { Copy, External, Key, Lock } from '../ui/Icons';
+import { Copy, External, Gift, Info, Key, Lock, Users } from '../ui/Icons';
 import { Egg } from '../ui/Egg';
+import { EggCoin } from '../ui/EggCoin';
+import { useNav } from '../state/nav';
 import { MainButton, Page, Row, Section } from '../ui/native';
 import { useToast } from '../ui/toast';
 
 type View = 'main' | 'phrase' | 'custody-info' | 'custody-words' | 'custody-run' | 'custody-done';
-const ic = (n: React.ReactNode, c = 'icon-soft') => <span className={`row-icon ${c}`}>{n}</span>;
+/** an iOS-settings style coloured square icon */
+const ic = (n: React.ReactNode, c: string) => <span className="sq-ic" style={{ background: c }}>{n}</span>;
+const C = { blue: 'linear-gradient(150deg,#58b9ff,#2a7de1)', green: 'linear-gradient(150deg,#6fdc8c,#2fae5b)', gold: 'linear-gradient(150deg,#ffd35a,#f0a012)', red: 'linear-gradient(150deg,#ff8a7a,#e5483a)', gray: 'linear-gradient(150deg,#a9b0bb,#7c8491)', purple: 'linear-gradient(150deg,#c79bff,#7a4fe8)', teal: 'linear-gradient(150deg,#5ad6c0,#1f9d86)' };
 
 const Words = ({ words, blur }: { words: string[]; blur?: boolean }) => (
   <div className="words" style={{ filter: blur ? 'blur(9px)' : 'none', transition: 'filter .25s' }}>
@@ -19,6 +23,7 @@ const Words = ({ words, blur }: { words: string[]; blur?: boolean }) => (
 
 export function SettingsPage({ onClose }: { onClose: () => void }) {
   const w = useWallet();
+  const nav = useNav();
   const toast = useToast();
   const [view, setView] = useState<View>('main');
   const [shown, setShown] = useState<string[] | null>(null);
@@ -61,7 +66,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       haptic.error();
       setErr(
         e instanceof NeedTonError
-          ? 'The wallet needs about 0.02 TON to pay for the key change. Hatch your first EGG (the change comes back to your wallet) or send a little TON here, then try again.'
+          ? 'The wallet needs about 0.02 Gram to pay for the key change. Send a little Gram here, then try again.'
           : e instanceof Error && e.message === 'rotation-pending'
             ? 'The change was sent but is not confirmed yet. Your new phrase is saved on this device; open Settings again in a minute.'
             : 'The key could not be changed. Nothing was lost — try again.',
@@ -128,33 +133,38 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
 
   // ---------- main ----------
   return (
-    <Page title="Keys & Backup" onBack={onClose}>
-      <Section title="Your wallet">
-        <div className="addr" style={{ padding: '14px 16px' }}>{addr}</div>
-        <Row onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }} icon={ic(<Copy width={18} height={18} />)} title="Copy address" />
-        <Row onClick={() => openExternal(`${endpoints.explorer}/${addr}`)} icon={ic(<External width={18} height={18} />)} title="View in explorer" />
-      </Section>
+    <Page title="Settings" onBack={onClose}>
+      <section className="profile-card">
+        <EggCoin size={78} float />
+        <h2>{w.masterAddress ? 'Egg wallet' : 'Wallet'}</h2>
+        <button className="addr-chip num" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }}>{addr.slice(0, 6)}…{addr.slice(-6)}<Copy width={14} height={14} /></button>
+        <div className="profile-actions">
+          <button onClick={() => { void navigator.clipboard?.writeText(addr); haptic.success(); toast('Address copied'); }}><Copy width={19} height={19} />Copy</button>
+          <button onClick={() => openExternal(`${endpoints.explorer}/${addr}`)}><External width={19} height={19} />Explorer</button>
+        </div>
+      </section>
 
-      <Section title="EGG" footer="Friends you invite earn as usual; you get 25% on top of what they earn.">
-        <Row onClick={() => shareLink(`https://t.me/${cfg.bot}?start=ref_${tgUserId()}`, 'Hatch eggs with me and earn EGG 🥚')} icon={ic(<span>🤝</span>)} title="Invite friends" subtitle="+25% of what they earn" />
-        {w.data.me?.is_admin && <Row onClick={() => location.assign('/admin/')} icon={ic(<span>🛠</span>)} title="Admin panel" subtitle="Token, game settings, posts, players" />}
-        <Row onClick={() => location.assign('/explorer/')} icon={ic(<span>📊</span>)} title="Project explorer" subtitle="Live numbers, checkable against the blockchain" />
+      <Section title="Egg">
+        <Row onClick={() => shareLink(`https://t.me/${cfg.bot}?start=ref_${tgUserId()}`, 'Hatch eggs with me and earn EGG 🥚')} icon={ic(<Users width={18} height={18} />, C.purple)} title="Invite friends" subtitle={`Earn a share of what they hatch`} />
+        <Row onClick={() => nav.open({ k: 'intro' })} icon={ic(<Info width={18} height={18} />, C.blue)} title="How it works" />
+        <Row onClick={() => location.assign('/explorer/')} icon={ic(<Gift width={18} height={18} />, C.gold)} title="Project explorer" subtitle="Live numbers, checkable against the blockchain" />
+        {w.data.me?.is_admin && <Row onClick={() => location.assign('/admin/')} icon={ic(<Key width={18} height={18} />, C.gray)} title="Admin panel" subtitle="Token, game settings, posts, players" />}
       </Section>
 
       <Section
-        title="Backup"
+        title="Security"
         footer={w.backupOn
           ? 'Your wallet is backed up to your Telegram account, so it opens on every device where you are signed in.'
           : 'Backup is off. You will need your Secret Phrase in every new Telegram session.'}
       >
-        <Row title="Encrypted Backup" subtitle="Stored with your Telegram account" trailing={<button className={`switch ${w.backupOn ? 'on' : ''}`} onClick={toggleBackup} aria-label="Encrypted backup" aria-pressed={w.backupOn} />} />
-        <Row onClick={showPhrase} icon={ic(<Key width={18} height={18} />)} title="Show Secret Phrase" />
+        <Row title="Encrypted Backup" subtitle="Stored with your Telegram account" icon={ic(<Lock width={18} height={18} />, C.green)} trailing={<button className={`switch ${w.backupOn ? 'on' : ''}`} onClick={toggleBackup} aria-label="Encrypted backup" aria-pressed={w.backupOn} />} />
+        <Row onClick={showPhrase} icon={ic(<Key width={18} height={18} />, C.gold)} title="Show Secret Phrase" />
       </Section>
 
       <Section title="Advanced" footer="Switch to self-custody if you do not want Telegram to be able to restore this wallet.">
-        <Row onClick={startCustody} icon={ic(<Lock width={18} height={18} />, 'icon-out')} title="Switch to self-custody" />
+        <Row onClick={startCustody} icon={ic(<Lock width={18} height={18} />, C.red)} title="Switch to self-custody" />
       </Section>
-      <p className="hint center" style={{ marginTop: 22 }}>EGG Wallet · {cfg.network}</p>
+      <p className="hint center" style={{ marginTop: 22 }}>Egg Wallet · {cfg.network}</p>
     </Page>
   );
 }

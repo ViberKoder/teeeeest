@@ -10,6 +10,8 @@ export const SPEC = {
   reward_inline: { label: 'Hatching a friend’s egg', unit: 'EGG', min: 0, max: 100, def: '1', group: 'Rewards' },
   reward_sender: { label: 'Sender, per hatched egg', unit: 'EGG', min: 0, max: 100, def: '1', group: 'Rewards' },
   reward_chain: { label: 'Sender’s inviter, per hatched egg of the sender', unit: 'EGG', min: 0, max: 100, def: '1', group: 'Rewards', hint: 'A hatches B’s first egg → A is B’s inviter. Every time B’s egg is hatched, A earns this too.' },
+  reward_daily: { label: 'Daily check-in (day 1; day 7 pays 2.5x)', unit: 'EGG', min: 0, max: 100, def: '1', group: 'Earn' },
+  reward_task: { label: 'One-time task (base; harder tasks pay a multiple)', unit: 'EGG', min: 0, max: 100, def: '1', group: 'Earn', hint: 'the Earn tab pays this x 1 ... x 20 per task' },
   referral_pct: { label: 'Referral share of an invited player’s earnings', unit: '%', min: 0, max: 100, def: '0', integer: true, group: 'Rewards', hint: 'on top of the chain bonus; 0 = off' },
   battle_prize_1: { label: 'Channel battle: 1st place, per player', unit: 'EGG', min: 0, max: 1000, def: '5', group: 'Battles' },
   battle_prize_2: { label: 'Channel battle: 2nd place, per player', unit: 'EGG', min: 0, max: 1000, def: '3', group: 'Battles' },

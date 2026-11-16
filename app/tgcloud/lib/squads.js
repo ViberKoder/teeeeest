@@ -56,3 +56,14 @@ export async function settleSquads(now) {
   }
   return top;
 }
+
+/** The members of a squad, best first: what each earned for it this week (never the Telegram id, only its last digits). */
+export async function roster(id, week, me, limit = 30) {
+  const a = weekStart(week), b = weekEnd(week);
+  const rows = await db.all(sql`SELECT u.tg_id AS id, u.username AS username,
+      CAST(COALESCE((SELECT SUM(l.amount) FROM ledger l WHERE l.tg_id = u.tg_id AND l.squad = ${id} AND l.ts >= ${a} AND l.ts < ${b} AND l.kind IN ('post', 'inline', 'sender')), 0) AS TEXT) AS score,
+      CAST(COALESCE((SELECT SUM(l.amount) FROM ledger l WHERE l.tg_id = u.tg_id), 0) AS TEXT) AS balance
+    FROM users u WHERE u.squad = ${id} ORDER BY CAST(score AS INTEGER) DESC, u.created_at LIMIT ${limit}`);
+  const owner = await db.get(sql`SELECT owner_id AS o FROM squads WHERE id = ${id}`);
+  return rows.map((r, i) => ({ rank: i + 1, tag: String(r.id).slice(-3), username: r.username || null, score: String(r.score), balance: String(r.balance), me: Number(r.id) === me, owner: Number(r.id) === Number(owner?.o) }));
+}

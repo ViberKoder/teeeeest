@@ -14,7 +14,8 @@ export const cfg = {
   publicUrl: ((env.VITE_PUBLIC_URL as string) || '').replace(/\/$/, ''),
   demo: env.VITE_DEMO === '1',
   token: { symbol: 'EGG', decimals: 9 },
-  ton: { symbol: 'TON', decimals: 9 },
+  /** the network's own coin (TON), which Telegram's wallet calls Gram: this is the name users see */
+  ton: { symbol: 'Gram', decimals: 9 },
 } as const;
 
 export const endpoints = {

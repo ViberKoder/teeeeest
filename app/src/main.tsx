@@ -9,6 +9,7 @@ import { ToastProvider } from './ui/toast';
 import '@fontsource-variable/onest';
 import './styles/tokens.css';
 import './styles/app.css';
+import './styles/ui.css';
 
 bootTelegram();
 

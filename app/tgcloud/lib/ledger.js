@@ -4,6 +4,7 @@ import { db } from 'sdk';
 import { eq, sql } from 'sdk/db';
 import { users } from '../schema.js';
 import { EGG } from './config.js';
+import { BOOSTED, boostPct } from './boosts.js';
 import { getSettings } from './settings.js';
 
 export async function ensureUser(tgId, now, lang) {
@@ -28,6 +29,11 @@ export async function credit({ tgId, amount, kind, ref, now }) {
   await ensureUser(tgId, now);
   if (await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`)) return 'again';
   if ((await db.get(sql`SELECT banned AS b FROM users WHERE tg_id = ${tgId}`))?.b) return 'banned';
+  // boosts (warm-up, streak, squad, friends) add a percentage to what hatching pays; the daily cap below still applies
+  if (BOOSTED.has(kind)) {
+    const pct = await boostPct(tgId, now);
+    if (pct > 0) amount = (BigInt(amount) * BigInt(100 + pct)) / 100n;
+  }
   // one statement: the cap can not be overrun by two taps arriving at the same moment
   await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts, squad)
     SELECT ${tgId}, ${Number(amount)}, ${kind}, ${ref}, ${now}, COALESCE((SELECT squad FROM users WHERE tg_id = ${tgId}), 0)

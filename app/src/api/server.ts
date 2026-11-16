@@ -33,9 +33,21 @@ export interface StatsReply {
   langs?: [string, number][];
   battle?: { week: number; endsAt: number; board: { rank: number; chatId: number; title: string; username: string | null; score: number; players: number }[] };
 }
+export interface EarnTask { id: string; icon: string; title: string; sub: string; reward: string; have: number; need: number; state: 'open' | 'ready' | 'done' }
+export interface EarnBoost { id: 'warmup' | 'streak' | 'squad' | 'brood'; pct: number; max?: number; per?: number; active?: number; nextAt?: number; ready?: boolean; secs?: number; days?: number; joined?: boolean; friends?: number }
+export interface EarnReply {
+  now: number; balance: string; bonusPct: number;
+  daily: { streak: number; claimedToday: boolean; nextAt: number; days: { day: number; reward: string; state: 'done' | 'today' | 'next' }[] };
+  boosts: EarnBoost[];
+  tasks: EarnTask[];
+}
+export interface Friend { tag: string; username: string | null; balance: string; gave: string; joined: number; last: number; squad: boolean }
+export interface FriendsReply { pct: number; count: number; earned: string; balance: string; invitedBy: string | null; friends: Friend[] }
+export interface RosterRow { rank: number; tag: string; username: string | null; score: string; balance: string; me: boolean; owner: boolean }
 export interface SquadInfo { id: number; name: string; link: string | null; members: number; score: string; rank: number | null; owner?: number }
 export interface SquadReply {
   me: SquadInfo | null;
+  roster?: RosterRow[];
   board: { rank: number; id: number; name: string; link: string | null; members: number; score: string }[];
   week: number; endsAt: number; nextChangeAt: number; prizes: string[];
 }
@@ -70,6 +82,8 @@ function viaServerless<T>(name: string, input: object = {}): Promise<T> {
 }
 
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+  // design fixtures (VITE_DEMO=1 builds only; the branch and the module are removed from every other build)
+  if (import.meta.env.VITE_DEMO === '1') return (await import('../demo/api')).demoCall<T>(path, init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {});
   if (useServerless()) {
     const name = path.replace(/^\/v1\//, '').split('/')[0];
     if (name === 'relay') throw new ApiError('relay-unavailable', 503);
@@ -86,7 +100,7 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  available: () => (Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData()),
+  available: () => import.meta.env.VITE_DEMO === '1' || ((Boolean(cfg.apiUrl) || Boolean(serverless())) && Boolean(initData())),
   me: () => call<Me>('/v1/me'),
   /** where to send EGG / TON for a @username: their own wallet, or the one prepared for them */
   walletFor: (username: string) => call<{ username: string; address: string; ready: boolean }>('/v1/walletFor', { method: 'POST', body: JSON.stringify({ username }) }),
@@ -107,7 +121,11 @@ export const api = {
   /** live project numbers (explorer inside Telegram) */
   stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
   /** squads: state, create, join, leave, find, info (everything happens inside the app) */
-  squad: (input: Record<string, unknown> = {}) => call<SquadReply & { found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
+  squad: (input: Record<string, unknown> = {}) => call<SquadReply & { roster?: RosterRow[]; found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
+  /** Earn: daily check-in, one-time tasks, boosts (state, daily, task, boost) */
+  earn: (input: Record<string, unknown> = {}) => call<EarnReply>('/v1/earn', { method: 'POST', body: JSON.stringify(input) }),
+  /** the players this account invited, with what they hold and what their play brought */
+  friends: () => call<FriendsReply>('/v1/friends', { method: 'POST', body: '{}' }),
   /** internal data for a wallet or @username, to compare with the chain */
   lookup: (q: string) => call<LookupReply>('/v1/lookup', { method: 'POST', body: JSON.stringify({ q }) }),
   /** public: the same answer any wallet or explorer would get */
@@ -148,7 +166,7 @@ const messages: Record<string, string> = {
   banned: 'This account is restricted',
   unauthorized: 'Open the wallet from Telegram to sync EGG',
   'no-entitlement': 'Nothing is committed on-chain for you yet',
-  'sponsorship-used-up': 'Your free hatches are used up — add a little TON for fees',
+  'sponsorship-used-up': 'Your free transfers are used up — add a little Gram for fees',
   'pay-yourself': 'Your wallet can pay its own fee',
 };
 export const apiErrorText = (e: unknown) =>

@@ -16,6 +16,8 @@ interface TgWebApp {
   openLink(url: string): void;
   openTelegramLink?(url: string): void;
   showConfirm?(message: string, cb: (ok: boolean) => void): void;
+  showScanQrPopup?(params: { text?: string }, cb: (text: string) => boolean | void): void;
+  closeScanQrPopup?(): void;
   HapticFeedback?: {
     impactOccurred(s: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'): void;
     notificationOccurred(t: 'error' | 'success' | 'warning'): void;
@@ -135,4 +137,12 @@ export function squadFromLink(): number | null {
     ?? (window as unknown as { Telegram?: { WebApp?: { initDataUnsafe?: { start_param?: string } } } }).Telegram?.WebApp?.initDataUnsafe?.start_param ?? '';
   const m = /^squad_(\d{1,9})$/.exec(raw);
   return m ? Number(m[1]) : null;
+}
+
+/** Telegram's own QR scanner, if this client has one: resolves with the scanned text (or null). */
+export function scanQr(text = 'Scan a wallet QR code'): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!tg?.showScanQrPopup) return resolve(null);
+    try { tg.showScanQrPopup({ text }, (t) => { resolve(t); return true; }); } catch { resolve(null); }
+  });
 }

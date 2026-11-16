@@ -28,3 +28,15 @@ export function timeAgo(unix: number, now = Date.now() / 1000): string {
   if (d < 86400) return `${Math.floor(d / 3600)} h ago`;
   return new Date(unix * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+
+/** EGG (or Gram) in base units -> "2 500.5" */
+export const units = (v: bigint | string, decimals = 9, maxFrac = 2) => formatUnits(BigInt(v), decimals, maxFrac);
+
+export const clock = (unix: number) => new Date(unix * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** "2d 4h" / "3h 12m" / "8m" until a Unix time */
+export function untilText(unix: number, now = Date.now() / 1000): string {
+  const s = Math.max(0, Math.floor(unix - now));
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${Math.max(1, m)}m`;
+}
