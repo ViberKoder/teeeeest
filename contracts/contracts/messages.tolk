@@ -102,12 +102,23 @@ struct (0x87a42c7c) ClaimRequest {
     next: cell?
 }
 
-/// minter -> wallet.
+/// minter -> wallet. Bounceable: if the wallet can not take it, the minter takes `minted` back out of the supply.
+/// `minted` comes first on purpose: a bounced message keeps only its first 256 bits.
 struct (0x49e1974f) ClaimCredit {
     queryId: uint64
+    /// what the minter added to the supply for this request (`cumulative - claimedAtWallet` as the request stated it)
+    minted: coins
     cumulative: coins
     /// echoed unchanged from the owner's request; only the genuine minter can send it
     next: cell?
+}
+
+/// wallet -> minter. The minter counted `amount` more than the wallet could credit (another claim of the same
+/// wallet was credited in between), so it comes back out of `totalSupply` and `totalMinted`.
+struct (0x3a6f1c52) ClaimSurplus {
+    queryId: uint64
+    amount: coins
+    ownerAddress: address
 }
 
 // ---------------- governance ----------------

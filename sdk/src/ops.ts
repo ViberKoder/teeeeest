@@ -13,6 +13,7 @@ export const Op = {
   askToClaim: 0x28dac35b,
   claimRequest: 0x87a42c7c,
   claimCredit: 0x49e1974f,
+  claimSurplus: 0x3a6f1c52,
   // governance
   changePublisherKey: 0x4b2e9d11,
   proveFraud: 0x5fa0d0f1,
@@ -46,4 +47,5 @@ export const Err = {
   proofTooDeep: 92,
   claimInProgress: 93,
   notMinter: 94,
+  nothingToClaim: 95,
 } as const;

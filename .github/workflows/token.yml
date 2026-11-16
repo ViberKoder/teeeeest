@@ -1,0 +1,37 @@
+name: Token
+# The EGG jetton: rebuilds the contracts from source, checks that the committed bytecode (contracts/artifacts) is exactly that build,
+# and runs every sandbox test against it (SDK, the Serverless library, the Telegram wallet, the audit regressions).
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci
+      - name: Build the contracts and compare with the committed artifacts
+        working-directory: contracts
+        run: |
+          node scripts/build-tolk.mjs
+          node scripts/export-artifacts.mjs
+          git diff --exit-code -- artifacts
+      - run: npm test -w @egg/sdk
+      - run: npm test -w @egg/server
+  acton:
+    # the Tolk test suite (contracts/tests), with the Acton toolchain pinned in contracts/Acton.toml
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: contracts }
+    steps:
+      - uses: actions/checkout@v4
+        with: { persist-credentials: false }
+      - uses: ton-blockchain/setup-acton@0f9f436843d740466cae2d7411ff59072dde942e # v1.2.0
+      - run: acton build
+      - run: acton test

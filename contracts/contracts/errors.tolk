@@ -25,4 +25,5 @@ enum Errors {
     ProofTooDeep = 92
     ClaimInProgress = 93
     NotMinter = 94
+    NothingToClaim = 95
 }

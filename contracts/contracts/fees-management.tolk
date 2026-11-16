@@ -4,9 +4,16 @@ import "errors"
 // we're working in basechain
 const MY_WORKCHAIN = BASECHAIN
 
-// Claims: the user attaches this much; what is not spent comes back as excess.
-const MIN_CLAIM_VALUE = 50000000 // 0.05 (a real claim costs the user ~0.004, the rest returns)
+// Claims. What is not spent comes back to the owner as excess.
 const CLAIM_LOCK_SECONDS = 600
+
+// Upper bounds of the gas a claim can burn at each hop (measured in sdk/tests/audit.test.ts, with a margin).
+// They are bounds, not exact values: they decide how much TON must travel with a claim so no hop can run dry.
+const GAS_CLAIM_ASK = 9000 // wallet: AskToClaim
+const GAS_CLAIM_MINTER = 95000 // minter: ClaimRequest with the deepest proof allowed (64 steps)
+const GAS_CLAIM_MINTER_TAIL = 3000 // minter: from the value check to the end of its transaction
+const GAS_CLAIM_CREDIT = 12000 // wallet: ClaimCredit, whichever branch it takes without a transfer
+const GAS_CLAIM_SURPLUS = 8000 // minter: ClaimSurplus (only when two claims of one wallet crossed)
 
 // Storage costs
 // these constants are used to estimate storage fee (how much we should pay for storing a wallet contract);
@@ -102,6 +109,15 @@ fun checkAmountIsEnoughToBurn(msgValue: int) {
     assert (msgValue > minBurnAmount) throw Errors.NotEnoughGas;
 }
 
-fun checkAmountIsEnoughToClaim(msgValue: int) {
-    assert (msgValue >= MIN_CLAIM_VALUE) throw Errors.NotEnoughGas;
+/// The least a claim must carry: every hop's worst-case gas at the current network prices, and the messages between them.
+fun calcMinimalClaimAmount(fwdFee: int): coins {
+    return calculateGasFee(
+        MY_WORKCHAIN,
+        GAS_CLAIM_ASK + GAS_CLAIM_MINTER + GAS_CLAIM_CREDIT + GAS_CLAIM_SURPLUS,
+    ) +
+        4 * fwdFee;
+}
+
+fun checkAmountIsEnoughToClaim(msgValue: int, fwdFee: int) {
+    assert (msgValue >= calcMinimalClaimAmount(fwdFee)) throw Errors.NotEnoughGas;
 }

@@ -1,4 +1,5 @@
 import "@gen/EggWallet.code"
+import "@stdlib/gas-payments"
 import "errors"
 import "fees-management"
 import "jetton-utils"
@@ -16,6 +17,7 @@ contract EggMinter {
 
 type AllowedMessageToMinter =
     | ClaimRequest
+    | ClaimSurplus
     | BurnNotificationForMinter
     | RequestWalletAddress
     | ChangePublisherKey
@@ -38,16 +40,39 @@ fun assertSenderIsAdmin(senderAddress: address, adminAddress: address?) {
     assert (senderAddress == adminAddress!) throw Errors.NotAdmin;
 }
 
+/// A `ClaimCredit` that its wallet could not process comes back: nothing was credited there (a failed transaction
+/// changes no state), so what this claim added to the supply is taken out again. Only a message this contract
+/// itself sent can return here as bounced.
+fun onBouncedMessage(in: InMessageBounced) {
+    in.bouncedBody.skipBouncedPrefix();
+    var body = in.bouncedBody;
+    if (body.loadUint(32) != 0x49e1974f) {
+        return;
+    }
+    body.skipBits(64);
+    val minted = body.loadCoins();
+    if (minted == 0) {
+        return;
+    }
+    var storage = lazy MinterStorage.load();
+    storage.totalSupply -= minted;
+    storage.totalMinted -= minted;
+    storage.save();
+}
+
 fun onInternalMessage(in: InMessage) {
     val msg = lazy AllowedMessageToMinter.fromSlice(in.body);
 
     match (msg) {
         // -------------------------------------------------------------------------------
-        // The heart of the design: the minter checks the user's proof against a root it
-        // stores itself. No signature, no off-chain key is consulted.
+        // The heart of the design: the minter checks the publisher's signature on the root
+        // and the user's proof against that root, then the limits it keeps itself.
         // -------------------------------------------------------------------------------
         ClaimRequest => {
             var storage = lazy MinterStorage.load();
+            // A leaf names its owner by the 256-bit account id only. The same id in another workchain would be a
+            // different owner address, hence a different (empty) wallet, and could claim the same leaf again.
+            assert (msg.ownerAddress.getWorkchain() == MY_WORKCHAIN) throw Errors.WrongWorkchain;
             assert (
                 in.senderAddress ==
                 calcAddressOfJettonWallet(
@@ -110,8 +135,10 @@ fun onInternalMessage(in: InMessage) {
             assert (msg.cumulative <= limits.walletBurst + mulDivFloor(limits.walletDaily, days, 86400)) throw Errors.WalletRate;
 
             // 6. new supply = only what this wallet has not been credited yet
+            var minted: coins = 0;
             if (msg.cumulative > msg.claimedAtWallet) {
                 val delta = msg.cumulative - msg.claimedAtWallet;
+                minted = delta;
                 assert (storage.totalSupply + delta <= storage.maxSupply) throw Errors.SupplyExceeded;
                 // What was ever created can never exceed the highest total promised, which the growth limits bound.
                 assert (storage.totalMinted + delta <= limits.maxTotal) throw Errors.SupplyExceeded;
@@ -120,12 +147,23 @@ fun onInternalMessage(in: InMessage) {
             }
             storage.save();
 
+            // 7. the credit must arrive with enough TON to be processed: a credit that ran out of gas could not even
+            // bounce, and the supply would stay counted with nothing credited. Refusing here bounces the request instead.
+            assert (
+                in.valueCoins >=
+                calculateGasFee(MY_WORKCHAIN, getGasConsumedAtTheMoment() + GAS_CLAIM_MINTER_TAIL) +
+                    calculateGasFee(MY_WORKCHAIN, GAS_CLAIM_CREDIT + GAS_CLAIM_SURPLUS) +
+                    2 * in.originalForwardFee
+            ) throw Errors.NotEnoughGas;
+
             val creditMsg = createMessage({
-                bounce: BounceMode.NoBounce,
+                // bounceable: see onBouncedMessage
+                bounce: BounceMode.Only256BitsOfBody,
                 dest: in.senderAddress,
                 value: 0,
                 body: ClaimCredit {
                     queryId: msg.queryId,
+                    minted,
                     cumulative: msg.cumulative,
                     next: msg.next,
                 },
@@ -133,6 +171,30 @@ fun onInternalMessage(in: InMessage) {
             creditMsg.send(
                 SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
             );
+        }
+
+        // The wallet could credit less than this contract counted (two claims of one wallet crossed): undo the difference.
+        ClaimSurplus => {
+            var storage = lazy MinterStorage.load();
+            assert (
+                in.senderAddress ==
+                calcAddressOfJettonWallet(
+                    msg.ownerAddress,
+                    contract.getAddress(),
+                    eggWalletCompiledCode(),
+                )
+            ) throw Errors.NotValidWallet;
+            storage.totalSupply -= msg.amount;
+            storage.totalMinted -= msg.amount;
+            storage.save();
+
+            val excessesMsg = createMessage({
+                bounce: BounceMode.NoBounce,
+                dest: msg.ownerAddress,
+                value: 0,
+                body: ReturnExcessesBack { queryId: msg.queryId },
+            });
+            excessesMsg.send(SEND_MODE_IGNORE_ERRORS | SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE);
         }
 
         BurnNotificationForMinter => {

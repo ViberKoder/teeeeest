@@ -36,7 +36,7 @@ fun onBouncedMessage(in: InMessageBounced) {
         BurnNotificationForMinter => {
             storage.jettonBalance += msg.jettonAmount;
         }
-        // the minter refused the claim (unknown epoch, bad proof): unlock so the user can retry
+        // the minter refused the claim (bad signature, bad proof, a limit): unlock so the user can retry
         ClaimRequest => {
             storage.claimLockedUntil = 0;
         }
@@ -50,16 +50,16 @@ fun onInternalMessage(in: InMessage) {
     match (msg) {
         InternalTransferStep => {
             var storage = lazy WalletStorage.load();
-            if (in.senderAddress != storage.minterAddress) {
-                assert (
-                    in.senderAddress ==
-                    calcAddressOfJettonWallet(
-                        msg.transferInitiator!,
-                        storage.minterAddress,
-                        contract.getCode(),
-                    )
-                ) throw Errors.NotValidWallet;
-            }
+            // Only another EggWallet of the same minter can send tokens. The minter itself is deliberately NOT
+            // accepted here: supply is created by `ClaimCredit` alone, so there is no mint path in the wallet either.
+            assert (
+                in.senderAddress ==
+                calcAddressOfJettonWallet(
+                    msg.transferInitiator!,
+                    storage.minterAddress,
+                    contract.getCode(),
+                )
+            ) throw Errors.NotValidWallet;
             storage.jettonBalance += msg.jettonAmount;
             storage.save();
 
@@ -149,14 +149,24 @@ fun onInternalMessage(in: InMessage) {
             );
         }
 
-        // The owner asks the minter to verify a proof against a root it has published.
-        // The wallet only forwards: the decision is made by the minter's own on-chain state.
+        // The owner asks the minter to verify a proof against a root the publisher signed.
+        // The wallet only forwards: the decision is made by the minter.
         AskToClaim => {
-            checkAmountIsEnoughToClaim(in.valueCoins);
+            checkAmountIsEnoughToClaim(in.valueCoins, in.originalForwardFee);
+            // `next` travels to the minter and back; make sure now that it will parse when the credit arrives
+            if (msg.next != null) {
+                val intent = TransferIntent.fromCell(msg.next!);
+                intent.forwardPayload.checkIsCorrectTlbEither();
+                assert (
+                    intent.transferRecipient.getWorkchain() == MY_WORKCHAIN
+                ) throw Errors.WrongWorkchain;
+            }
 
             var storage = lazy WalletStorage.load();
             assert (in.senderAddress == storage.ownerAddress) throw Errors.NotOwner;
             assert (blockchain.now() >= storage.claimLockedUntil) throw Errors.ClaimInProgress;
+            // a claim that can not credit anything would only load the minter
+            assert (msg.cumulative > storage.claimed) throw Errors.NothingToClaim;
             storage.claimLockedUntil = blockchain.now() + CLAIM_LOCK_SECONDS;
             storage.save();
 
@@ -186,20 +196,41 @@ fun onInternalMessage(in: InMessage) {
             assert (in.senderAddress == storage.minterAddress) throw Errors.NotMinter;
 
             // Credit the difference against what THIS wallet has really claimed so far.
+            var credited: coins = 0;
             if (msg.cumulative > storage.claimed) {
-                storage.jettonBalance += msg.cumulative - storage.claimed;
+                credited = msg.cumulative - storage.claimed;
+                storage.jettonBalance += credited;
                 storage.claimed = msg.cumulative;
             }
             storage.claimLockedUntil = 0;
-            storage.save();
+
+            // The minter counted `minted` from what the request said was claimed. If another credit landed in between
+            // (the lock expired while a request was still travelling), part of it is already here: hand the
+            // difference back, so the supply always equals what wallets hold.
+            if (msg.minted > credited) {
+                storage.save();
+                val surplusMsg = createMessage({
+                    bounce: BounceMode.NoBounce,
+                    dest: storage.minterAddress,
+                    value: 0,
+                    body: ClaimSurplus {
+                        queryId: msg.queryId,
+                        amount: msg.minted - credited,
+                        ownerAddress: storage.ownerAddress,
+                    },
+                });
+                surplusMsg.send(
+                    SEND_MODE_CARRY_ALL_REMAINING_MESSAGE_VALUE | SEND_MODE_BOUNCE_ON_ACTION_FAIL,
+                );
+                return;
+            }
 
             // "claim and send": the owner asked, in the same signed request, to pass part of it on right away.
             // Best effort: if anything does not fit (balance, gas), the claim stays credited and the rest is returned.
             if (msg.next != null) {
-                val intent = TransferIntent.fromCell(msg.next);
+                val intent = TransferIntent.fromCell(msg.next!);
                 if (
-                    intent.transferRecipient.getWorkchain() == MY_WORKCHAIN
-                    && storage.jettonBalance >= intent.jettonAmount
+                    storage.jettonBalance >= intent.jettonAmount
                     && in.valueCoins > calcMinimalTransferAmount(intent.forwardTonAmount, in.originalForwardFee)
                 ) {
                     storage.jettonBalance -= intent.jettonAmount;
@@ -228,6 +259,7 @@ fun onInternalMessage(in: InMessage) {
                 }
             }
 
+            storage.save();
             returnExcesses(storage.ownerAddress, msg.queryId, in.valueCoins);
         }
 

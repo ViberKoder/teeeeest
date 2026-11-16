@@ -47,10 +47,26 @@ What it gives up: roots are no longer public on-chain objects, so **equivocation
 | 20 | Low | A failing value in `settings.set` left the earlier ones half applied. | Everything is validated first, then applied. |
 | 21 | Perf | Every public `stats` call tried to fetch `t.me` (always blocked), awaited the failure and wrote `viewsAt` rows. Every wallet open rebuilt the whole Merkle tree (hashing every leaf). | The fetch is gone (views come from the external sync); the tree is built once per root and reused. |
 
+## Audit of v5 (contracts, line by line) — found and fixed
+
+Regression tests: `sdk/tests/audit.test.ts` (run against the bytecode in `contracts/artifacts`). **All of these change the contract code: they take effect only for a newly deployed minter** (new code hashes: minter `13e801b5…`, wallet `2f1386dc…`).
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| 22 | **Critical** | **One leaf could be claimed twice, from a second workchain.** A leaf names its owner by the 256-bit account id only (`leafHash` drops the workchain), but the wallet address is derived from the full owner address. The same id in the masterchain (`-1:<same hash>`) gets a different, empty EggWallet whose `claimed` is 0 — and the minter accepted its `ClaimRequest` with the same proof. Shown in the sandbox: one 100 EGG leaf → 200 EGG minted, until `maxTotal` runs out. Whoever controls an account id in basechain can deploy the same id in masterchain (same key + code). | The minter refuses a `ClaimRequest` whose owner is not in basechain (`WrongWorkchain`). |
+| 23 | **High** | **Supply counted with nothing credited.** The minter adds the delta to `totalSupply`/`totalMinted` and sends a **non-bounceable** `ClaimCredit`. Anything that made that credit fail left the supply inflated forever and ate the shared `maxTotal` budget of every other player: (a) a malformed `next` (it was parsed only in `ClaimCredit`, after the minter counted), (b) too little TON left after a deep proof (gas runs out in the credit), (c) two claims in flight after the 10-min lock expired (the second one was counted again: the old residual risk #3). | (a) the wallet parses and checks `next` in `AskToClaim`, before anything is locked or sent; (b) the attached value is now computed from per-hop gas bounds (`calcMinimalClaimAmount`), and the minter refuses (bounces) a request that would not leave enough for the credit; (c) `ClaimCredit` carries `minted` and is **bounceable**: a bounce is taken back out of the supply (`onBouncedMessage`), and a wallet that credits less than `minted` reports the difference with `ClaimSurplus` (accepted only from the genuine wallet). Invariant now tested under all paths: `totalSupply == totalMinted == Σ wallet balances` (before burns). |
+| 24 | Medium | **Proof padding.** The proof chain could contain any number of empty links (`count = 0`), which `MAX_PROOF_DEPTH` (it counts steps) did not bound: a user could make the minter burn arbitrary gas, and — with #23(b) — make the supply drift. | A link without steps is accepted only as the last one; 64 steps remain the maximum. |
+| 25 | Medium | **Mint path left in the wallet.** `InternalTransferStep` from the minter's address was accepted without any check — a leftover of the template. The minter never sends it today, but it is a mint path with no supply accounting, one bug away from being reachable. | Only a genuine EggWallet of the same minter can send `InternalTransferStep`. |
+| 26 | Low | Repeating a claim that credits nothing still went wallet → minter → wallet (gas for the user, load on the hot minter). | The wallet refuses it (`NothingToClaim`, 95). |
+| 27 | **High** (bot) | **The publisher could be frozen by its own signer.** `currentRoot` caps each leaf at the per-wallet ceiling read from the chain. If the admin ever tightens `walletDaily`/`walletBurst`, the next root would promise some owner *less* than the previous one — exactly what `ProveFraud` accepts, so anyone could freeze the key. | The cap never cuts below the owner's amount in the previous root. |
+| 28 | Process | The contracts CI lived in `contracts/.github/`, which GitHub never runs; nothing checked that `contracts/artifacts` is the build of the sources. | `.github/workflows/token.yml`: rebuilds with the pinned compiler (`scripts/build-tolk.mjs`, byte-identical to `acton build`), fails if the artifacts differ, runs every sandbox test. |
+
+Measured: a claim still costs the user ≈ 0.005 TON; the deepest proof (64 steps) uses ≈ 81 000 gas in the minter. The least a claim must carry is now computed on-chain from the gas bounds (≈ 0.052 TON at today's basechain prices); the app attaches 0.08 and the rest returns.
+
 ## Checked and fine
 
-* Claims verify a proof against a root the minter itself stores; the wallet accepts credit only from the minter; leaf/node/root hashes carry distinct tags and lengths (no second-preimage reuse of a node as a leaf); sums are `uint128` and range-checked on serialisation; proof depth is capped (64 steps).
-* Replays credit nothing (`claimed` is monotone in the wallet); concurrent claims are serialised by a wallet lock; a bounced `ClaimRequest` unlocks.
+* Claims verify the publisher's signature on the root and a proof against that root; the wallet accepts credit only from the minter; leaf/node/root hashes carry distinct tags and lengths (no second-preimage reuse of a node as a leaf); sums are `uint128` and range-checked on serialisation; proof depth is capped (64 steps).
+* Replays credit nothing (`claimed` is monotone in the wallet); concurrent claims are serialised by a wallet lock, and if the lock expires mid-flight the surplus is returned; a bounced `ClaimRequest` unlocks; a bounced `ClaimCredit` is taken back out of the supply.
 * Wallet address depends only on `(owner, minter, code)`; there is no upgrade path, no mint message, no admin function that edits or deletes a root.
 * Server: initData HMAC and freshness, constant-time key comparison, zod validation, body limit, rate limits, idempotent ingest, relay re-derives the wallet and checks the message and value.
 
@@ -62,7 +78,7 @@ Key = HMAC(master, username); nothing per-user is stored. Hand-over only to the 
 
 1. **Publisher can still choose who gets what** in *new* roots, within `maxGrowth` per period (and up to twice that across a window boundary). Until the admin is dropped or is a multisig, the admin can also replace the publisher. Keep the admin cold, then `DropAdmin` once parameters are proven.
 2. **Window-edge burst**: `maxGrowth` per period can be used at the end of one window and again at the start of the next (≤ 2× in a short span).
-3. **Lock expiry race** (10 min): if a `ClaimCredit` were delayed beyond the lock, a second claim could be counted twice in the minter's supply (the wallet still credits once). The excess only consumes cap, never a wallet balance. Delays of that size are not expected on TON.
+3. ~~Lock expiry race~~ — fixed in v5 (#23c): a crossed claim's surplus is returned to the minter.
 4. **Data availability**: if every copy of an epoch's leaf set is lost, proofs for it cannot be rebuilt. Mirror `GET /v1/epochs/latest` publicly.
 5. **Relayer budget**: sponsorship is capped per Telegram account (default 3) but Telegram accounts are cheap; the relayer wallet is a hot wallet with a bounded balance — fund it accordingly.
 6. **Telegram CloudStorage backup**: whoever controls the Telegram account can restore the wallet (same trust model as Money). Users can switch to self-custody.

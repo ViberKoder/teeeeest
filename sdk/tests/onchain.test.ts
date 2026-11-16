@@ -204,7 +204,8 @@ describe('TypeScript SDK against the Tolk contracts built by Acton', () => {
     const fresh = await alice.send({ to: wallet, value: Attach.claim, body: askToClaimBody({ cumulative: E(1), proof: t.proof(alice.address)!, root: forged }) });
     expect(exitOf(fresh.transactions, minter)).toBe(0);
     const t2 = new EggTree([{ owner: alice.address, cumulative: E(1) }, { owner: bob.address, cumulative: E(5) }]);
-    const old = await alice.send({ to: wallet, value: Attach.claim, body: askToClaimBody({ cumulative: E(1), proof: t2.proof(alice.address)!, root: signedRootCell(rootOf(t2, 2n)) }) });
+    const bw = walletStateInit(bob.address, minter, eggWalletCode);
+    const old = await bob.send({ to: bw.address, value: Attach.claim, init: bw.init, body: askToClaimBody({ cumulative: E(5), proof: t2.proof(bob.address)!, root: signedRootCell(rootOf(t2, 2n)) }) });
     expect(exitOf(old.transactions, minter)).toBe(Err.legacyCap);
   });
 });

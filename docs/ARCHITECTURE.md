@@ -38,17 +38,18 @@ promised), the growth limits and the last `(seq, root)` slot. There is no per-ep
 
 | Message | Who | Effect |
 |---|---|---|
-| `ClaimRequest(owner, cumulative, claimedAtWallet, proof, signedRoot)` | **a genuine EggWallet only** (address recomputed from `owner`) | checks the root's signature (publisher key, or the previous key within what it promised), that the proof opens to **exactly that root**, the one-root-per-`seq` slot, the growth limits and the caps; adds the delta to the supply and replies `ClaimCredit` |
+| `ClaimRequest(owner, cumulative, claimedAtWallet, proof, signedRoot)` | **a genuine EggWallet only** (address recomputed from `owner`, owner in basechain) | checks the root's signature (publisher key, or the previous key within what it promised), that the proof opens to **exactly that root**, the one-root-per-`seq` slot, the growth limits and the caps; adds the delta to the supply and replies `ClaimCredit` |
 | `ChangePublisherKey(newKey)` | admin | the old key keeps value **only up to the highest total promised so far** (`legacyCap`): what it signed earlier stays claimable, a stolen old key can promise nothing more |
 | `SetLimits`, `ChangeMetadata`, 2-step admin change, `DropAdmin` | admin | governance. **No mint, no code upgrade**; limits can only be *tightened* |
+| `ClaimSurplus(amount, owner)` | **a genuine EggWallet only** | takes back what a crossed claim counted twice |
 | `BurnNotification`, `RequestWalletAddress` | wallets / anyone | standard |
 
 **EggWallet** — TEP-74 wallet plus `claimed`, a short lock, and "claim and send" (a claim can carry a transfer instruction that runs right after the credit).
 
 | Message | Who | Effect |
 |---|---|---|
-| `AskToClaim(cumulative, proof, signedRoot, next?)` | owner only | locks the wallet for 10 min, forwards `ClaimRequest` to the minter |
-| `ClaimCredit(cumulative, next?)` | **minter only** | credits `cumulative − claimed` (never more than the wallet's own state allows), unlocks, then runs `next` if it fits |
+| `AskToClaim(cumulative, proof, signedRoot, next?)` | owner only | checks `next` parses, that something new can be credited and that enough TON is attached for every hop; locks the wallet for 10 min, forwards `ClaimRequest` to the minter |
+| `ClaimCredit(minted, cumulative, next?)` | **minter only** | credits `cumulative − claimed` (never more than the wallet's own state allows), unlocks; if that is less than the minter counted (`minted`), sends the difference back (`ClaimSurplus`); otherwise runs `next` if it fits. Bounceable: a credit that fails is taken back out of the supply |
 | bounce of `ClaimRequest` | system | unlocks (the minter refused: bad signature / proof / limit) |
 
 Wallet addresses depend on `(owner, minter, code)` only — nothing the project does later can move anyone's address.
@@ -67,7 +68,7 @@ Wallet addresses depend on `(owner, minter, code)` only — nothing the project 
 | **A cheating publisher is caught on-chain** | `ProveFraud`: anyone submits two roots the key signed that an honest publisher never would (same `seq` / smaller later total / an owner's amount going down, with Merkle proofs). The contract checks it and **freezes the key**: it can no longer raise the promised total until the admin rotates it. Everything already promised stays claimable |
 | **No single wallet can be handed a fortune** | per-wallet ceiling: a claim is refused if the wallet's amount exceeds `walletBurst + walletDaily × days since launch` (1000 EGG/day on testnet), whatever the key signed |
 | Admin can not mint, and can only tighten limits | contract code |
-| `totalSupply` on-chain is truthful | minted at claim time; burns subtract |
+| `totalSupply` on-chain is truthful | counted at claim time, taken back if the credit fails or overlaps (bounce / `ClaimSurplus`); burns subtract. `totalSupply == Σ balances` is a tested invariant |
 
 ## What is **not** guaranteed (be honest with your users)
 

@@ -6,6 +6,11 @@
   "scripts": {
     "build": "acton build && node scripts/export-artifacts.mjs",
     "test": "acton test",
-    "fmt": "acton fmt"
+    "fmt": "acton fmt",
+    "build:npm": "node scripts/build-tolk.mjs && node scripts/export-artifacts.mjs"
+  },
+  "devDependencies": {
+    "@ton/core": "^0.62.1",
+    "@ton/tolk-js": "1.5.0"
   }
 }

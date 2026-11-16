@@ -45,7 +45,15 @@ export async function currentRoot(now) {
 
   // never sign what the contract would refuse: the growth budget for the total, and the per-wallet ceiling for each leaf
   const lim = await chainLimits(now, minter);
-  const capped = leaves.map((l) => (l.cumulative > lim.perWallet ? { ...l, cumulative: lim.perWallet } : l));
+  // An owner's amount must never go DOWN from one root to the next (ProveFraud would freeze the key), so the cap never cuts below
+  // what the previous root already promised — even if the admin tightened the per-wallet ceiling since.
+  const before = new Map(last?.leaves ? JSON.parse(last.leaves).map(([o, c]) => [o, BigInt(c)]) : []);
+  const capped = leaves.map((l) => {
+    const floor = before.get(l.owner) ?? 0n;
+    const c = l.cumulative > lim.perWallet ? lim.perWallet : l.cumulative;
+    return { ...l, cumulative: c > floor ? c : floor };
+  });
+  // an owner of the previous root who is missing now (wallet re-linked before it was locked) is omitted, which is not provable
   const tree = await buildTree(capped);
   if (tree.total > lim.total) return last ?? null;
   if (last && BigInt(last.total) > tree.total) return last; // totals only grow (a smaller one would be provable fraud)

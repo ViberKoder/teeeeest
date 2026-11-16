@@ -57,6 +57,8 @@ fun foldProof(leaf: int, leafSum: int, proof: cell): (int, int) {
     while (more) {
         more = cur.loadUint(1) == 1;
         var count = cur.loadUint(2);
+        // a link that carries no step would only burn gas: the walk is bounded by MAX_PROOF_DEPTH steps
+        assert (count > 0 || !more) throw Errors.ProofTooDeep;
         while (count > 0) {
             val sibHash = cur.loadUint(256);
             val sibSum = cur.loadUint(128);

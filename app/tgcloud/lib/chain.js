@@ -23,17 +23,6 @@ async function get(address, method, args = []) {
 }
 const num = (x) => BigInt(x.num);
 
-export async function lastEpoch(minter) {
-  const s = await get(minter, 'get_last_epoch');
-  if (!s) throw new Error('minter is not reachable');
-  return Number(num(s[0]));
-}
-
-export async function rootOf(minter, epoch) {
-  const s = await get(minter, 'get_root', [String(epoch)]);
-  return s ? num(s[0]).toString(16).padStart(64, '0') : null;
-}
-
 export async function seqnoOf(wallet) {
   const s = await get(wallet, 'seqno');
   return s ? Number(num(s[0])) : null;
