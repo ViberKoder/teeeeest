@@ -11,9 +11,9 @@ export function BoostsSheet({ onClose, earn }: { onClose: () => void; earn: Earn
   return (
     <Sheet onClose={onClose} title="Boosts" tall>
       <div className="boost-hero">
-        <EggCoin size={74} tone="gold" spark float />
-        <div className="bh-num num">Lv {total}</div>
-        <p>Boosts are earned, never bought: nothing is spent</p>
+        <EggCoin size={64} float />
+        <div className="bh-num num">Level {total}</div>
+        <p>Boosts are earned, never bought</p>
       </div>
       <div className="stack-12">
         {(earn?.boosts ?? []).map((b) => {

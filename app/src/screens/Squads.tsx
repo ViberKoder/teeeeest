@@ -5,7 +5,6 @@ import { units, untilText } from '../lib/format';
 import { hueOf } from '../lib/league';
 import { confirmNative, haptic, openExternal, shareLink, tgUserId } from '../lib/tg';
 import { useNav } from '../state/nav';
-import { Chick } from '../ui/Chick';
 import { Crest } from '../ui/Crest';
 import { EggCoin } from '../ui/EggCoin';
 import { Chevron, Globe, Plus, Share } from '../ui/Icons';
@@ -26,24 +25,7 @@ const WHY: Record<string, string> = {
 };
 const why = (e: unknown) => WHY[(e as { code?: string })?.code ?? ''] ?? 'Something went wrong, try again';
 const egg = (u: string) => units(u || '0', 9, 0);
-const MEDAL = ['🥇', '🥈', '🥉'];
-
-function Podium({ board, mine, onPick }: { board: SquadReply['board']; mine?: number; onPick: (b: SquadReply['board'][number]) => void }) {
-  const top = [board[1], board[0], board[2]]; // silver, gold, bronze: the winner stands in the middle
-  return (
-    <div className="podium">
-      {top.map((b, i) => b ? (
-        <button key={b.id} className={`pod p${[2, 1, 3][i]} ${mine === b.id ? 'mine' : ''}`} onClick={() => onPick(b)}>
-          <span className="pod-medal">{MEDAL[[1, 0, 2][i]]}</span>
-          <Crest name={b.name} size={[52, 66, 52][i]} egg={false} />
-          <b>{b.name}</b>
-          <small className="num"><EggCoin size={14} />{egg(b.score)}</small>
-          <span className="pod-step num">{[2, 1, 3][i]}</span>
-        </button>
-      ) : <span key={i} className={`pod p${[2, 1, 3][i]} empty`} />)}
-    </div>
-  );
-}
+const MEDAL = ['1', '2', '3'];
 
 export function SquadsScreen() {
   const toast = useToast();
@@ -89,7 +71,7 @@ export function SquadsScreen() {
         {s && <span className="timer-pill">{left} left</span>}
       </header>
 
-      {err && !s && <div className="empty-card"><Chick size={90} wave /><b>{err}</b><span>Open the wallet from the bot to join a squad.</span></div>}
+      {err && !s && <div className="empty-card"><EggCoin size={60} float /><b>{err}</b><span>Open the wallet from the bot to join a squad.</span></div>}
 
       {s && me && (
         <section className="squad-hero">
@@ -111,11 +93,10 @@ export function SquadsScreen() {
 
       {s && !me && (
         <section className="squad-hero empty">
-          <div className="flock"><Chick size={70} wave /><Chick size={92} hatching /><Chick size={70} /></div>
           <h2>Hatch together</h2>
           <p>A squad’s score is the EGG its members hatch. The three best squads win every week.</p>
           <div className="prize-row">
-            {s.prizes.slice(0, 3).map((p, i) => <span key={i}>{MEDAL[i]}<b className="num">{p}</b><small>EGG each</small></span>)}
+            {s.prizes.slice(0, 3).map((p, i) => <span key={i}><small>{MEDAL[i]} place</small><b className="num">{p} EGG</b></span>)}
           </div>
           <div className="sh-actions">
             <button className="btn-main" onClick={() => setCreating(true)}><Plus width={19} height={19} />Create a squad</button>
@@ -124,14 +105,12 @@ export function SquadsScreen() {
         </section>
       )}
 
-      {s && board.length >= 3 && <><div className="sec-row"><h3>Top squads</h3><span className="muted">this week</span></div><Podium board={board} mine={me?.id} onPick={(b) => (me?.id === b.id ? undefined : void join(b.id, b.name))} /></>}
-
       {s && (
         <>
-          <div className="sec-row"><h3>{board.length >= 3 ? 'Leaderboard' : 'Top squads'}</h3>{!me && <button onClick={() => setFinding(true)}>Search</button>}</div>
+          <div className="sec-row"><h3>Leaderboard</h3>{!me && <button onClick={() => setFinding(true)}>Search</button>}</div>
           <div className="card board-card">
             {board.length === 0 && <div className="empty-mini">No squads yet. Create the first one.</div>}
-            {(board.length >= 3 ? board.slice(3) : board).map((b) => (
+            {board.map((b) => (
               <button key={b.id} className={`brow ${me?.id === b.id ? 'me' : ''}`} onClick={() => (me?.id === b.id ? undefined : void join(b.id, b.name))}>
                 <span className={`rank num ${b.rank <= 3 ? `m${b.rank}` : ''}`}>{b.rank}</span>
                 <Crest name={b.name} size={42} egg={false} />
@@ -181,7 +160,7 @@ function CreateSheet({ busy, onClose, onCreate }: { busy: boolean; onClose: () =
   const ok = name.trim().length >= 3;
   return (
     <Sheet onClose={onClose} title="New squad" footer={<button className="mainbtn inline accent" disabled={!ok || busy} onClick={() => onCreate(name, link)}>{busy ? <span className="spinner" /> : 'Create squad'}</button>}>
-      <div className="create-art">{name.trim().length >= 2 ? <Crest name={name} size={84} /> : <Chick size={96} hatching />}</div>
+      <div className="create-art">{name.trim().length >= 2 ? <Crest name={name} size={84} /> : <EggCoin size={64} float />}</div>
       <div className="field-card"><label>Name</label><input className="input big" maxLength={24} autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Golden Yolks" /></div>
       <div className="field-card"><label>Chat or channel (optional)</label><input className="input big" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://t.me/…" autoCapitalize="none" autoCorrect="off" spellCheck={false} /></div>
       <p className="foot-note">Squads are for people who play: you need to have hatched at least one egg.</p>

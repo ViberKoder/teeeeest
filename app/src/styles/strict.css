@@ -1,0 +1,108 @@
+/* ======================= strict: Telegram's own palette, one accent, no decoration =======================
+   Surfaces, separators and type do the work; the egg and the Gram diamond are the only ornaments. */
+:root { --shadow-s: none; --shadow-m: none; --hair: var(--separator); }
+.card, .group { box-shadow: none; border-radius: 14px; }
+
+/* type */
+.page-top h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+.page-top p { font-size: 14px; }
+.sec-row { padding: 22px 4px 8px; }
+.sec-row h3, .act-head h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.sec-t { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; }
+.day-label { text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500; padding: 14px 4px 6px; }
+
+/* buttons */
+.btn-main, .btn-soft, .btn-glass, .btn-gold { height: 50px; border-radius: 12px; font-size: 17px; font-weight: 600; letter-spacing: 0; box-shadow: none; }
+.btn-main, .btn-gold { background: var(--accent); color: var(--on-accent); }
+.btn-soft, .btn-glass { background: var(--accent-soft); color: var(--accent-text); backdrop-filter: none; }
+.btn-main.sm, .btn-soft.sm, .btn-gold.sm { height: 32px; border-radius: 10px; font-size: 14px; }
+.btn-main[disabled] { background: var(--fill); color: var(--hint); opacity: 1; }
+.boost-pill { background: var(--accent-soft); color: var(--accent-text); box-shadow: none; height: 34px; font-weight: 600; }
+
+/* home */
+.counter .count { font-size: 52px; font-weight: 700; letter-spacing: -0.035em; }
+.league { display: block; width: min(100%, 300px); margin: 12px auto 0; padding: 0; background: none; box-shadow: none; text-align: center; font-size: 14px; color: var(--hint); }
+.league b { color: var(--text); font-weight: 600; margin-right: 8px; } .league em { font-style: normal; }
+.dock { gap: 10px; margin-top: 20px; }
+.dock-btn { padding: 14px 4px 12px; border-radius: 14px; box-shadow: none; gap: 8px; font-size: 13px; font-weight: 500; background: var(--surface); }
+.dock-btn::before { display: none; }
+.di, .di.send, .di.recv, .di.swap { width: auto; height: auto; background: none; box-shadow: none; color: var(--accent); }
+.asset-card { border-radius: 14px; }
+.asset { padding: 11px 16px; }
+.chips-seg button.on { box-shadow: none; background: var(--surface); }
+.tx-card { border-radius: 14px; }
+
+/* tab bar: Telegram's flat translucent bar */
+.tabbar { left: 0; right: 0; bottom: 0; max-width: 560px; margin: 0 auto; height: calc(56px + var(--safe-b)); padding: 6px 8px var(--safe-b); border-radius: 0; box-shadow: none; border: 0; border-top: 0.5px solid var(--separator); background: color-mix(in srgb, var(--page) 86%, transparent); }
+.tab { border-radius: 0; gap: 1px; font-size: 10.5px; font-weight: 500; color: var(--hint); }
+.tab .ti { width: auto; height: 28px; background: none !important; }
+.tab.on { background: none; color: var(--accent); }
+.shell { padding-bottom: calc(var(--safe-b) + 84px); }
+
+/* earn */
+.daily { padding: 16px; }
+.daily-head { display: flex; align-items: center; justify-content: space-between; }
+.daily-head b { display: block; font-size: 17px; font-weight: 600; } .daily-head small { color: var(--hint); font-size: 13px; }
+.daily-next { font-weight: 600; color: var(--accent-text); font-size: 15px; }
+.week { margin-top: 14px; gap: 6px; }
+.wd { padding: 9px 0 7px; border-radius: 10px; background: var(--fill); gap: 3px; }
+.wd b { font-size: 11px; font-weight: 600; color: var(--hint); }
+.wd.done { background: var(--fill); color: inherit; } .wd.done b { color: var(--hint); }
+.wd.today { background: var(--accent-soft); box-shadow: none; transform: none; outline: 1.5px solid var(--accent); } .wd.today b { color: var(--accent-text); }
+.wd-check { background: var(--accent); color: var(--on-accent); width: 22px; height: 22px; }
+.dc-foot { margin-top: 14px; } .dc-foot .btn-main { width: 100%; height: 48px; font-size: 16px; }
+.boost-mini { border-radius: 14px; box-shadow: none; padding: 14px; gap: 8px; }
+.boost-mini b { font-size: 16px; font-weight: 600; }
+.boost-ic, .task-ic { background: var(--fill) !important; color: var(--accent); border-radius: 50%; box-shadow: none; display: inline-grid; place-items: center; }
+.task-ic { width: 40px; height: 40px; }
+.task-main b { font-weight: 600; }
+.reward { color: var(--text); font-weight: 600; }
+.task + .task::before { left: 68px; }
+.pips i { background: var(--fill); } .pips i.on { background: var(--accent); }
+.pbar i, .bar i { background: var(--accent); }
+.pill.on { background: var(--accent-soft); color: var(--accent-text); } .pill.ready { background: var(--accent); color: var(--on-accent); }
+.bh-num { background: none; color: var(--text); -webkit-text-fill-color: currentColor; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-top: 8px; }
+.boost-card { border-radius: 14px; box-shadow: none; }
+
+/* friends, squads, settings: plain cards */
+.invite-card { background: var(--surface); color: var(--text); box-shadow: none; border-radius: 14px; text-align: left; padding: 18px 16px 16px; }
+.invite-card h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+.invite-card p { margin: 0; max-width: none; opacity: 1; color: var(--hint); font-size: 14px; }
+.invite-actions .btn-glass { width: 50px; background: var(--accent-soft); color: var(--accent-text); }
+.stat { border-radius: 14px; box-shadow: none; background: var(--surface); }
+.stat b { font-size: 19px; font-weight: 700; }
+.frow.me, .brow.me { background: var(--accent-soft); }
+.rank { font-size: 14px; font-weight: 600; }
+.rank.m1, .rank.m2, .rank.m3 { background: none; color: var(--accent-text); }
+.avatar { background: var(--fill); color: var(--text); font-weight: 600; }
+.squad-hero, .squad-hero.empty { background: var(--surface); color: var(--text); box-shadow: none; border-radius: 14px; text-align: left; }
+.squad-hero.empty h2 { font-size: 22px; margin: 0 0 6px; } .squad-hero.empty p { margin: 0; max-width: none; opacity: 1; color: var(--hint); }
+.sh-name h2 { font-size: 22px; font-weight: 700; }
+.rank-chip { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.sh-stats div { background: var(--fill); border-radius: 10px; } .sh-stats small { opacity: 1; color: var(--hint); }
+.prize-row { justify-content: flex-start; } .prize-row span { background: var(--fill); border-radius: 10px; align-items: flex-start; font-size: inherit; padding: 8px 14px; } .prize-row small { opacity: 1; color: var(--hint); font-size: 12px; } .prize-row b { font-size: 15px; font-weight: 600; }
+.sh-actions .btn-glass { background: var(--accent-soft); color: var(--accent-text); }
+.crest { border-radius: 28%; background: hsl(var(--h) 38% 46%); box-shadow: none; }
+.timer-pill, .map-entry { border-radius: 14px; box-shadow: none; }
+.me-ic { background: var(--fill); color: var(--accent); box-shadow: none; border-radius: 50%; }
+.profile-card { background: var(--surface); color: var(--text); box-shadow: none; border-radius: 14px; }
+.addr-chip { background: var(--fill); } .profile-actions button { background: var(--accent-soft); color: var(--accent-text); }
+.intro-card { box-shadow: none; border-radius: 14px; } .intro-card .ic { background: var(--fill); color: var(--accent); border-radius: 50%; box-shadow: none; }
+.sq-ic { box-shadow: none; }
+
+/* sheets and receive */
+.sheet { border-radius: 20px 20px 0 0; box-shadow: none; background: var(--bg); }
+.sheet-back { background: rgba(0, 0, 0, 0.4); }
+.sheet .card, .sheet .field-card, .sheet .swap-card, .sheet .to-pill, .sheet .boost-card { background: var(--surface); }
+.recv-card, .recv-card.egg, .recv-card.gram { background: var(--surface); color: var(--text); box-shadow: none; border-radius: 14px; }
+.recv-addr { background: var(--fill); color: var(--text); }
+.field-card, .swap-card, .to-pill { border-radius: 14px; box-shadow: none; }
+.swap-flip { color: var(--accent); }
+.asset-seg button.on { box-shadow: none; background: var(--surface); }
+
+/* map */
+.map-hero { background: var(--surface); box-shadow: none; border-radius: 14px; }
+.map-glow { display: none; }
+.map-hero .land { stroke: var(--hint); opacity: 0.4; }
+.map-chip { background: var(--bg); color: var(--text); backdrop-filter: none; }
+.live { color: var(--danger); }

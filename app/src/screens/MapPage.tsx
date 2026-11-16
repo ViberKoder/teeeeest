@@ -5,7 +5,6 @@ import { units } from '../lib/format';
 import { compact } from '../lib/league';
 import { timeAgo } from '../lib/format';
 import { useApi } from '../lib/useApi';
-import { Chick } from '../ui/Chick';
 import { EggCoin } from '../ui/EggCoin';
 import { Page } from '../ui/native';
 import { WorldMap } from '../ui/WorldMap';
@@ -76,7 +75,7 @@ export function MapPage({ onClose }: { onClose: () => void }) {
             <span className="region-v num">{n.toLocaleString('en')}</span>
           </button>
         ))}
-        {data && langs.length === 0 && <div className="empty-mini"><Chick size={64} hatching /><br />The map fills as players open the bot</div>}
+        {data && langs.length === 0 && <div className="empty-mini">The map fills as players open the bot</div>}
       </div>
     </Page>
   );

@@ -7,7 +7,7 @@ import { useNav } from '../state/nav';
 import { useWallet } from '../state/wallet';
 import { EggCoin } from '../ui/EggCoin';
 import { GramCoin } from '../ui/Gram';
-import { Bolt, Chevron, Gear, Receive, Send, Swap } from '../ui/Icons';
+import { Bolt, Gear, Receive, Send, Swap } from '../ui/Icons';
 import { ActivityList } from '../ui/Tx';
 import { useToast } from '../ui/toast';
 import { useCountUp } from '../ui/useCountUp';
@@ -49,21 +49,20 @@ export function Nest({ burst, bonus }: { burst: number; bonus: string | null }) 
       </section>
 
       <section className="counter">
+        <div className="label">{eggOn ? 'My eggs' : 'Balance'}</div>
         {first ? (
           <div className="skeleton" style={{ height: 56, width: 190, margin: '8px auto 0' }} />
         ) : eggOn ? (
-          <div className="count num"><EggCoin size={44} tone="gold" />{whole}{frac && <span className="frac">.{frac}</span>}</div>
+          <div className="count num">{whole}{frac && <span className="frac">.{frac}</span>}</div>
         ) : (
           <div className="count num">{formatUnits(data.ton, 9, 3)}<span className="frac"> Gram</span></div>
         )}
         {eggOn && (
           <button className="league" onClick={() => nav.setTab('friends')} aria-label="League">
-            <span className="lg-emoji">{lg.cur.emoji}</span><b>{lg.cur.name}</b>{lg.next && <em className="num">· {formatUnits(lg.next.min - total, D, 0)} to {lg.next.name}</em>}<Chevron width={14} height={14} />
+            <b>{lg.cur.name}</b>{lg.next && <em className="num">{formatUnits(lg.next.min - total, D, 0)} to {lg.next.name}</em>}
           </button>
         )}
       </section>
-
-      {eggOn && <div className="energy"><span className="pbar"><i style={{ width: `${Math.max(4, lg.progress * 100)}%` }} /></span></div>}
 
       <div className="dock">
         <button className="dock-btn" onClick={() => { haptic.tap(); nav.open({ k: 'send' }); }}><span className="di"><Send width={24} height={24} /></span>Send</button>

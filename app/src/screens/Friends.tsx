@@ -6,7 +6,6 @@ import { hueOf, leagueOf } from '../lib/league';
 import { haptic, shareLink, tgUserId } from '../lib/tg';
 import { useApi } from '../lib/useApi';
 import { useWallet } from '../state/wallet';
-import { Chick } from '../ui/Chick';
 import { EggCoin } from '../ui/EggCoin';
 import { Copy, Users } from '../ui/Icons';
 import { useToast } from '../ui/toast';
@@ -19,7 +18,7 @@ function Row({ rank, f, me }: { rank: number; f: { name: string; username: strin
       <span className="avatar lg" style={{ ['--h' as string]: hueOf(f.name) }}>{me ? '★' : (f.name[0] ?? '#').toUpperCase()}</span>
       <span className="frow-main">
         <b>{me ? 'You' : f.name}</b>
-        <small><span className="lg-chip" style={{ background: `linear-gradient(135deg, ${lg.from}, ${lg.to})` }}>{lg.emoji}</span>{lg.name}{f.username && !me ? ` · @${f.username}` : ''}</small>
+        <small>{lg.name}{f.username && !me ? ` · @${f.username}` : ''}</small>
       </span>
       <span className="frow-side">
         <b className="num"><EggCoin size={15} />{units(f.eggs, 9, 0)}</b>
@@ -50,8 +49,7 @@ export function FriendsScreen() {
       <header className="page-top"><div><h1>Friends</h1><p>Hatch together, earn together</p></div></header>
 
       <section className="invite-card">
-        <div className="flock"><Chick size={78} wave /><Chick size={104} hatching /><Chick size={78} /></div>
-        <h2>Invite friends,<br />hatch a flock</h2>
+        <h2>Invite friends</h2>
         <p>You earn a share of every egg your friends hatch, on top of theirs. Friends who play also grow your Egg rack.</p>
         <div className="invite-actions">
           <button className="btn-main" onClick={invite}><Users width={20} height={20} />Invite a friend</button>
@@ -67,9 +65,9 @@ export function FriendsScreen() {
 
       <div className="sec-row"><h3>Friends top</h3>{data?.invitedBy && <span className="muted">invited by {data.invitedBy.name}</span>}</div>
       {error && !data ? (
-        <div className="empty-card"><Chick size={84} wave /><b>Friends open inside Telegram</b><span>Open the wallet from the bot to see your flock.</span></div>
+        <div className="empty-card"><EggCoin size={60} float /><b>Friends open inside Telegram</b><span>Open the wallet from the bot to see your flock.</span></div>
       ) : data && data.friends.length === 0 ? (
-        <div className="empty-card"><Chick size={90} hatching /><b>No friends yet</b><span>Send your link to a friend. When they hatch their first egg, they show up here.</span><button className="btn-main sm" onClick={invite}>Invite a friend</button></div>
+        <div className="empty-card"><EggCoin size={60} float /><b>No friends yet</b><span>Send your link to a friend. When they hatch their first egg, they show up here.</span><button className="btn-main sm" onClick={invite}>Invite a friend</button></div>
       ) : (
         <div className="card friend-card">
           {ranked.map((f, i) => <Row key={f.me ? 'me' : f.name + i} rank={i + 1} f={f} me={f.me} />)}

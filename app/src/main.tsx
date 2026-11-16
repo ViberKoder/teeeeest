@@ -10,7 +10,7 @@ import '@fontsource-variable/onest';
 import './styles/tokens.css';
 import './styles/app.css';
 import './styles/ui.css';
-import './styles/night.css';
+import './styles/strict.css';
 
 bootTelegram();
 

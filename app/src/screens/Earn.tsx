@@ -5,12 +5,18 @@ import { useApi } from '../lib/useApi';
 import { useNav } from '../state/nav';
 import { BoostIcon, Pips } from '../ui/Boosts';
 import { Burst } from '../ui/Egg';
-import { Chick } from '../ui/Chick';
 import { EggCoin } from '../ui/EggCoin';
-import { Bolt, Check, Fire } from '../ui/Icons';
+import { Bolt, Check, EggLine, ShieldIc, Users, Wallet, Info } from '../ui/Icons';
 import { useToast } from '../ui/toast';
 
 /** the server's rule: day n of a streak pays min(10, 2 + n) / 2 EGG */
+export function TaskIcon({ id }: { id: string }) {
+  if (id === 'wallet') return <Wallet width={22} height={22} />;
+  if (id === 'squad') return <ShieldIc width={22} height={22} />;
+  if (id === 'send1') return <EggLine width={22} height={22} />;
+  if (id.startsWith('friend')) return <Users width={22} height={22} />;
+  return <Info width={22} height={22} />;
+}
 const reward = (n: number) => Math.min(10, 2 + n) / 2;
 const fmt = (n: number) => String(n);
 
@@ -38,7 +44,7 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
   };
 
   if (error && !data) return (
-    <div className="screen-pad"><div className="empty-card"><Chick size={90} wave /><b>Earn opens inside Telegram</b><span>Open the wallet from the bot to collect daily eggs and finish tasks.</span></div></div>
+    <div className="screen-pad"><div className="empty-card"><EggCoin size={64} float /><b>Earn opens inside Telegram</b><span>Open the wallet from the bot to collect daily eggs and finish tasks.</span></div></div>
   );
 
   const streak = data?.streak ?? 0;
@@ -46,7 +52,6 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
   const done = today ? ((streak - 1) % 7) + 1 : streak % 7; // tiles already collected in this week of the streak
   const base = streak - done;
   const week = Array.from({ length: 7 }, (_, i) => ({ day: i + 1, n: base + i + 1, state: i < done ? 'done' : i === done && !today ? 'today' : 'next' }));
-  const nest = data?.boosts.find((b) => b.id === 'nest');
 
   return (
     <div className="screen-pad earn">
@@ -55,26 +60,23 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
         <button className="boost-pill" onClick={() => nav.open({ k: 'boosts' })}><Bolt width={16} height={16} />Boosts</button>
       </header>
 
-      <section className="daily-card">
-        <div className="dc-art"><Chick size={98} hatching /></div>
-        <div className="dc-main">
-          <span className="eyebrow"><Fire width={14} height={14} />{data ? `${streak} day streak` : 'Daily check-in'}</span>
-          <h2>Daily check-in</h2>
-          <p>Come back every day: the streak pays more each day{nest && nest.level < nest.max ? ' and raises your daily limit' : ''}.</p>
+      <section className="card daily">
+        <div className="daily-head">
+          <div><b>Daily check-in</b><small>{data ? `${streak} day streak` : ' '}</small></div>
+          {data && !today && <span className="daily-next num">+{data.nextDaily} EGG</span>}
         </div>
         <div className="week">
           {week.map((x) => (
             <div key={x.day} className={`wd ${x.state}`}>
-              <span className="wd-coin">{x.state === 'done' ? <span className="wd-check"><Check width={15} height={15} /></span> : <EggCoin size={26} tone={x.state === 'today' ? 'gold' : 'cream'} />}</span>
+              <span className="wd-coin">{x.state === 'done' ? <span className="wd-check"><Check width={14} height={14} /></span> : <EggCoin size={24} />}</span>
               <b className="num">+{fmt(reward(x.n))}</b>
-              <i>Day {x.n}</i>
             </div>
           ))}
         </div>
         <div className="dc-foot">
           {burst > 0 && <Burst key={burst} />}
-          <button className={`btn-gold ${today ? 'done' : ''}`} disabled={!data || today || busy === 'checkin'} onClick={() => void run('checkin', { action: 'checkin' }, 'Daily eggs collected')}>
-            {busy === 'checkin' ? <span className="spinner" /> : today ? 'Come back tomorrow' : data ? `Collect +${data.nextDaily} EGG` : 'Collect'}
+          <button className="btn-main wide" disabled={!data || today || busy === 'checkin'} onClick={() => void run('checkin', { action: 'checkin' }, 'Daily eggs collected')}>
+            {busy === 'checkin' ? <span className="spinner" /> : today ? 'Come back tomorrow' : data ? `Collect ${data.nextDaily} EGG` : 'Collect'}
           </button>
         </div>
       </section>
@@ -98,7 +100,7 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
           void i;
           return (
             <div key={t.id} className={`task ${t.status}`}>
-              <span className="task-ic">{t.icon}</span>
+              <span className="task-ic"><TaskIcon id={t.id} /></span>
               <span className="task-main">
                 <b>{t.title}</b>
                 <small>{t.progress && t.status !== 'done' ? `${t.progress[0]} / ${t.progress[1]} · ` : ''}{t.desc}</small>
@@ -106,7 +108,7 @@ export function EarnScreen({ earn: shared }: { earn: ReturnType<typeof useApi<Ea
               <span className="task-side">
                 <span className="reward"><EggCoin size={16} />+{t.reward}</span>
                 {t.status === 'done' ? <span className="task-done"><Check width={16} height={16} /></span>
-                  : t.status === 'ready' ? <button className="btn-gold sm" disabled={busy === t.id} onClick={() => void run(t.id, { action: 'claim', id: t.id }, `+${t.reward} EGG`, t.link)}>{busy === t.id ? '…' : 'Claim'}</button>
+                  : t.status === 'ready' ? <button className="btn-main sm" disabled={busy === t.id} onClick={() => void run(t.id, { action: 'claim', id: t.id }, `+${t.reward} EGG`, t.link)}>{busy === t.id ? '…' : 'Claim'}</button>
                   : <button className="btn-soft sm" onClick={() => go(t)}>Go</button>}
               </span>
             </div>
