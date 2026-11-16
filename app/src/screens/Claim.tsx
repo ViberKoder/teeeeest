@@ -81,7 +81,7 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
             : m === 'already-claimed'
               ? 'Everything committed so far is already in your wallet.'
               : e instanceof NeedTonError
-                ? 'Add about 0.1 TON to your wallet to cover the network fee (the bot pays only the first one).'
+                ? 'Add about 0.1 Gram to your wallet to cover the network fee (the bot pays only the first one).'
                 : /reject|denied|cancel/i.test(m)
                   ? 'The transaction was cancelled.'
                   : apiErrorText(e),
@@ -120,8 +120,8 @@ export function ClaimPage({ onClose }: { onClose: (hatched?: boolean) => void })
             <p className="hint" style={{ fontSize: 16, maxWidth: 330 }}>
               Your amount is committed in a public root on the blockchain. Hatching asks the token contract itself to verify your proof — the server cannot take it back or change it.
             </p>
-            {sponsored && <p className="hint" style={{ color: 'var(--good)' }}>Your first network fee is on us — the bot sends a little TON, then hatching continues by itself.</p>}
-            {lowTon && <p className="hint bad">You need about {formatUnits(Attach.claim, 9, 2)} TON for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
+            {sponsored && <p className="hint" style={{ color: 'var(--good)' }}>Your first network fee is on us — the bot sends a little Gram, then hatching continues by itself.</p>}
+            {lowTon && <p className="hint bad">You need about {formatUnits(Attach.claim, 9, 2)} Gram for the network fee; you have {formatUnits(data.ton, 9, 3)}.</p>}
             {status === 'error' && <p className="hint bad">{err}</p>}
           </>
         )}

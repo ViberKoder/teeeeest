@@ -7,7 +7,7 @@ import { balanceOf, ensureUser } from '../lib/ledger.js';
 
 export default async function (_input, ctx) {
   const id = ctx.initData.user.id;
-  await ensureUser(id, Math.floor(Date.now() / 1000));
+  await ensureUser(id, Math.floor(Date.now() / 1000), ctx.initData.user.language_code, ctx.initData.user.first_name);
   const uname = (ctx.initData.user.username ?? '').toLowerCase();
   let u = await db.select().from(users).where(eq(users.tgId, id)).get();
   if (uname && u.username !== uname) await db.update(users).set({ username: uname }).where(eq(users.tgId, id)).run();

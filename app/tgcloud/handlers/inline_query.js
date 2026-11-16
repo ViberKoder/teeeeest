@@ -6,7 +6,7 @@ import { getSettings } from '../lib/settings.js';
 
 export default async function (iq) {
   const S = await getSettings();
-  await ensureUser(iq.from.id, Math.floor(Date.now() / 1000), iq.from.language_code);
+  await ensureUser(iq.from.id, Math.floor(Date.now() / 1000), iq.from.language_code, iq.from.first_name);
   const data = await newEggData(iq.from.id);
   const results = [{
     type: 'article',

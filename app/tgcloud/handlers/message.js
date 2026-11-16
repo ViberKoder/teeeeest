@@ -45,7 +45,7 @@ export default async function (m) {
     return say(m.chat.id, `<b>Channel battle</b> · ${days} day${days === 1 ? '' : 's'} left\n\n${rows.join('\n') || 'No hatches yet this week. Tap Hatch under the post!'}\n\nOne Hatch a day under any post scores a point for its channel. The top 3 channels win EGG for everyone who hatched there.`);
   }
   if (!private_) return;
-  await ensureUser(m.from.id, now, m.from.language_code);
+  await ensureUser(m.from.id, now, m.from.language_code, m.from.first_name);
 
   if (cmd === '/start') {
     const p = args[0] ?? '';

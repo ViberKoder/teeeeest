@@ -56,3 +56,13 @@ export async function settleSquads(now) {
   }
   return top;
 }
+
+/** The members of a squad with what each earned for it this week. */
+export async function squadMembers(id, week) {
+  const a = weekStart(week), b = weekEnd(week);
+  const rows = await db.all(sql`SELECT u.tg_id AS id, u.name AS name, u.username AS username,
+      CAST(COALESCE((SELECT SUM(l.amount) FROM ledger l WHERE l.tg_id = u.tg_id AND l.squad = ${id} AND l.ts >= ${a} AND l.ts < ${b} AND l.kind IN ('post', 'inline', 'sender')), 0) AS TEXT) AS earned,
+      CAST(COALESCE((SELECT SUM(l.amount) FROM ledger l WHERE l.tg_id = u.tg_id), 0) AS TEXT) AS total
+    FROM users u WHERE u.squad = ${id} ORDER BY CAST(earned AS INTEGER) DESC, CAST(total AS INTEGER) DESC LIMIT 30`);
+  return rows.map((r, i) => ({ rank: i + 1, id: Number(r.id), name: r.name ?? r.username ?? `Player ${String(r.id).slice(-4)}`, earned: String(r.earned), total: String(r.total) }));
+}

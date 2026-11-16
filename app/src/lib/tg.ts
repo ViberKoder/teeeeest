@@ -136,3 +136,11 @@ export function squadFromLink(): number | null {
   const m = /^squad_(\d{1,9})$/.exec(raw);
   return m ? Number(m[1]) : null;
 }
+
+/** The inviter in a friend's link: t.me/<bot>?startapp=ref_<id>. */
+export function refFromLink(): number | null {
+  const raw = new URLSearchParams(location.hash.slice(1)).get('tgWebAppStartParam')
+    ?? (window as unknown as { Telegram?: { WebApp?: { initDataUnsafe?: { start_param?: string } } } }).Telegram?.WebApp?.initDataUnsafe?.start_param ?? '';
+  const m = /^ref_(\d{1,15})$/.exec(raw);
+  return m ? Number(m[1]) : null;
+}

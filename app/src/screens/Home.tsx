@@ -1,12 +1,14 @@
 import { lazy, Suspense, useState } from 'react';
 import { cfg, endpoints } from '../config';
 import { formatUnits, shortAddr } from '../lib/format';
-import { haptic, openExternal, squadFromLink } from '../lib/tg';
+import { levelOf } from '../lib/level';
+import { haptic, openExternal } from '../lib/tg';
 import { useWallet } from '../state/wallet';
+import { Bar } from '../ui/bits';
 import { Egg3D } from '../ui/Egg3D';
-import { EggMark, TonMark } from '../ui/Egg';
-import { Gear, Receive, Send, Sparkle } from '../ui/Icons';
-import { Row, Section } from '../ui/native';
+import { Coin, EggMini } from '../ui/EggMini';
+import { GramCoin, GramMark } from '../ui/Gram';
+import { Gear, Receive, Send } from '../ui/Icons';
 import { useToast } from '../ui/toast';
 import { useCountUp } from '../ui/useCountUp';
 import type { Activity } from '../chain/history';
@@ -15,21 +17,13 @@ const ClaimPage = lazy(() => import('./Claim').then((m) => ({ default: m.ClaimPa
 const IntroPage = lazy(() => import('./Intro').then((m) => ({ default: m.IntroPage })));
 const ReceivePage = lazy(() => import('./Receive').then((m) => ({ default: m.ReceivePage })));
 const SendPage = lazy(() => import('./Send').then((m) => ({ default: m.SendPage })));
-const SquadsPage = lazy(() => import('./Squads').then((m) => ({ default: m.SquadsPage })));
-const MapPage = lazy(() => import('./MapPage').then((m) => ({ default: m.MapPage })));
 const SettingsPage = lazy(() => import('./Settings').then((m) => ({ default: m.SettingsPage })));
 
-type Open = null | 'send' | 'receive' | 'claim' | 'settings' | 'intro' | 'squads' | 'map';
+type Open = null | 'send' | 'receive' | 'claim' | 'settings' | 'intro';
 
 const Swap = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
     <path d="M7 4v13M7 4L3.5 7.5M7 4l3.5 3.5M17 20V7M17 20l-3.5-3.5M17 20l3.5-3.5" />
-  </svg>
-);
-
-const Star = () => (
-  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden>
-    <path d="M12 3.5l2.2 6.3 6.3 2.2-6.3 2.2L12 20.5l-2.2-6.3-6.3-2.2 6.3-2.2z" />
   </svg>
 );
 
@@ -38,8 +32,29 @@ const dayLabel = (t: number) => {
   const today = new Date();
   if (d.toDateString() === today.toDateString()) return 'Today';
   if (d.toDateString() === new Date(today.getTime() - 86_400_000).toDateString()) return 'Yesterday';
-  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'long' });
+  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
 };
+const clock = (t: number) => new Date(t * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+/** One transaction: the egg (or the gem) on a coin with the direction as a badge, who it was with, when, and how much. */
+function Tx({ a, onOpen }: { a: Activity; onOpen: () => void }) {
+  const hatch = a.label === 'hatch';
+  const isEgg = a.kind === 'egg';
+  const title = hatch ? 'Hatched' : a.failed ? `${a.direction === 'in' ? 'Receive' : 'Send'} failed` : a.direction === 'in' ? 'Received' : 'Sent';
+  const who = hatch ? 'Verified on the blockchain' : a.peer ? shortAddr(a.peer.replace(/^0:/, ''), 5, 4) : '';
+  return (
+    <button className={`tx ${a.failed ? 'failed' : ''}`} onClick={onOpen}>
+      <Coin tone={isEgg ? 'egg' : 'gram'} badge={hatch ? 'spark' : a.direction}>
+        {isEgg ? <EggMini size={30} tone={hatch ? 'gold' : 'cream'} /> : <GramMark size={24} />}
+      </Coin>
+      <span className="tx-main"><b>{title}</b><span className="num">{clock(a.time)}{who ? ` · ${who}` : ''}{a.comment && !hatch ? ` · ${a.comment}` : ''}</span></span>
+      <span className={`tx-amt num ${a.direction === 'in' && !a.failed ? 'in' : ''}`}>
+        {a.direction === 'in' ? '+' : '−'}{formatUnits(a.amount, a.decimals, 2)}
+        <small>{a.symbol === 'TON' ? 'Gram' : a.symbol}</small>
+      </span>
+    </button>
+  );
+}
 
 export function Home() {
   const w = useWallet();
@@ -52,38 +67,34 @@ export function Home() {
     history.replaceState(null, '', location.pathname + location.hash); // once: a reload must not reopen it
     return p;
   });
-  // a friend's invitation (t.me/<bot>?startapp=squad_<id>) opens the squads page
-  const [joinId] = useState<number | null>(() => squadFromLink());
-  const [open, setOpen] = useState<Open>(prefill ? 'send' : joinId ? 'squads' : w.firstRun ? 'intro' : null);
+  const [open, setOpen] = useState<Open>(prefill ? 'send' : w.firstRun ? 'intro' : null);
   const [burst, setBurst] = useState(0);
   const { data, provider } = w;
   const D = cfg.token.decimals;
   const eggBalance = data.egg?.balance ?? 0n;
-  // the balance is everything that is yours: in the wallet, committed on-chain (claimed with your next send) and just earned
-  const shown = useCountUp(eggBalance + data.ready + data.accruing);
+  // ONE number: what is in the wallet, what is committed on-chain and what was just earned are all simply "your eggs"
+  const total = eggBalance + data.ready + data.accruing;
+  const shown = useCountUp(total);
   if (!provider) return null;
 
   const eggOn = Boolean(w.masterAddress);
   const addr = provider.address.toString({ bounceable: false, testOnly: cfg.network === 'testnet' });
   const first = data.loading && !data.egg && data.ton === 0n;
   const close = () => { setOpen(null); w.dismissIntro(); };
-  const nest = data.ready + data.accruing;
-  const progress = nest > 0n ? Number((data.ready * 100n) / nest) : 0;
   const [whole, frac] = formatUnits(shown, D, 2).split('.');
+  const lv = levelOf(total > BigInt(data.me?.ledger ?? '0') ? total : BigInt(data.me?.ledger ?? '0'), D);
 
   const swap = () => {
     haptic.tap();
     if (!w.masterAddress) return toast('Swap opens once EGG is listed on a DEX');
+    // eggs that are not on-chain yet have to be there before they can be swapped: settle them first, then swap
+    if (data.ready > 0n) { toast('Moving your eggs on-chain for the swap'); return setOpen('claim'); }
     openExternal(`https://app.ston.fi/swap?ft=TON&tt=${w.masterAddress.toString()}`);
   };
-  const hatch = () => {
-    haptic.tap();
-    if (data.ready > 0n) setOpen('claim');
-    else { setBurst((b) => b + 1); toast(nest > 0n ? 'Still hatching — it joins the next blockchain update' : 'Nothing in the nest yet'); }
-  };
+  const tap = () => { haptic.tap(); setBurst((b) => b + 1); };
 
   const groups: { day: string; items: Activity[] }[] = [];
-  for (const a of data.activity.slice(0, 20)) {
+  for (const a of data.activity.slice(0, 30)) {
     const day = dayLabel(a.time);
     const g = groups[groups.length - 1];
     if (g && g.day === day) g.items.push(a);
@@ -91,21 +102,21 @@ export function Home() {
   }
 
   return (
-    <div className="screen">
+    <div className="screen home">
       <section className="home-hero">
         <div className="bg" />
         <div className="bar">
-          <button className="round glass" aria-label="Keys & Backup" onClick={() => setOpen('settings')}><Gear width={20} height={20} /></button>
+          <button className="round glass" aria-label="Settings" onClick={() => setOpen('settings')}><Gear width={20} height={20} /></button>
           <div className="ttl">
-            <b>{eggOn ? 'Egg' : 'Wallet'}<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden><path fill="#2f9bff" d="M12 1.8l2.4 1.7 2.9-.1 1 2.8 2.4 1.7-.9 2.8.9 2.8-2.4 1.7-1 2.7-2.9-.1L12 22.2l-2.4-1.7-2.9.1-1-2.7-2.4-1.7.9-2.8-.9-2.8 2.4-1.7 1-2.8 2.9.1z" /><path d="M8.2 12.2l2.7 2.7 5-5.4" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg></b>
+            <b>{eggOn ? 'Egg' : 'Wallet'}</b>
             <button className="sub num" onClick={() => { void navigator.clipboard?.writeText(addr); haptic.tap(); toast('Address copied'); }}>
-              {cfg.network === 'testnet' ? 'testnet · ' : 'mini app · '}{shortAddr(addr, 4, 4)}
+              {cfg.network === 'testnet' ? 'testnet · ' : ''}{shortAddr(addr, 4, 4)}
             </button>
           </div>
-          <span className="round ghost" aria-hidden><EggMark /></span>
+          <button className="round glass gramchip" aria-label="Gram balance" onClick={() => toast(`${formatUnits(data.ton, 9, 3)} Gram pays the network fees`)}><GramMark size={22} color="#2f9bff" /></button>
         </div>
         <div className="shadow" />
-        <div className="stage"><Egg3D energy={data.ready > 0n ? 1 : 0.15} burst={burst} shaking={false} /></div>
+        <div className="stage" onPointerDown={tap}><Egg3D energy={0.35} burst={burst} shaking={false} /></div>
       </section>
 
       <section className="counter">
@@ -115,76 +126,52 @@ export function Home() {
         ) : eggOn ? (
           <div className="count num">{whole}{frac && <span className="frac">.{frac}</span>}</div>
         ) : (
-          <div className="count num">{formatUnits(data.ton, 9, 3)}<span className="frac"> TON</span></div>
+          <div className="count num">{formatUnits(data.ton, 9, 3)}<span className="frac"> Gram</span></div>
         )}
-        <div className="chips">
-          {eggOn && nest > 0n && (
-            <span className={`chip num ${data.ready > 0n ? 'good' : ''}`}>{data.ready > 0n ? `+${formatUnits(data.ready, D, 2)} ready to hatch` : `${formatUnits(data.accruing, D, 2)} hatching`}</span>
-          )}
-          {eggOn && (
-            <span className="island num" title="TON pays network fees"><span className="ti"><TonMark /></span>{formatUnits(data.ton, 9, 3)} TON</span>
-          )}
-        </div>
+        {eggOn && (
+          <div className="lvl" title={lv.next ? `${lv.toNext.toFixed(lv.toNext < 10 ? 1 : 0)} EGG to ${lv.next.name}` : 'Top level'}>
+            <span className="lvl-ic">{lv.cur.icon}</span>
+            <span className="lvl-t"><b>{lv.cur.name}</b>{lv.next ? <em>{lv.next.icon} {lv.next.name}</em> : <em>top level</em>}</span>
+            <Bar value={lv.progress} />
+          </div>
+        )}
       </section>
 
-      <div className="actions4">
-        {eggOn && (
-          <button className={`act ${data.ready > 0n ? 'hot' : ''}`} onClick={hatch}>
-            <span className="ic"><Star /></span>Hatch
-            {data.ready > 0n && <span className="badge-n num">{formatUnits(data.ready, D, 0)}</span>}
-          </button>
-        )}
-        <button className="act" onClick={() => setOpen('send')}><span className="ic"><Send width={22} height={22} /></span>Send</button>
-        <button className="act" onClick={() => setOpen('receive')}><span className="ic"><Receive width={22} height={22} /></span>Receive</button>
-        <button className="act" onClick={swap}><span className="ic"><Swap /></span>Swap</button>
+      <div className="acts3">
+        <button className="act3" onClick={() => setOpen('send')}><span className="disc d1"><Send width={24} height={24} /></span>Send</button>
+        <button className="act3" onClick={() => setOpen('receive')}><span className="disc d2"><Receive width={24} height={24} /></span>Receive</button>
+        <button className="act3" onClick={swap}><span className="disc d3"><Swap /></span>Swap</button>
       </div>
 
-      {eggOn && (
-        <button className="banner" onClick={() => (data.ready > 0n ? setOpen('claim') : setOpen('intro'))}>
-          <div className="bt">
-            <b>{nest > 0n ? `${formatUnits(nest, D, 2)} EGG in the nest` : 'Your eggs hatch while you play'}</b>
-            <span>{data.ready > 0n ? 'Verified on-chain — tap to hatch' : nest > 0n ? 'Joins the blockchain with the next update' : 'How hatching works'} ›</span>
-            {nest > 0n && <div className="meter"><i style={{ width: `${progress}%` }} /></div>}
-          </div>
-          <div className="bi"><EggMark /></div>
-        </button>
-      )}
+      <div className="gram-row">
+        <GramCoin size={36} />
+        <div><b>Gram</b><span>pays the network fee</span></div>
+        <em className="num">{formatUnits(data.ton, 9, 3)}</em>
+      </div>
 
+      <h2 className="sec">History</h2>
       {groups.length === 0 ? (
-        <Section title="Recent"><div className="empty">{data.loading ? 'Loading…' : 'Your transfers and hatches will show up here'}</div></Section>
+        <div className="card empty-state"><EggMini size={56} wobble /><b>{data.loading ? 'Loading…' : 'No transactions yet'}</b><span>{data.loading ? '' : 'Your eggs and Gram will show up here'}</span></div>
       ) : (
-        groups.map((g, gi) => (
-          <Section key={g.day} title={gi === 0 ? `Recent · ${g.day}` : g.day}>
-            {g.items.map((a) => (
-              <Row
-                key={a.id}
-                onClick={a.label ? undefined : () => openExternal(`${endpoints.explorer}/${addr}`)}
-                icon={<span className={`row-icon ${a.label === 'hatch' ? 'hatch-ic' : a.kind === 'egg' ? 'icon-egg' : 'icon-ton'}`}>{a.label === 'hatch' ? <Sparkle width={18} height={18} /> : a.kind === 'egg' ? <EggMark /> : <TonMark />}</span>}
-                title={a.label === 'hatch' ? 'Hatched' : `${a.direction === 'in' ? 'Received' : 'Sent'}${a.failed ? ' · failed' : ''}`}
-                subtitle={<span className="num">{a.label === 'hatch' ? 'Verified by the blockchain' : a.peer ? shortAddr(a.peer.replace(/^0:/, ''), 5, 4) : ''}{a.comment && !a.label ? ` · ${a.comment}` : ''}</span>}
-                trailing={<span className="num" style={{ color: a.direction === 'in' ? 'var(--good)' : undefined }}>{a.direction === 'in' ? '+' : '−'}{formatUnits(a.amount, a.decimals, 2)} <span className="hint">{a.symbol}</span></span>}
-              />
-            ))}
-          </Section>
+        groups.map((g) => (
+          <div key={g.day} className="txgroup">
+            <div className="txday">{g.day}</div>
+            <div className="card list">
+              {g.items.map((a) => <Tx key={a.id} a={a} onOpen={() => (a.label ? undefined : openExternal(`${endpoints.explorer}/${addr}`))} />)}
+            </div>
+          </div>
         ))
       )}
 
-      <div className="duo">
-        <button onClick={() => setOpen('squads')}><span>🛡</span><b>Squads</b><i>Hatch with a team</i></button>
-        <button onClick={() => setOpen('map')}><span>🌍</span><b>Egg map</b><i>Where the eggs travel</i></button>
-      </div>
-      <div className="notice">Your balance is public due to blockchain transparency.</div>
-      <button className="btn link" style={{ marginTop: 4 }} onClick={() => setOpen('intro')}>How does it work?</button>
+      <button className="btn link" style={{ marginTop: 10 }} onClick={() => setOpen('intro')}>How does it work?</button>
       {data.error && <p className="hint bad center" style={{ marginTop: 10 }}>{data.error}</p>}
 
       <Suspense fallback={null}>
-      {open === 'send' && <SendPage onClose={close} initialTo={prefill?.to} initialAmount={prefill?.amount} />}
-      {open === 'receive' && <ReceivePage onClose={close} />}
-      {open === 'claim' && <ClaimPage onClose={(hatched?: boolean) => { close(); if (hatched) setBurst((b) => b + 1); }} />}
-      {open === 'settings' && <SettingsPage onClose={close} />}
-      {open === 'squads' && <SquadsPage onClose={close} joinId={joinId} />}
-      {open === 'map' && <MapPage onClose={close} />}
-      {open === 'intro' && <IntroPage onClose={close} />}
+        {open === 'send' && <SendPage onClose={close} initialTo={prefill?.to} initialAmount={prefill?.amount} />}
+        {open === 'receive' && <ReceivePage onClose={close} />}
+        {open === 'claim' && <ClaimPage onClose={(hatched?: boolean) => { close(); if (hatched) setBurst((b) => b + 1); }} />}
+        {open === 'settings' && <SettingsPage onClose={close} />}
+        {open === 'intro' && <IntroPage onClose={close} />}
       </Suspense>
     </div>
   );

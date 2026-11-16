@@ -61,7 +61,7 @@ export function SettingsPage({ onClose }: { onClose: () => void }) {
       haptic.error();
       setErr(
         e instanceof NeedTonError
-          ? 'The wallet needs about 0.02 TON to pay for the key change. Hatch your first EGG (the change comes back to your wallet) or send a little TON here, then try again.'
+          ? 'The wallet needs about 0.02 Gram to pay for the key change. Hatch your first EGG (the change comes back to your wallet) or send a little TON here, then try again.'
           : e instanceof Error && e.message === 'rotation-pending'
             ? 'The change was sent but is not confirmed yet. Your new phrase is saved on this device; open Settings again in a minute.'
             : 'The key could not be changed. Nothing was lost — try again.',

@@ -151,7 +151,7 @@ export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () =>
       const m = e instanceof Error ? e.message : '';
       setErr(
         e instanceof NeedTonError
-          ? `Your wallet needs about ${formatUnits(Attach.transfer, 9, 2)} TON for the network fee.`
+          ? `Your wallet needs about ${formatUnits(Attach.transfer, 9, 2)} Gram for the network fee.`
           : /reject|denied|cancel/i.test(m) ? 'The transfer was cancelled.' : 'The transfer could not be sent. Check the balance and network connection, then try again.',
       );
       setStep('amount');
@@ -206,12 +206,12 @@ export function SendPage({ onClose, initialTo, initialAmount }: { onClose: () =>
         {masterAddress && (
           <div className="seg" style={{ margin: '4px 0 6px' }}>
             {(['EGG', 'TON'] as Asset[]).map((a) => (
-              <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a}</button>
+              <button key={a} className={asset === a ? 'on' : ''} onClick={() => { setAsset(a); setAmountStr(''); haptic.select(); }}>{a === 'TON' ? 'Gram' : a}</button>
             ))}
           </div>
         )}
 
-        <Section footer={<span className="num">{`Network fee: ${asset === 'TON' ? '< 0.01' : preparedFor ? '≈ 0.07' : '≈ 0.01'} TON${preparedFor ? ' (a little goes with it so the new wallet can be set up)' : ''}`}</span>}>
+        <Section footer={<span className="num">{`Network fee: ${asset === 'TON' ? '< 0.01' : preparedFor ? '≈ 0.07' : '≈ 0.01'} Gram${preparedFor ? ' (a little goes with it so the new wallet can be set up)' : ''}`}</span>}>
           {showComment ? (
             <div className="field"><label>Comment</label><input className="input" maxLength={120} autoFocus value={comment} onChange={(e) => setComment(e.target.value)} /></div>
           ) : (

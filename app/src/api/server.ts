@@ -37,7 +37,15 @@ export interface SquadInfo { id: number; name: string; link: string | null; memb
 export interface SquadReply {
   me: SquadInfo | null;
   board: { rank: number; id: number; name: string; link: string | null; members: number; score: string }[];
+  members?: { rank: number; id: number; name: string; earned: string; total: string }[];
   week: number; endsAt: number; nextChangeAt: number; prizes: string[];
+}
+export interface EarnTask { id: string; title: string; desc: string; icon: string; reward: string; link: string | null; status: 'todo' | 'ready' | 'done'; progress: [number, number] | null }
+export interface EarnBoost { id: string; icon: string; title: string; desc: string; level: number; max: number; effect: string; nextEffect: string; have: number; need: number; unit: string }
+export interface EarnReply { streak: number; checkedInToday: boolean; nextDaily: string; tasks: EarnTask[]; boosts: EarnBoost[]; balance: string }
+export interface FriendsReply {
+  link: string; count: number; active: number; earnedFromFriends: string; rack: { level: number; step: number; bonus: number }; invitedBy: { name: string } | null;
+  friends: { rank: number; id: number; name: string; username: string | null; lang: string | null; since: number; eggs: string; forMe: string }[];
 }
 export interface LookupReply { found: boolean; address?: string | null; ledger?: string; since?: number; entitlement?: Entitlement | null }
 
@@ -106,6 +114,10 @@ export const api = {
   gas: () => call<{ status: 'sent' | 'enough' }>('/v1/gas', { method: 'POST', body: '{}' }),
   /** live project numbers (explorer inside Telegram) */
   stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
+  /** Earn: daily check-in, one-time tasks and boosts */
+  earn: (input: Record<string, unknown> = {}) => call<EarnReply>('/v1/earn', { method: 'POST', body: JSON.stringify(input) }),
+  /** friends: the players you invited, what they hold and what they earned you */
+  friends: (input: Record<string, unknown> = {}) => call<FriendsReply & { ok?: boolean }>('/v1/friends', { method: 'POST', body: JSON.stringify(input) }),
   /** squads: state, create, join, leave, find, info (everything happens inside the app) */
   squad: (input: Record<string, unknown> = {}) => call<SquadReply & { found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
   /** internal data for a wallet or @username, to compare with the chain */

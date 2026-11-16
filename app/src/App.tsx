@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { cfg } from './config';
-import { Home } from './screens/Home';
+import { Shell } from './screens/Shell';
 import { Restore } from './screens/Restore';
 import { useWallet } from './state/wallet';
 import { Splash } from './ui/Splash';
@@ -13,7 +13,7 @@ export function App() {
   return (
     <div className="app">
       {phase === 'needs-phrase' && <Restore />}
-      {phase === 'ready' && <Home />}
+      {phase === 'ready' && <Shell />}
       {phase === 'adopting' && (
         <div className="screen" style={{ textAlign: 'center', paddingTop: 48 }}>
           <Sticker mode={{ kind: 'loop', from: FRAMES.egg, to: FRAMES.cracked, speed: 1 }} size={170} />

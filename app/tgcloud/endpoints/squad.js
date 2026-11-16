@@ -4,7 +4,7 @@ import { squads, users } from '../schema.js';
 import { weekEnd, weekOf } from '../lib/battle.js';
 import { balanceOf, ensureUser, fmtEgg } from '../lib/ledger.js';
 import { getSettings } from '../lib/settings.js';
-import { COOLDOWN, CREATE_PER_DAY, LINK, MAX_MEMBERS, NAME, settleSquads, squadBoard, squadOf } from '../lib/squads.js';
+import { COOLDOWN, CREATE_PER_DAY, LINK, MAX_MEMBERS, NAME, settleSquads, squadBoard, squadMembers, squadOf } from '../lib/squads.js';
 
 /** Squads, from inside the app. The platform verifies Telegram's init data, so `ctx.initData.user.id` can not be forged. */
 export default async function (input, ctx) {
@@ -75,6 +75,7 @@ export default async function (input, ctx) {
   return {
     me: await squadOf(fresh.squad, week),
     board: await squadBoard(week, 20),
+    members: fresh.squad ? await squadMembers(fresh.squad, week) : [],
     week, endsAt: weekEnd(week),
     nextChangeAt: fresh.squadAt ? fresh.squadAt + COOLDOWN : 0,
     prizes: S.squadPrize.map((p) => fmtEgg(p)),
