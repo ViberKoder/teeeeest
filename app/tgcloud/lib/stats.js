@@ -36,7 +36,7 @@ export async function computeStats(now) {
 
 /** The latest events, newest first, for the live feed (no names: Telegram ids are shown shortened). */
 export async function recentEvents(limit = 30) {
-  const rows = await db.all(sql`SELECT kind, amount, ts, tg_id FROM ledger WHERE amount > 0 ORDER BY id DESC LIMIT ${limit}`);
+  const rows = await db.all(sql`SELECT kind, amount, ts, tg_id FROM ledger ORDER BY id DESC LIMIT ${limit}`);
   return rows.map((r) => ({ kind: r.kind, amount: String(r.amount), t: Number(r.ts), who: `…${String(r.tg_id).slice(-3)}` }));
 }
 

@@ -10,7 +10,7 @@ import { cfg } from '../config';
 import { formatUnits, parseUnits, shortAddr } from '../lib/format';
 import { haptic, scanQr, shareLink } from '../lib/tg';
 import { useApi } from '../lib/useApi';
-import { playerName, hueOf } from '../lib/league';
+import { hueOf } from '../lib/league';
 import { NeedTonError } from '../provider/tg';
 import { Asset } from '../state/nav';
 import { useWallet } from '../state/wallet';
@@ -246,9 +246,9 @@ export function SendSheet({ onClose, asset: start, initialTo, initialAmount }: {
           <h4 className="sec-t">Friends</h4>
           <div className="chip-row">
             {named.map((f) => (
-              <button key={f.tag} className="friend-chip" onClick={() => void pickHandle(`@${f.username}`)}>
+              <button key={f.id} className="friend-chip" onClick={() => void pickHandle(`@${f.username}`)}>
                 <Avatar seed={f.username!}>{f.username![0].toUpperCase()}</Avatar>
-                <span>{playerName(f).replace('@', '')}</span>
+                <span>{f.name}</span>
               </button>
             ))}
           </div>

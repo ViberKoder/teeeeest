@@ -3,6 +3,7 @@
 import { api, db } from 'sdk';
 import { and, eq, lt, sql } from 'sdk/db';
 import { eggs, users } from '../schema.js';
+import { rackBonus } from './boosts.js';
 import { BOT_USERNAME } from './config.js';
 import { credit, creditRef, fmtEgg, setReferrer } from './ledger.js';
 import { mac } from './mac.js';
@@ -47,7 +48,8 @@ export async function hatchEgg(q, egg, now, S) {
   const row = await db.select().from(eggs).where(eq(eggs.key, egg.key)).get();
   if (row.hatched === 0) {
     const sent = await db.$count(eggs, and(eq(eggs.sender, egg.sender), sql`${eggs.createdAt} >= ${day}`));
-    if (sent > S.sendsPerDay) return answer(q, `This sender already has ${S.sendsPerDay} hatched eggs today — try again tomorrow.`, true);
+    const limit = S.sendsPerDay + (await rackBonus(egg.sender)); // the Egg rack boost adds eggs a player can send
+    if (sent > limit) return answer(q, `This sender already has ${limit} hatched eggs today — try again tomorrow.`, true);
   }
   // the same pair can not farm each other
   const pair = await db.get(sql`SELECT COUNT(*) AS n FROM ledger WHERE tg_id = ${clicker} AND kind = 'inline' AND ts >= ${day} AND ref LIKE ${`egg:${egg.sender}:%`}`);
@@ -68,7 +70,7 @@ export async function hatchEgg(q, egg, now, S) {
   await credit({ tgId: egg.sender, amount: S.reward.sender, kind: 'sender', ref: `snd:${egg.key}:${clicker}`, now });
   // the chain: whoever invited the sender earns too when the sender's egg is hatched
   const sender = await db.select().from(users).where(eq(users.tgId, egg.sender)).get();
-  if (sender?.referrer && sender.referrer !== clicker) await creditRef({ tgId: sender.referrer, amount: S.reward.chain, ref: `chain:${egg.key}:${clicker}`, now });
+  if (sender?.referrer && sender.referrer !== clicker) await creditRef({ tgId: sender.referrer, amount: S.reward.chain, ref: `chain:${egg.key}:${clicker}`, now, src: egg.sender });
   await answer(q, `🐣 +${fmtEgg(S.reward.inline)} EGG! The sender got +${fmtEgg(S.reward.sender)}.`);
 
   const hatched = taken[0].hatched;

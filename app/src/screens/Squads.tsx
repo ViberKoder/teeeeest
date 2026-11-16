@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, SquadReply } from '../api/server';
 import { cfg } from '../config';
 import { units, untilText } from '../lib/format';
-import { hueOf, initialOf, playerName } from '../lib/league';
-import { confirmNative, haptic, openExternal, shareLink } from '../lib/tg';
+import { hueOf } from '../lib/league';
+import { confirmNative, haptic, openExternal, shareLink, tgUserId } from '../lib/tg';
 import { useNav } from '../state/nav';
 import { Chick } from '../ui/Chick';
 import { Crest } from '../ui/Crest';
@@ -143,16 +143,16 @@ export function SquadsScreen() {
         </>
       )}
 
-      {s && me && (s.roster?.length ?? 0) > 0 && (
+      {s && me && (s.members?.length ?? 0) > 0 && (
         <>
           <div className="sec-row"><h3>Your squad</h3><span className="muted">who hatched most this week</span></div>
           <div className="card board-card">
-            {s.roster!.map((r) => (
-              <div key={r.tag + r.rank} className={`brow ${r.me ? 'me' : ''}`}>
+            {s.members!.map((r) => (
+              <div key={r.id} className={`brow ${r.id === tgUserId() ? 'me' : ''}`}>
                 <span className="rank num">{r.rank}</span>
-                <span className="avatar lg" style={{ ['--h' as string]: hueOf(r.username ?? r.tag) }}>{r.me ? '★' : initialOf(r)}</span>
-                <span className="brow-main"><b>{r.me ? 'You' : playerName(r)}</b><small>{r.owner ? 'Founder' : 'Member'}</small></span>
-                <span className="brow-score num"><EggCoin size={15} />{egg(r.score)}</span>
+                <span className="avatar lg" style={{ ['--h' as string]: hueOf(r.name) }}>{(r.name[0] ?? '#').toUpperCase()}</span>
+                <span className="brow-main"><b>{r.id === tgUserId() ? 'You' : r.name}</b><small>{egg(r.total)} EGG in total</small></span>
+                <span className="brow-score num"><EggCoin size={15} />{egg(r.earned)}</span>
               </div>
             ))}
           </div>

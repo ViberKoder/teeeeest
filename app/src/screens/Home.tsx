@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useState } from 'react';
 import { api, EarnReply } from '../api/server';
-import { squadFromLink } from '../lib/tg';
+import { refFromLink, squadFromLink } from '../lib/tg';
+import { useEffect } from 'react';
 import { useApi } from '../lib/useApi';
 import { Nav, NavCtx, Overlay } from '../state/nav';
 import { useAutoHatch } from '../state/autoHatch';
@@ -37,6 +38,8 @@ export function Home() {
   const [seen, setSeen] = useState<Set<Tab>>(() => new Set<Tab>([joinId ? 'squads' : 'wallet']));
   const [overlay, setOverlay] = useState<Overlay>(prefill ? { k: 'send', to: prefill.to, amount: prefill.amount } : w.firstRun ? { k: 'intro' } : null);
   const [burst, setBurst] = useState(0);
+  // a friend's invitation link: the server sets the inviter once, and only for someone who has not earned anything yet
+  useEffect(() => { const id = refFromLink(); if (id && api.available()) void api.friends({ action: 'ref', id }).catch(() => undefined); }, []);
   const earn = useApi<EarnReply>(() => api.earn({ action: 'state' }), []);
 
   const nav: Nav = {
@@ -49,13 +52,13 @@ export function Home() {
   };
   if (!w.provider) return null;
   const eggOn = Boolean(w.masterAddress);
-  const canClaimDaily = earn.data ? !earn.data.daily.claimedToday : false;
+  const canClaimDaily = earn.data ? !earn.data.checkedInToday : false;
   const tabs: Tab[] = eggOn ? ['wallet', 'earn', 'squads', 'friends'] : ['wallet'];
 
   return (
     <NavCtx.Provider value={nav}>
       <div className="shell">
-        <div className="pane" hidden={tab !== 'wallet'}><Nest burst={burst} bonus={earn.data?.bonusPct ?? null} /></div>
+        <div className="pane" hidden={tab !== 'wallet'}><Nest burst={burst} bonus={earn.data?.boosts.find((b) => b.id === 'nest' && b.level > 0)?.effect.replace(' a day', '') ?? null} /></div>
         <Suspense fallback={null}>
           {eggOn && seen.has('earn') && <div className="pane" hidden={tab !== 'earn'}><EarnScreen earn={earn} /></div>}
           {eggOn && seen.has('squads') && <div className="pane" hidden={tab !== 'squads'}><SquadsScreen /></div>}
@@ -69,7 +72,7 @@ export function Home() {
         {overlay?.k === 'receive' && <ReceiveSheet onClose={nav.close} asset={overlay.asset} />}
         {overlay?.k === 'swap' && <SwapSheet onClose={nav.close} />}
         {overlay?.k === 'tx' && <TxSheet a={overlay.a} onClose={nav.close} />}
-        {overlay?.k === 'boosts' && <BoostsSheet onClose={nav.close} earn={earn.data} onChange={(e) => earn.setData(e)} />}
+        {overlay?.k === 'boosts' && <BoostsSheet onClose={nav.close} earn={earn.data} />}
         {overlay?.k === 'settings' && <SettingsPage onClose={nav.close} />}
         {overlay?.k === 'intro' && <IntroPage onClose={nav.close} />}
         {overlay?.k === 'map' && <MapPage onClose={nav.close} />}

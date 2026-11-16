@@ -33,21 +33,16 @@ export interface StatsReply {
   langs?: [string, number][];
   battle?: { week: number; endsAt: number; board: { rank: number; chatId: number; title: string; username: string | null; score: number; players: number }[] };
 }
-export interface EarnTask { id: string; icon: string; title: string; sub: string; reward: string; have: number; need: number; state: 'open' | 'ready' | 'done' }
-export interface EarnBoost { id: 'warmup' | 'streak' | 'squad' | 'brood'; pct: number; max?: number; per?: number; active?: number; nextAt?: number; ready?: boolean; secs?: number; days?: number; joined?: boolean; friends?: number }
-export interface EarnReply {
-  now: number; balance: string; bonusPct: number;
-  daily: { streak: number; claimedToday: boolean; nextAt: number; days: { day: number; reward: string; state: 'done' | 'today' | 'next' }[] };
-  boosts: EarnBoost[];
-  tasks: EarnTask[];
-}
-export interface Friend { tag: string; username: string | null; balance: string; gave: string; joined: number; last: number; squad: boolean }
-export interface FriendsReply { pct: number; count: number; earned: string; balance: string; invitedBy: string | null; friends: Friend[] }
-export interface RosterRow { rank: number; tag: string; username: string | null; score: string; balance: string; me: boolean; owner: boolean }
+export interface EarnTask { id: string; title: string; desc: string; icon: string; reward: string; link: string | null; status: 'todo' | 'ready' | 'done'; progress: [number, number] | null }
+export interface EarnBoost { id: 'rack' | 'nest'; icon: string; title: string; desc: string; level: number; max: number; effect: string; nextEffect: string; have: number; need: number; unit: string }
+export interface EarnReply { streak: number; checkedInToday: boolean; nextDaily: string; tasks: EarnTask[]; boosts: EarnBoost[]; balance: string }
+export interface Friend { rank: number; id: number; name: string; username: string | null; lang: string | null; since: number; eggs: string; forMe: string }
+export interface FriendsReply { link: string; count: number; active: number; earnedFromFriends: string; rack: { level: number; step: number; bonus: number }; invitedBy: { name: string } | null; friends: Friend[] }
+export interface Member { rank: number; id: number; name: string; earned: string; total: string }
 export interface SquadInfo { id: number; name: string; link: string | null; members: number; score: string; rank: number | null; owner?: number }
 export interface SquadReply {
   me: SquadInfo | null;
-  roster?: RosterRow[];
+  members?: Member[];
   board: { rank: number; id: number; name: string; link: string | null; members: number; score: string }[];
   week: number; endsAt: number; nextChangeAt: number; prizes: string[];
 }
@@ -121,11 +116,11 @@ export const api = {
   /** live project numbers (explorer inside Telegram) */
   stats: (days = false) => call<StatsReply>('/v1/stats', { method: 'POST', body: JSON.stringify({ days }) }),
   /** squads: state, create, join, leave, find, info (everything happens inside the app) */
-  squad: (input: Record<string, unknown> = {}) => call<SquadReply & { roster?: RosterRow[]; found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
+  squad: (input: Record<string, unknown> = {}) => call<SquadReply & { found?: { id: number; name: string; members: number }[]; squad?: { id: number; name: string; members: number; link: string | null } | null }>('/v1/squad', { method: 'POST', body: JSON.stringify(input) }),
   /** Earn: daily check-in, one-time tasks, boosts (state, daily, task, boost) */
   earn: (input: Record<string, unknown> = {}) => call<EarnReply>('/v1/earn', { method: 'POST', body: JSON.stringify(input) }),
   /** the players this account invited, with what they hold and what their play brought */
-  friends: () => call<FriendsReply>('/v1/friends', { method: 'POST', body: '{}' }),
+  friends: (input: Record<string, unknown> = {}) => call<FriendsReply & { ok?: boolean }>('/v1/friends', { method: 'POST', body: JSON.stringify(input) }),
   /** internal data for a wallet or @username, to compare with the chain */
   lookup: (q: string) => call<LookupReply>('/v1/lookup', { method: 'POST', body: JSON.stringify({ q }) }),
   /** public: the same answer any wallet or explorer would get */
@@ -167,6 +162,10 @@ const messages: Record<string, string> = {
   unauthorized: 'Open the wallet from Telegram to sync EGG',
   'no-entitlement': 'Nothing is committed on-chain for you yet',
   'sponsorship-used-up': 'Your free transfers are used up — add a little Gram for fees',
+  'not-joined': 'Join the channel first, then tap Claim',
+  'not-ready': 'Not done yet',
+  already: 'Already done today',
+  cap: 'Daily limit reached — come back tomorrow',
   'pay-yourself': 'Your wallet can pay its own fee',
 };
 export const apiErrorText = (e: unknown) =>

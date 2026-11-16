@@ -3,39 +3,31 @@ const E = (n: number) => String(Math.round(n * 1e9));
 const now = () => Math.floor(Date.now() / 1000);
 
 const earn = {
-  now: now(),
-  balance: E(12600),
-  bonusPct: 37,
-  daily: {
-    streak: 4, claimedToday: false, nextAt: now() + 5 * 3600,
-    days: [1, 2, 3, 4, 5, 6, 7].map((d) => ({ day: d, reward: E((3 + d) / 4), state: (d <= 4 ? 'done' : d === 5 ? 'today' : 'next') as 'done' | 'today' | 'next' })),
-  },
-  boosts: [
-    { id: 'warmup', pct: 100, ready: true, nextAt: 0, active: 0, secs: 3600 },
-    { id: 'streak', pct: 12, max: 30, per: 3, days: 4 },
-    { id: 'squad', pct: 10, max: 10, joined: true },
-    { id: 'brood', pct: 15, max: 25, per: 5, friends: 3 },
-  ],
+  streak: 4, checkedInToday: false, nextDaily: '3.5', balance: E(12600),
   tasks: [
-    { id: 'wallet', icon: 'wallet', title: 'Create your wallet', sub: 'Link the wallet to your Telegram account', reward: E(1), have: 1, need: 1, state: 'done' },
-    { id: 'squad', icon: 'squad', title: 'Join a squad', sub: 'Hatch together and win weekly prizes', reward: E(1), have: 1, need: 1, state: 'ready' },
-    { id: 'friend1', icon: 'friends', title: 'Invite a friend', sub: 'A friend who hatches an egg counts', reward: E(2), have: 1, need: 1, state: 'ready' },
-    { id: 'hatch10', icon: 'egg', title: 'Hatch 10 eggs', sub: 'Keep the nest warm', reward: E(3), have: 7, need: 10, state: 'open' },
-    { id: 'streak7', icon: 'fire', title: '7-day streak', sub: 'Check in seven days in a row', reward: E(5), have: 4, need: 7, state: 'open' },
-    { id: 'friend5', icon: 'friends', title: 'Invite 5 friends', sub: 'Grow your flock', reward: E(5), have: 3, need: 5, state: 'open' },
-    { id: 'hatch100', icon: 'egg', title: 'Hatch 100 eggs', sub: 'A true farmer', reward: E(10), have: 7, need: 100, state: 'open' },
+    { id: 'wallet', title: 'Link your wallet', desc: 'Your eggs become yours on-chain', icon: '👛', reward: '2', link: null, status: 'done', progress: null },
+    { id: 'channel', title: 'Join the Hatch channel', desc: '@hatchtg: news, battles, new eggs', icon: '📣', reward: '3', link: 'https://t.me/hatchtg', status: 'ready', progress: null },
+    { id: 'squad', title: 'Join a squad', desc: 'Hatch together with a team', icon: '🛡', reward: '2', link: null, status: 'ready', progress: null },
+    { id: 'send1', title: 'Send your first egg', desc: 'Type @hatchapp in any chat; a friend hatches it', icon: '🥚', reward: '2', link: null, status: 'todo', progress: null },
+    { id: 'friend1', title: 'Invite a friend', desc: 'A friend who plays counts', icon: '🤝', reward: '2', link: null, status: 'done', progress: [1, 1] },
+    { id: 'friend3', title: 'Invite 3 friends', desc: 'Your Egg rack grows too', icon: '🐣', reward: '5', link: null, status: 'ready', progress: [3, 3] },
+    { id: 'friend10', title: 'Invite 10 friends', desc: 'A real flock', icon: '🐔', reward: '15', link: null, status: 'todo', progress: [6, 10] },
+  ],
+  boosts: [
+    { id: 'rack', icon: '🪺', title: 'Egg rack', desc: 'More eggs to send every day', level: 3, max: 5, effect: '+15 eggs a day', nextEffect: '+20', have: 6, need: 8, unit: 'active friends' },
+    { id: 'nest', icon: '🌟', title: 'Golden nest', desc: 'A higher daily earning limit', level: 0, max: 5, effect: '+0% a day', nextEffect: '+10%', have: 4, need: 7, unit: 'day streak' },
   ],
 };
 
 const friends = {
-  pct: 25, count: 6, earned: E(842.5), balance: E(12600), invitedBy: 'nastya',
+  link: 'https://t.me/hatchapp?startapp=ref_1', count: 6, active: 5, earnedFromFriends: E(842.5), rack: { level: 3, step: 2, bonus: 5 }, invitedBy: { name: 'Nastya' },
   friends: [
-    { tag: '412', username: 'alex_codes', balance: E(48210), gave: E(310.25), joined: now() - 86400 * 20, last: now() - 600, squad: true },
-    { tag: '907', username: 'marina_k', balance: E(21440), gave: E(204), joined: now() - 86400 * 12, last: now() - 7200, squad: true },
-    { tag: '338', username: null, balance: E(9120), gave: E(133.5), joined: now() - 86400 * 9, last: now() - 86400, squad: false },
-    { tag: '115', username: 'dimon', balance: E(2210), gave: E(88.25), joined: now() - 86400 * 5, last: now() - 3600, squad: false },
-    { tag: '764', username: 'oleg_tg', balance: E(640), gave: E(66.5), joined: now() - 86400 * 3, last: now() - 40000, squad: false },
-    { tag: '221', username: null, balance: E(95), gave: E(40), joined: now() - 86400, last: now() - 90000, squad: false },
+    { rank: 1, id: 412, name: 'Alex', username: 'alex_codes', lang: 'en', since: now() - 86400 * 20, eggs: E(48210), forMe: E(310.25) },
+    { rank: 2, id: 907, name: 'Marina', username: 'marina_k', lang: 'ru', since: now() - 86400 * 12, eggs: E(21440), forMe: E(204) },
+    { rank: 3, id: 338, name: 'Kirill', username: null, lang: 'ru', since: now() - 86400 * 9, eggs: E(9120), forMe: E(133.5) },
+    { rank: 4, id: 115, name: 'Dima', username: 'dimon', lang: 'ru', since: now() - 86400 * 5, eggs: E(2210), forMe: E(88.25) },
+    { rank: 5, id: 764, name: 'Oleg', username: 'oleg_tg', lang: 'uk', since: now() - 86400 * 3, eggs: E(640), forMe: E(66.5) },
+    { rank: 6, id: 221, name: 'Sveta', username: null, lang: 'en', since: now() - 86400, eggs: E(95), forMe: '0' },
   ],
 };
 
@@ -48,11 +40,11 @@ const board = [
   { rank: 6, id: 6, name: 'Scrambled', link: null, members: 280, score: E(64000) },
 ];
 let mySquad: { id: number; name: string; link: string | null; members: number; score: string; rank: number | null; owner?: number } | null = { id: 3, name: 'Chicken Run', link: 'https://t.me/chickenrun', members: 1210, score: E(8420), rank: 3 };
-const roster = [
-  { rank: 1, tag: '412', username: 'alex_codes', score: E(1840), balance: E(48210), me: false, owner: true },
-  { rank: 2, tag: '001', username: null, score: E(1210), balance: E(12600), me: true, owner: false },
-  { rank: 3, tag: '907', username: 'marina_k', score: E(990), balance: E(21440), me: false, owner: false },
-  { rank: 4, tag: '338', username: null, score: E(640), balance: E(9120), me: false, owner: false },
+const members = [
+  { rank: 1, id: 412, name: 'Alex', earned: E(1840), total: E(48210) },
+  { rank: 2, id: 1, name: 'You', earned: E(1210), total: E(12600) },
+  { rank: 3, id: 907, name: 'Marina', earned: E(990), total: E(21440) },
+  { rank: 4, id: 338, name: 'Kirill', earned: E(640), total: E(9120) },
 ];
 
 const stats = {
@@ -69,9 +61,8 @@ export async function demoCall<T>(path: string, body: Record<string, unknown>): 
   await new Promise((r) => setTimeout(r, 120));
   const name = path.replace(/^\/v1\//, '').split('/')[0];
   if (name === 'earn') {
-    if (body.action === 'daily') { earn.daily.claimedToday = true; earn.daily.streak += 1; earn.daily.days[4].state = 'done'; }
-    if (body.action === 'task') { const t = earn.tasks.find((x) => x.id === body.id); if (t) t.state = 'done'; }
-    if (body.action === 'boost') { earn.boosts[0] = { id: 'warmup', pct: 100, ready: false, active: now() + 3600, nextAt: now() + 86400, secs: 3600 } as typeof earn.boosts[0]; earn.bonusPct += 100; }
+    if (body.action === 'checkin') { earn.checkedInToday = true; earn.streak += 1; }
+    if (body.action === 'claim') { const t = earn.tasks.find((x) => x.id === body.id); if (t) t.status = 'done'; }
     return structuredClone(earn) as T;
   }
   if (name === 'friends') return friends as T;
@@ -80,7 +71,7 @@ export async function demoCall<T>(path: string, body: Record<string, unknown>): 
     if (body.action === 'leave') mySquad = null;
     if (body.action === 'join' || body.action === 'create') mySquad = { id: 3, name: String(body.name ?? 'Chicken Run'), link: null, members: 1211, score: E(0), rank: 3 };
     if (body.action === 'find') return { found: board.slice(0, 4).map((b) => ({ id: b.id, name: b.name, members: b.members })) } as T;
-    return { me: mySquad, roster: mySquad ? roster : [], board, week: 1, endsAt: now() + 3 * 86400 + 4 * 3600, nextChangeAt: 0, prizes: ['10', '6', '4'] } as T;
+    return { me: mySquad, members: mySquad ? members : [], board, week: 1, endsAt: now() + 3 * 86400 + 4 * 3600, nextChangeAt: 0, prizes: ['10', '6', '4'] } as T;
   }
   if (name === 'walletFor') return { username: String(body.username), address: '0:' + 'ab'.repeat(32), ready: true } as T;
   return {} as T;

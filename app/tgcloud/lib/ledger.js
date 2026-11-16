@@ -4,11 +4,12 @@ import { db } from 'sdk';
 import { eq, sql } from 'sdk/db';
 import { users } from '../schema.js';
 import { EGG } from './config.js';
-import { BOOSTED, boostPct } from './boosts.js';
+import { nestPercent } from './boosts.js';
 import { getSettings } from './settings.js';
 
-export async function ensureUser(tgId, now, lang) {
-  await db.insert(users).values({ tgId, createdAt: now, lang: lang ?? null }).onConflictDoNothing().run();
+export async function ensureUser(tgId, now, lang, name) {
+  await db.insert(users).values({ tgId, createdAt: now, lang: lang ?? null, name: name ? String(name).slice(0, 40) : null }).onConflictDoNothing().run();
+  if (name) await db.run(sql`UPDATE users SET name = ${String(name).slice(0, 40)} WHERE tg_id = ${tgId} AND (name IS NULL OR name != ${String(name).slice(0, 40)})`);
   if (lang) await db.run(sql`UPDATE users SET lang = ${String(lang).slice(0, 8).toLowerCase()} WHERE tg_id = ${tgId} AND (lang IS NULL OR lang != ${String(lang).slice(0, 8).toLowerCase()})`);
 }
 
@@ -27,32 +28,28 @@ export async function balanceOf(tgId) {
 export async function credit({ tgId, amount, kind, ref, now }) {
   const S = await getSettings();
   await ensureUser(tgId, now);
+  const cap = S.dailyCap + (S.dailyCap * BigInt(await nestPercent(tgId, now))) / 100n; // the Golden nest boost raises a player's daily limit
   if (await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`)) return 'again';
   if ((await db.get(sql`SELECT banned AS b FROM users WHERE tg_id = ${tgId}`))?.b) return 'banned';
-  // boosts (warm-up, streak, squad, friends) add a percentage to what hatching pays; the daily cap below still applies
-  if (BOOSTED.has(kind)) {
-    const pct = await boostPct(tgId, now);
-    if (pct > 0) amount = (BigInt(amount) * BigInt(100 + pct)) / 100n;
-  }
   // one statement: the cap can not be overrun by two taps arriving at the same moment
   await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts, squad)
     SELECT ${tgId}, ${Number(amount)}, ${kind}, ${ref}, ${now}, COALESCE((SELECT squad FROM users WHERE tg_id = ${tgId}), 0)
-    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind NOT IN ('ref', 'battle')) + ${Number(amount)} <= ${Number(S.dailyCap)}`);
+    WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind NOT IN ('ref', 'battle', 'task')) + ${Number(amount)} <= ${Number(cap)}`);
   if (!(await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`))) return 'cap';
   const u = await db.select().from(users).where(eq(users.tgId, tgId)).get();
   if (u?.referrer && u.referrer !== tgId) {
     const bonus = (amount * S.referralPct) / 100n;
-    if (bonus > 0n) await creditRef({ tgId: u.referrer, amount: bonus, ref: `ref:${ref}`, now });
+    if (bonus > 0n) await creditRef({ tgId: u.referrer, amount: bonus, ref: `ref:${ref}`, now, src: tgId });
   }
   return 'ok';
 }
 
 /** A referral-type credit (share of an invited player's earnings, or the chain bonus): once per `ref`, at most one daily cap a day. */
-export async function creditRef({ tgId, amount, ref, now }) {
+export async function creditRef({ tgId, amount, ref, now, src = 0 }) {
   const S = await getSettings();
   if (amount <= 0n || (await db.get(sql`SELECT banned AS b FROM users WHERE tg_id = ${tgId}`))?.b) return false;
-  await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts)
-    SELECT ${tgId}, ${Number(amount)}, 'ref', ${ref}, ${now}
+  await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts, src)
+    SELECT ${tgId}, ${Number(amount)}, 'ref', ${ref}, ${now}, ${src}
     WHERE (SELECT COALESCE(SUM(amount), 0) FROM ledger WHERE tg_id = ${tgId} AND ts >= ${dayStart(now)} AND kind = 'ref') + ${Number(amount)} <= ${Number(S.dailyCap)}`);
   return Boolean(await db.get(sql`SELECT 1 AS x FROM ledger WHERE ref = ${ref}`));
 }

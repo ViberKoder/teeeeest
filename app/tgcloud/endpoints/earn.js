@@ -1,84 +1,81 @@
-import { db, EndpointError } from 'sdk';
-import { sql } from 'sdk/db';
-import { balanceOf, credit, ensureUser } from '../lib/ledger.js';
-import { getSettings, toUnits } from '../lib/settings.js';
-import { BROOD, DAY, SQUAD, STREAK, WARMUP, boostsOf, streakOf } from '../lib/boosts.js';
-import { TASKS, claimedTasks, progressOf, rewardOf, taskRef } from '../lib/tasks.js';
+import { api, db, EndpointError } from 'sdk';
+import { eq, sql } from 'sdk/db';
+import { users } from '../schema.js';
+import { activeFriends, dayIndex, liveStreak, NEST, nestLevel, RACK, rackLevel } from '../lib/boosts.js';
+import { credit, ensureUser, fmtEgg, balanceOf } from '../lib/ledger.js';
+import { quietly } from '../lib/telegram.js';
 
-// Daily check-in: day k of the week pays reward_daily x (3 + k) / 4 (1, 1.25 ... 2.5 times the base).
-const dailyReward = (base, k) => (base * BigInt(3 + k)) / 4n;
-const cycleDay = (streakAfter) => ((streakAfter - 1) % 7) + 1;
+const E = 1000000000n;
+const CHANNEL = '@hatchtg';
+const dailyReward = (streak) => BigInt(Math.min(10, 2 + streak)) * E / 2n; // 1.5, 2, 2.5 … up to 5 EGG as the streak grows
 
-/**
- * Earn, from inside the app: the daily check-in, the one-time tasks and the boosts. The platform verifies Telegram's init data, so
- * `ctx.initData.user.id` can not be forged. Every payout is one ledger row with a unique ref (see lib/ledger.js).
- */
+/** One-time tasks. `ready` decides whether the reward can be claimed; the claim itself is paid once (unique ref per task and player). */
+const TASKS = [
+  { id: 'wallet', title: 'Link your wallet', desc: 'Your eggs become yours on-chain', reward: 2n * E, icon: '👛', ready: (c) => Boolean(c.u.verified) },
+  { id: 'channel', title: 'Join the Hatch channel', desc: `${CHANNEL}: news, battles, new eggs`, reward: 3n * E, icon: '📣', link: `https://t.me/${CHANNEL.slice(1)}`, check: true },
+  { id: 'squad', title: 'Join a squad', desc: 'Hatch together with a team', reward: 2n * E, icon: '🛡', ready: (c) => c.u.squad > 0 },
+  { id: 'send1', title: 'Send your first egg', desc: 'Type @hatchapp in any chat; a friend hatches it', reward: 2n * E, icon: '🥚', ready: (c) => c.hatchedEggs > 0 },
+  { id: 'friend1', title: 'Invite a friend', desc: 'A friend who plays counts', reward: 2n * E, icon: '🤝', progress: (c) => [Math.min(c.friends, 1), 1], ready: (c) => c.friends >= 1 },
+  { id: 'friend3', title: 'Invite 3 friends', desc: 'Your Egg rack grows too', reward: 5n * E, icon: '🐣', progress: (c) => [Math.min(c.friends, 3), 3], ready: (c) => c.friends >= 3 },
+  { id: 'friend10', title: 'Invite 10 friends', desc: 'A real flock', reward: 15n * E, icon: '🐔', progress: (c) => [Math.min(c.friends, 10), 10], ready: (c) => c.friends >= 10 },
+];
+
 export default async function (input, ctx) {
   const me = ctx.initData.user.id;
   const now = Math.floor(Date.now() / 1000);
+  const day = dayIndex(now);
   const fail = (c) => { throw new EndpointError(c, { code: c }); };
-  await ensureUser(me, now, ctx.initData.user.language_code);
-  const S = await getSettings();
-  const baseDaily = toUnits(S.raw.reward_daily);
-  const baseTask = toUnits(S.raw.reward_task);
-  const paid = (r) => { if (r === 'cap') fail('cap'); if (r === 'banned') fail('banned'); if (r === 'again') fail('already'); };
+  await ensureUser(me, now, ctx.initData.user.language_code, ctx.initData.user.first_name);
 
-  switch (input?.action ?? 'state') {
-    case 'daily': {
-      const st = await streakOf(me, now);
-      if (st.claimedToday) fail('already');
-      const k = cycleDay(st.streak + 1);
-      paid(await credit({ tgId: me, amount: dailyReward(baseDaily, k), kind: 'daily', ref: `daily:${st.today}:${me}`, now }));
-      break;
-    }
-    case 'task': {
-      const task = TASKS.find((t) => t.id === String(input.id));
-      if (!task) fail('no-task');
-      const b = await boostsOf(me, now);
-      const p = await progressOf(me, { streak: b.st.streak, friends: b.friends });
-      const [have, need] = task.of(p);
-      if (have < need) fail('not-yet');
-      paid(await credit({ tgId: me, amount: rewardOf(task, baseTask), kind: 'task', ref: taskRef(task.id, me), now }));
-      break;
-    }
-    case 'boost': {
-      if (String(input.id) !== 'warmup') fail('no-boost');
-      const w = (await boostsOf(me, now)).wu;
-      if (w.usedToday) fail('cooldown');
-      // one row per player per day: the unique ref makes a double tap harmless; amount 0, so it never touches a balance
-      await db.run(sql`INSERT OR IGNORE INTO ledger (tg_id, amount, kind, ref, ts, squad) VALUES (${me}, 0, 'boost', ${`boost:warmup:${w.today}:${me}`}, ${now}, 0)`);
-      break;
-    }
-    case 'state': break;
-    default: fail('unknown-action');
+  const load = async () => {
+    const u = await db.select().from(users).where(eq(users.tgId, me)).get();
+    const friends = await activeFriends(me);
+    const hatchedEggs = Number((await db.get(sql`SELECT COUNT(*) AS n FROM eggs WHERE sender = ${me} AND hatched > 0`))?.n ?? 0);
+    const done = new Set((await db.all(sql`SELECT ref FROM ledger WHERE tg_id = ${me} AND ref LIKE ${`task:%:${me}`}`)).map((r) => String(r.ref).split(':')[1]));
+    return { u, friends, hatchedEggs, done };
+  };
+
+  if (input?.action === 'checkin') {
+    const c = await load();
+    if (c.u.banned) fail('banned');
+    if (c.u.streakDay === day) fail('already');
+    const streak = c.u.streakDay === day - 1 ? c.u.streak + 1 : 1;
+    const r = await credit({ tgId: me, amount: dailyReward(streak), kind: 'task', ref: `task:daily:${me}:${day}`, now });
+    if (r === 'again') fail('already');
+    if (r === 'cap') fail('cap');
+    await db.update(users).set({ streak, streakDay: day }).where(eq(users.tgId, me)).run();
+  } else if (input?.action === 'claim') {
+    const t = TASKS.find((x) => x.id === input.id);
+    if (!t) fail('no-task');
+    const c = await load();
+    if (c.u.banned) fail('banned');
+    if (c.done.has(t.id)) fail('already');
+    let ok = false;
+    if (t.check) {
+      const m = await quietly(api.getChatMember({ chat_id: CHANNEL, user_id: me }));
+      ok = Boolean(m && ['member', 'administrator', 'creator'].includes(m.status));
+      if (!ok) fail('not-joined');
+    } else ok = t.ready(c);
+    if (!ok) fail('not-ready');
+    const r = await credit({ tgId: me, amount: t.reward, kind: 'task', ref: `task:${t.id}:${me}`, now });
+    if (r === 'cap') fail('cap');
   }
 
-  const b = await boostsOf(me, now);
-  const p = await progressOf(me, { streak: b.st.streak, friends: b.friends });
-  const done = await claimedTasks(me);
-  const doneToday = b.st.claimedToday;
-  const completed = doneToday ? cycleDay(b.st.streak) : b.st.streak % 7;
-  const days = Array.from({ length: 7 }, (_, i) => ({
-    day: i + 1,
-    reward: String(dailyReward(baseDaily, i + 1)),
-    state: i + 1 <= completed ? 'done' : i + 1 === completed + 1 && !doneToday ? 'today' : 'next',
-  }));
-  const today = Math.floor(now / DAY);
-
+  const c = await load();
+  const streak = liveStreak(c.u, now);
+  const todayDone = c.u.streakDay === day;
   return {
-    now,
-    balance: await balanceOf(me),
-    bonusPct: b.pct,
-    daily: { streak: b.st.streak, claimedToday: doneToday, nextAt: (today + 1) * DAY, days },
-    boosts: [
-      { id: 'warmup', pct: WARMUP.pct, active: b.wu.activeUntil, nextAt: b.wu.usedToday ? (today + 1) * DAY : 0, ready: !b.wu.usedToday, secs: WARMUP.secs },
-      { id: 'streak', pct: b.parts.streak, max: STREAK.max, per: STREAK.perDay, days: b.st.streak },
-      { id: 'squad', pct: b.parts.squad, max: SQUAD.pct, joined: b.inSquad },
-      { id: 'brood', pct: b.parts.brood, max: BROOD.max, per: BROOD.each, friends: b.friends },
-    ],
+    streak, checkedInToday: todayDone, nextDaily: fmtEgg(dailyReward(todayDone ? streak + 1 : streak + 1)),
     tasks: TASKS.map((t) => {
-      const [have, need] = t.of(p);
-      return { id: t.id, icon: t.icon, title: t.title, sub: t.sub, reward: String(rewardOf(t, baseTask)), have, need, state: done.has(t.id) ? 'done' : have >= need ? 'ready' : 'open' };
+      const done = c.done.has(t.id);
+      const prog = t.progress ? t.progress(c) : null;
+      const ready = t.check ? true : t.ready(c);
+      return { id: t.id, title: t.title, desc: t.desc, icon: t.icon, reward: fmtEgg(t.reward), link: t.link ?? null, status: done ? 'done' : ready ? 'ready' : 'todo', progress: prog };
     }),
+    boosts: [
+      { id: 'rack', icon: '🪺', title: 'Egg rack', desc: 'More eggs to send every day', level: rackLevel(c.friends), max: RACK.max, effect: `+${rackLevel(c.friends) * RACK.bonus} eggs a day`, nextEffect: `+${(rackLevel(c.friends) + 1) * RACK.bonus}`, have: c.friends, need: (rackLevel(c.friends) + 1) * RACK.step, unit: 'active friends' },
+      { id: 'nest', icon: '🌟', title: 'Golden nest', desc: 'A higher daily earning limit', level: nestLevel(streak), max: NEST.max, effect: `+${nestLevel(streak) * NEST.pct}% a day`, nextEffect: `+${(nestLevel(streak) + 1) * NEST.pct}%`, have: streak, need: (nestLevel(streak) + 1) * NEST.days, unit: 'day streak' },
+    ],
+    balance: await balanceOf(me),
   };
 }

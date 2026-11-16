@@ -29,6 +29,10 @@ export const users = table('users', {
   // the squad the player belongs to (0 = none) and when they last joined or left one (a day's cooldown between changes)
   squad: integer('squad').notNull().default(0),
   squadAt: integer('squad_at').notNull().default(0),
+  // Telegram first name (shown to friends and squadmates), and the daily check-in streak (UTC day index of the last one)
+  name: text('name'),
+  streak: integer('streak').notNull().default(0),
+  streakDay: integer('streak_day').notNull().default(0),
 });
 
 export const hatches = table('hatches', {
@@ -120,6 +124,8 @@ export const ledger = table('ledger', {
   ts: integer('ts').notNull(),
   // the player's squad at the moment of the event (a squad's weekly score is what its members earned while they were in it)
   squad: integer('squad').notNull().default(0),
+  // for referral-type credits: the friend whose play produced it (so a player can see what each friend earned them)
+  src: integer('src').notNull().default(0),
 }, (t) => ({
   bySquad: index('idx_ledger_squad').on(t.squad, t.ts),
   once: uniqueIndex('uq_ledger_ref').on(t.ref),

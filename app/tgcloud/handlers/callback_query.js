@@ -14,7 +14,7 @@ export default async function (q) {
   const now = Math.floor(Date.now() / 1000);
   if (!q.from || !q.data) return answer(q);
   const S = await getSettings();
-  await ensureUser(q.from.id, now, q.from.language_code);
+  await ensureUser(q.from.id, now, q.from.language_code, q.from.first_name);
 
   if (q.data.startsWith('e:')) {
     const egg = await parseEggData(q.data);

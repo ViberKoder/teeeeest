@@ -399,3 +399,9 @@
 @keyframes chickbob { 50% { transform: translateY(-2px) scale(1.015); } }
 .home-hero .bar { align-items: center; }
 .home-hero .stage { inset: 66px 0 10px 0; }
+
+.pips { display: inline-flex; gap: 4px; }
+.pips i { width: 18px; height: 6px; border-radius: 3px; background: var(--fill); }
+.pips i.on { background: linear-gradient(90deg, #ffd45a, #ff9d2e); }
+.bc-eff { color: var(--text) !important; font-size: 15px !important; }
+.boost-mini small { line-height: 1.25; }

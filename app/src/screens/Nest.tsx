@@ -13,7 +13,7 @@ import { useToast } from '../ui/toast';
 import { useCountUp } from '../ui/useCountUp';
 
 /** The wallet tab. One number for the eggs — whatever stage they are in on their way to the blockchain, they are simply yours. */
-export function Nest({ burst, bonus }: { burst: number; bonus: number | null }) {
+export function Nest({ burst, bonus }: { burst: number; bonus: string | null }) {
   const w = useWallet();
   const nav = useNav();
   const toast = useToast();
@@ -41,7 +41,7 @@ export function Nest({ burst, bonus }: { burst: number; bonus: number | null }) 
             </button>
           </div>
           {eggOn
-            ? <button className="round glass boost-btn" aria-label="Boosts" onClick={() => nav.open({ k: 'boosts' })}><Bolt width={18} height={18} />{bonus ? <i className="num">+{bonus}%</i> : null}</button>
+            ? <button className="round glass boost-btn" aria-label="Boosts" onClick={() => nav.open({ k: 'boosts' })}><Bolt width={18} height={18} />{bonus ? <i className="num">{bonus}</i> : null}</button>
             : <span className="round ghost" aria-hidden />}
         </div>
         <div className="shadow" />
